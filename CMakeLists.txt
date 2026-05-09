@@ -126,6 +126,23 @@ target_include_directories(WhyCremisiVSTPlugin PRIVATE
 # Linux-specific (GTK, WebKit, install)
 # ==============================================================================
 
+# ==============================================================================
+# React UI Bundle — copia dist/ nel Standalone .app (solo macOS Release)
+# ==============================================================================
+
+if(APPLE)
+    set(REACT_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/webview-ui/dist")
+    set(STANDALONE_RESOURCES "${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/$<CONFIG>/Standalone/WhyCremisi.app/Contents/Resources/webview-ui")
+
+    add_custom_command(TARGET WhyCremisiVSTPlugin POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "Copying React bundle to Standalone..."
+        COMMAND ${CMAKE_COMMAND} -E $<IF:$<CONFIG:Release>,copy_directory,true>
+            "${REACT_DIST_DIR}"
+            "${STANDALONE_RESOURCES}"
+        COMMENT "Embedding React UI in Standalone app bundle (Release only)"
+    )
+endif()
+
 if(NOT WIN32 AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK REQUIRED gtk+-3.0)

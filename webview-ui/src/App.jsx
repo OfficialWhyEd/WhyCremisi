@@ -3,9 +3,19 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { whycremisi, ConnectionState } from './whycremisi-bridge'
 import { BotFace } from './components/BotFace'
 import { SessionPanel } from './components/SessionPanel'
+import { SetupScreen } from './components/SetupScreen'
 import './index.css'
 
 export default function App() {
+  // ── setup state ───────────────────────────────────────────────────
+  const [setupComplete, setSetupComplete] = useState(() => {
+    return localStorage.getItem('whycremisi_setup_done') === 'true'
+  })
+  const [config, setConfig] = useState(() => {
+    const saved = localStorage.getItem('whycremisi_config')
+    return saved ? JSON.parse(saved) : { provider: 'ollama', apiKey: '' }
+  })
+
   // ── connection & bot ──────────────────────────────────────────────
   const [connStatus, setConnStatus] = useState(ConnectionState.DISCONNECTED)
   const [botState, setBotState]     = useState('idle')
@@ -190,7 +200,7 @@ export default function App() {
 
   // ── send AI prompt ────────────────────────────────────────────────
   const handleCommand = (e) => {
-    if (e.key !== 'Enter' || !inputVal.trim() || botState !== 'idle') return
+    if (e.key !== 'Enter' || !inputVal.trim() || botState === 'thinking' || botState === 'typing') return
     const cmd = inputVal.trim()
     const t = ts()
     addMsg({ type: 'user', text: cmd, time: t })
@@ -275,6 +285,28 @@ export default function App() {
   return (
     <div className="bg-[#0d0d0d] select-none h-screen w-screen overflow-hidden text-[#e5e2e1] font-['Space_Grotesk']">
       <div className="crt-overlay" />
+
+      <AnimatePresence>
+        {!setupComplete && (
+          <SetupScreen 
+            initialConfig={config}
+            onComplete={(newConfig) => {
+              setConfig(newConfig)
+              setSetupComplete(true)
+              localStorage.setItem('whycremisi_setup_done', 'true')
+              localStorage.setItem('whycremisi_config', JSON.stringify(newConfig))
+              
+              // Se connesso, invia config al plugin nel formato atteso da OscBridge
+              if (whycremisi.isConnected()) {
+                whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: newConfig.provider } })
+                if (newConfig.apiKey) {
+                  whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: newConfig.apiKey, provider: newConfig.provider } })
+                }
+              }
+            }} 
+          />
+        )}
+      </AnimatePresence>
 
       {/* ── HEADER ─────────────────────────────────────────────────── */}
       <header className="bg-[#131313] flex justify-between items-center w-full px-5 py-2 border-b border-[#222222] z-50 relative h-12">
@@ -394,7 +426,7 @@ export default function App() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 px-6 py-4 font-mono overflow-y-auto custom-scrollbar space-y-4">
+          <div className="flex-1 px-6 py-4 font-mono overflow-y-auto overflow-x-hidden custom-scrollbar space-y-4">
             <AnimatePresence>
               {messages.map((msg) => {
                 if (msg.type === 'system') return (
@@ -415,7 +447,7 @@ export default function App() {
                     transition={{ duration: 0.55, ease: [0.22,1,0.36,1] }}
                     className="mt-2 mb-4"
                   >
-                    <div className="advisory-breathe bg-[#121212] border border-[#DC143C]/40 p-4 relative">
+                    <div className="advisory-breathe bg-[#121212] border border-[#DC143C]/40 p-4 relative overflow-hidden">
                       {/* Decorative mini bar chart */}
                       <div className="absolute top-2 right-4 flex items-end gap-[2px] h-5 opacity-30">
                         {[35,70,50,90,60].map((h,i) => (
@@ -434,9 +466,9 @@ export default function App() {
                           <span className="text-[8px] text-[#4d4d4d] tracking-[0.2em]">NODE: CREMISI_X9 · PRIORITY: HIGH</span>
                         </div>
                       </div>
-                      <p className="text-sm text-[#FFB000] leading-relaxed mb-4">
-                        Detected harmonic crowding in <span className="text-white font-bold border-b border-[#DC143C]/40 px-1">200Hz–400Hz</span> range.
-                        Suggesting dynamic dip of <span className="bg-[#DC143C] text-white px-1.5 font-bold">-2.4dB</span>.
+                      <p className="text-sm text-[#FFB000] leading-relaxed mb-4 break-words">
+                        Detected harmonic crowding in <span className="text-white font-bold border-b border-[#DC143C]/40 px-1">200Hz–400Hz</span> range.{' '}
+                        Suggesting dynamic dip of <span className="bg-[#DC143C] text-white px-1.5 font-bold">-2.4dB</span>.{' '}
                         Transient preservation at <span className="text-white underline decoration-dotted">84%</span>.
                       </p>
                       <div className="flex gap-3 flex-wrap">
@@ -484,17 +516,15 @@ export default function App() {
                       initial={{ opacity:0, y:8 }}
                       animate={{ opacity:1, y:0 }}
                       transition={{ duration:0.4 }}
-                      className="flex gap-4"
+                      className="flex gap-4 min-w-0"
                     >
                       <div className="flex-shrink-0 mt-1">
-                        {isLatest
-                          ? <BotFace state={botState} className="w-14 h-14" />
-                          : <div className="w-8 h-8 rounded-full border border-[#FFB000]/20 bg-[#1a1a1a] flex items-center justify-center opacity-30">
-                              <span className="material-symbols-outlined text-[12px] text-[#FFB000]">smart_toy</span>
-                            </div>
-                        }
+                        <BotFace
+                          state={isLatest ? botState : 'idle'}
+                          className="w-11 h-11"
+                        />
                       </div>
-                      <div className="flex-1 bg-[#1a1a1a] border border-[#FFB000]/10 p-4 relative">
+                      <div className="flex-1 min-w-0 bg-[#1a1a1a] border border-[#FFB000]/10 p-4 relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-[2px] h-full bg-[#FFB000]" />
                         <div className="flex justify-between items-start mb-1.5">
                           <span className="text-[#FFB000] text-[10px] font-bold tracking-tighter uppercase">WHYCREMISI AI</span>
@@ -542,18 +572,19 @@ export default function App() {
           </div>
 
           {/* Terminal input */}
-          <div className="h-12 bg-[#131313] border-t border-[#222222] flex items-center px-5 gap-3">
+          <div className="h-14 bg-[#131313] border-t border-[#222222] flex items-center px-4 gap-3">
+            <BotFace state={botState} className="w-10 h-10 flex-shrink-0" />
             <span className="text-[#FFB000] font-bold text-sm tracking-widest shrink-0">CMD&gt;</span>
             <div className="flex-1 relative flex items-center">
               <input
                 className="w-full bg-transparent border-none text-white font-mono text-sm focus:ring-0 focus:outline-none placeholder-[#4d4d4d] p-0 disabled:opacity-40"
-                placeholder={botState !== 'idle' ? 'PROCESSING...' : 'Ask the AI anything about your mix...'}
+                placeholder={botState === 'thinking' || botState === 'typing' ? 'PROCESSING...' : 'Ask the AI anything about your mix...'}
                 value={inputVal}
                 onChange={e => setInputVal(e.target.value)}
                 onKeyDown={handleCommand}
-                disabled={botState !== 'idle'}
+                disabled={botState === 'thinking' || botState === 'typing'}
               />
-              {botState === 'idle' && <div className="terminal-cursor" />}
+              {(botState === 'idle' || botState === 'sad' || botState === 'loading') && <div className="terminal-cursor" />}
             </div>
             <div className="flex gap-2 text-[#4d4d4d]">
               <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}

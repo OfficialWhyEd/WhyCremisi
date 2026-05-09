@@ -83,6 +83,13 @@ void OscBridge::stop()
         wsServer->stop();
     if (oscHandler)
         oscHandler->stop();
+    
+    if (aiThread && aiThread->joinable())
+    {
+        log("[OscBridge] Waiting for AI thread to join...");
+        aiThread->join();
+    }
+    
     log("[OscBridge] Stopped");
 }
 
@@ -544,9 +551,9 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
 
     aiProcessing.store(true);
 
-    // Detach the previous finished thread to avoid leaking handles
+    // Join the previous finished thread if it exists to avoid leaking handles
     if (aiThread && aiThread->joinable())
-        aiThread->detach();
+        aiThread->join();
 
     // Capture everything needed by value — the thread outlives this stack frame
     juce::String capturedPrompt = prompt;

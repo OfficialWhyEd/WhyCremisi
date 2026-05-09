@@ -27,10 +27,9 @@ void WhyCremisiBrowser::pageFinishedLoading(const juce::String& url)
 WhyCremisiProcessorEditor::WhyCremisiProcessorEditor(WhyCremisiProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
-    setSize(800, 600);
-    // Usa SEMPRE la UI nativa — WebView non funziona in VST embedded (vedi architettura-ponte.md)
-    setupFallbackUI();
-    DBG("[WhyCremisi] Editor avviato con UI nativa JUCE");
+    setSize(900, 700);
+    setupWebView();
+    DBG("[WhyCremisi] Editor avviato con WebView integrata");
 }
 
 WhyCremisiProcessorEditor::~WhyCremisiProcessorEditor()
@@ -45,8 +44,29 @@ WhyCremisiProcessorEditor::~WhyCremisiProcessorEditor()
 }
 
 //==============================================================================
-void WhyCremisiProcessorEditor::loadUI()  { setupFallbackUI(); }
-void WhyCremisiProcessorEditor::setupWebView() {}  // Disabilitata — vedi STATUS.md
+void WhyCremisiProcessorEditor::loadUI()  { setupWebView(); }
+
+void WhyCremisiProcessorEditor::setupWebView()
+{
+    webView = std::make_unique<WhyCremisiBrowser>();
+    
+    // Configura il ponte tra JS e C++
+    webViewBridge.initialize(webView.get());
+    webViewBridge.setFrontendMessageCallback([this](const nlohmann::json& msg) {
+        handleFrontendMessage(msg);
+    });
+
+    // Collega l'intercettazione dei messaggi via URL
+    webView->onPageAboutToLoad = [this](const juce::String& url) {
+        return !webViewBridge.handleMessageFromURL(url); // Ritorna false se consumato (non naviga)
+    };
+
+    // Carica l'URL (Localhost per sviluppo, file locale per produzione)
+    juce::String url = getUIURL();
+    webView->goToURL(url);
+    
+    addAndMakeVisible(webView.get());
+}
 
 void WhyCremisiProcessorEditor::setupFallbackUI()
 {
@@ -118,7 +138,17 @@ void WhyCremisiProcessorEditor::setupFallbackUI()
 
 juce::String WhyCremisiProcessorEditor::getUIURL() const
 {
-    return "http://127.0.0.1:9000";
+#if JUCE_DEBUG
+    return "http://localhost:5173";
+#else
+    // In Release: carica il bundle React dall'app package
+    auto appFile = juce::File::getSpecialLocation(juce::File::currentApplicationFile);
+    auto indexFile = appFile.getChildFile("Contents/Resources/webview-ui/index.html");
+    if (indexFile.existsAsFile())
+        return juce::URL(indexFile).toString(false);
+    // Fallback al dev server se il bundle non c'è
+    return "http://localhost:5173";
+#endif
 }
 
 //==============================================================================
@@ -172,22 +202,6 @@ void WhyCremisiProcessorEditor::paint(juce::Graphics& g)
 
 void WhyCremisiProcessorEditor::resized()
 {
-    auto area = getLocalBounds();
-
-    // Header
-    titleLabel.setBounds(area.removeFromTop(35).withTrimmedTop(5));
-    subtitleLabel.setBounds(area.removeFromTop(18));
-    area.removeFromTop(10);
-
-    // Sliders
-    int sliderW = 110, sliderH = 120;
-    int startX = (getWidth() - sliderW * 2 - 40) / 2;
-    int startY = area.getY() + 20;
-    gainSlider1.setBounds(startX, startY, sliderW, sliderH);
-    gainSlider2.setBounds(startX + sliderW + 40, startY, sliderW, sliderH);
-
-    // AI area
-    int aiY = startY + sliderH + 40;
-    aiPrompt.setBounds(50, aiY, getWidth() - 160, 30);
-    aiButton.setBounds(getWidth() - 100, aiY, 80, 30);
+    if (webView)
+        webView->setBounds(getLocalBounds());
 }
