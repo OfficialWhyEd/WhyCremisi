@@ -148,7 +148,11 @@ void OscHandler::handleOscPacket(const char* data, int size)
         {
             typeTag += *ptr++;
         }
-        // Skip to arguments (aligned)
+        // ptr is now on the null terminator of the type tag string.
+        // Must skip the null explicitly before alignment, otherwise if
+        // (ptr - data) is already 4-byte aligned the loop below won't
+        // advance and args would point at the null instead of the payload.
+        if (ptr < data + size) ptr++; // skip null terminator
         while (ptr < data + size && (ptr - data) % 4 != 0) ptr++;
         
         // Parse arguments

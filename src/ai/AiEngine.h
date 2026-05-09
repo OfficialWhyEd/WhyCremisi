@@ -95,11 +95,8 @@ private:
     juce::String makeHttpRequest(const juce::String& url,
                                   const juce::String& method,
                                   const juce::String& jsonBody,
-                                  int timeoutMs);
-    
-    //==============================================================================
-    /** JSON parsing helper */
-    juce::String parseJsonResponse(const juce::String& json, const juce::String& key);
+                                  int timeoutMs,
+                                  const juce::String& extraHeaders = {});
     
     //==============================================================================
     /** Internal implementations for each provider */
@@ -109,6 +106,7 @@ private:
     juce::String callOpenAI(const juce::String& prompt);
     juce::String callOpenRouter(const juce::String& prompt);
     juce::String callGroq(const juce::String& prompt);
+    juce::String callOpenAICompatible(const juce::String& url, const juce::String& prompt);
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AiEngine)
 };

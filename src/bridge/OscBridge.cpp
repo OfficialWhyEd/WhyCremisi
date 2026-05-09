@@ -43,9 +43,11 @@ OscBridge::~OscBridge()
 //==============================================================================
 bool OscBridge::start()
 {
-    // Start OSC listener (receives from DAW)
+    // Start OSC listener (receives from DAW).
+    // start() launches a thread; give it a moment to bind the socket before
+    // checking isRunning(), which reads the 'connected' atomic set by that thread.
     oscHandler->start();
-    // Note: OscHandler::start() is void, it logs errors internally
+    juce::Thread::sleep(50);
     if (!oscHandler->isRunning())
     {
         lastError = "Failed to start OSC listener on port " + juce::String(oscPort);
