@@ -130,57 +130,64 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
     {
         currentIsPlaying = (value > 0.5f);
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm);
+        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
     else if (address == "/live/song/get/is_recording" || address == "/live/song/is_recording")
     {
         currentIsRecording = (value > 0.5f);
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
     else if (address == "/live/song/get/tempo" || address == "/live/song/tempo")
     {
         currentBpm = value;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
     else if (address == "/live/song/get/current_song_time" || address == "/live/song/current_song_time")
     {
         currentPosition = value;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        // position logged by SessionManager's rate limiter
+        if (sessionManager) sessionManager->logOscEvent(address, value);
+        return; // already logged as OSC above, skip generic OSC log below
     }
     else if (address == "/live/song/start_playing")
     {
         currentIsPlaying = true;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        if (sessionManager) sessionManager->logTransport(true, currentIsRecording, currentBpm);
+        if (sessionManager) sessionManager->logTransport(true, currentIsRecording, currentBpm, currentPosition);
     }
     else if (address == "/live/song/stop_playing")
     {
         currentIsPlaying = false;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        if (sessionManager) sessionManager->logTransport(false, currentIsRecording, currentBpm);
+        if (sessionManager) sessionManager->logTransport(false, currentIsRecording, currentBpm, currentPosition);
     }
     // ── REAPER / generic OSC transport fallback ─────────────────────────────
     else if (address == "/play" || (address.contains("play") && !address.contains("back")))
     {
         currentIsPlaying = (value > 0.5f);
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm);
+        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
     else if (address == "/stop")
     {
         currentIsPlaying = false;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        if (sessionManager) sessionManager->logTransport(false, currentIsRecording, currentBpm);
+        if (sessionManager) sessionManager->logTransport(false, currentIsRecording, currentBpm, currentPosition);
     }
     else if (address == "/record" || address.contains("record"))
     {
         currentIsRecording = (value > 0.5f);
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
     else if (address.contains("tempo") || address.contains("bpm"))
     {
         currentBpm = value;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
     else if (address.contains("song_time") || address.contains("position"))
     {
@@ -275,6 +282,8 @@ void OscBridge::handleClientConnection(int clientId, bool connected)
     {
         log("[WS] Client " + juce::String(clientId) + " connected");
 
+        if (sessionManager) sessionManager->logWsConnect(clientId, true);
+
         // Push current state to the newly connected client
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
 
@@ -286,6 +295,7 @@ void OscBridge::handleClientConnection(int clientId, bool connected)
     else
     {
         log("[WS] Client " + juce::String(clientId) + " disconnected");
+        if (sessionManager) sessionManager->logWsConnect(clientId, false);
     }
 }
 
@@ -303,7 +313,7 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     log("[CMD] " + command);
 
     if (sessionManager)
-        sessionManager->logDawCommand(command);
+        sessionManager->logDawCommand(command, juce::String(payload.dump().data()));
 
     // AbletonOSC + REAPER dual-send + optimistic local state update.
     // Optimistic update: change internal state and broadcast immediately so
