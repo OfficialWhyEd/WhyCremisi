@@ -70,16 +70,40 @@ bool OscBridge::start()
     log("[OscBridge] Started successfully");
     log("[OscBridge] DAW target: " + oscHandler->getSendHost() + ":" + juce::String(oscHandler->getSendPort()));
 
+    // 33ms timer: broadcasts position ticker + meters to UI
+    startTimer(33);
+
     return true;
 }
 
 void OscBridge::stop()
 {
+    stopTimer();
     if (wsServer)
         wsServer->stop();
     if (oscHandler)
         oscHandler->stop();
     log("[OscBridge] Stopped");
+}
+
+//==============================================================================
+void OscBridge::timerCallback()
+{
+    if (!wsServer || !wsServer->isRunning() || wsServer->getConnectedClientsCount() == 0)
+        return;
+
+    // Advance position while playing (1 tick = 33ms)
+    if (currentIsPlaying)
+    {
+        currentPosition += 0.033f;
+        // Broadcast transport every ~1s (every 30 ticks)
+        if (++meterTickCounter % 30 == 0)
+            broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+    }
+
+    // Always broadcast meter at ~30fps
+    broadcastMeter(-1, lastMeterL.load(), lastMeterR.load(),
+                       lastMeterL.load(), lastMeterR.load());
 }
 
 bool OscBridge::isRunning() const
@@ -192,10 +216,7 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
     // Dispatch based on type
     if (msgType == "plugin.init")
     {
-        // Client connected - send current state
-        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-
-        // Send plugin info
+        // Respond with plugin.init FIRST so client knows we're ready
         nlohmann::json init;
         init["type"] = "plugin.init";
         init["id"] = nullptr;
@@ -206,7 +227,10 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
         init["payload"]["capabilities"] = nlohmann::json::array({"widgets", "ai", "osc", "daw"});
         wsServer->broadcast(init);
 
-        log("[WS] Sent plugin.init to new client");
+        // Then push current DAW state
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+
+        log("[WS] Sent plugin.init + transport to client");
     }
     else if (msgType == "daw.command")
     {
@@ -281,25 +305,35 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     if (sessionManager)
         sessionManager->logDawCommand(command);
 
-    // AbletonOSC + REAPER dual-send: each command goes to both address spaces
-    // so the plugin works with either DAW without reconfiguration.
+    // AbletonOSC + REAPER dual-send + optimistic local state update.
+    // Optimistic update: change internal state and broadcast immediately so
+    // the UI is responsive even before DAW feedback arrives over OSC.
     if (command == "play")
     {
+        currentIsPlaying = true;
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         sendOscToDaw("/live/song/start_playing", 1.0f);  // AbletonOSC
         sendOscToDaw("/play", 1.0f);                      // REAPER
     }
     else if (command == "stop")
     {
+        currentIsPlaying = false;
+        currentPosition  = 0.0f;
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         sendOscToDaw("/live/song/stop_playing", 1.0f);   // AbletonOSC
         sendOscToDaw("/stop", 1.0f);                      // REAPER
     }
     else if (command == "record")
     {
+        currentIsRecording = !currentIsRecording;
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         sendOscToDaw("/live/song/record", 1.0f);          // AbletonOSC
         sendOscToDaw("/record", 1.0f);                    // REAPER
     }
     else if (command == "pause")
     {
+        currentIsPlaying = false;
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         sendOscToDaw("/live/song/continue_playing", 1.0f);
         sendOscToDaw("/pause", 1.0f);
     }
@@ -308,9 +342,10 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         if (payload.contains("bpm"))
         {
             float bpm = payload["bpm"].get<float>();
+            currentBpm = bpm;
+            broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
             sendOscToDaw("/live/song/set/tempo", bpm);    // AbletonOSC
             sendOscToDaw("/tempo", bpm);                   // REAPER
-            currentBpm = bpm;
         }
     }
     else if (command == "setVolume")

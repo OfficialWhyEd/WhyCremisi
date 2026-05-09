@@ -21,6 +21,7 @@
 #include "OscHandler.h"
 #include "WebSocketServer.h"
 #include <juce_core/juce_core.h>
+#include <juce_events/juce_events.h>
 #include <nlohmann/json.hpp>
 #include <thread>
 
@@ -28,7 +29,7 @@
 class AiEngine;
 class SessionManager;
 
-class OscBridge
+class OscBridge : private juce::Timer
 {
 public:
     //==============================================================================
@@ -96,8 +97,19 @@ public:
 
     /** Get current AI response status */
     bool isAiProcessing() const { return aiProcessing.load(); }
-    
+
+    //==============================================================================
+    /** Called from processBlock to update meter levels (thread-safe) */
+    void updateMeter(float leftDb, float rightDb)
+    {
+        lastMeterL.store(leftDb);
+        lastMeterR.store(rightDb);
+    }
+
 private:
+    // juce::Timer callback — broadcasts position + meters at 30ms intervals
+    void timerCallback() override;
+
     //==============================================================================
     // Called when OSC message is received from DAW
     void onOscReceived(const juce::String& address, float value);
@@ -142,6 +154,11 @@ private:
 
     // AI thread (async dispatch)
     std::unique_ptr<std::thread> aiThread;
+
+    // Meter state written from processBlock, read by timerCallback
+    std::atomic<float> lastMeterL { -60.0f };
+    std::atomic<float> lastMeterR { -60.0f };
+    int meterTickCounter { 0 }; // only broadcast meter every N timer ticks
 
     // JSON message builders
     nlohmann::json makeDawTransport();

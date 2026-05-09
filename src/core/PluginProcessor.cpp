@@ -68,6 +68,15 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     oscBridge->setAiEngine(aiEngine.get());
     oscBridge->setSessionManager(sessionManager.get());
     oscBridge->setDawTarget("127.0.0.1", 9001);  // 9001 = DAW OSC receive port
+
+    // Start bridge immediately so it's available before prepareToPlay
+    // (critical for Standalone mode where prepareToPlay needs an audio device)
+    {
+        bool ok = oscBridge->start();
+        DBG("[WhyCremisi] OscBridge early start: " + juce::String(ok ? "OK" : "FAILED"));
+        if (!ok)
+            DBG("[WhyCremisi] OscBridge error: " + oscBridge->getLastError());
+    }
 }
 
 WhyCremisiProcessor::~WhyCremisiProcessor()
