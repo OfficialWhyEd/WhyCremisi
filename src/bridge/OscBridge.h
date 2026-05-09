@@ -99,6 +99,9 @@ public:
     bool isAiProcessing() const { return aiProcessing.load(); }
 
     //==============================================================================
+    /** Called from prepareToPlay with real audio device info */
+    void broadcastPluginStats(double sampleRate, int bufferSize);
+
     /** Called from processBlock to update meter levels (thread-safe) */
     void updateMeter(float leftDb, float rightDb)
     {
@@ -166,6 +169,10 @@ private:
     std::atomic<float> lastMeterL { -60.0f };
     std::atomic<float> lastMeterR { -60.0f };
     int meterTickCounter { 0 }; // only broadcast meter every N timer ticks
+
+    // Audio device info (set from prepareToPlay via broadcastPluginStats)
+    double lastSampleRate { 44100.0 };
+    int    lastBufferSize  { 512 };
 
     // JSON message builders
     nlohmann::json makeDawTransport();

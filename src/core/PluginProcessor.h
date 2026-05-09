@@ -124,6 +124,10 @@ private:
     bool  lastIsRecording { false };
     float lastBpm         { 120.0f };
 
+    // Audio device info (set in prepareToPlay, broadcast to UI)
+    double currentSampleRate  { 44100.0 };
+    int    currentBufferSize  { 512 };
+
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WhyCremisiProcessor)
 };

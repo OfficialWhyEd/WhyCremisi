@@ -90,7 +90,8 @@ WhyCremisiProcessor::~WhyCremisiProcessor()
 //==============================================================================
 void WhyCremisiProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    juce::ignoreUnused(sampleRate, samplesPerBlock);
+    currentSampleRate = sampleRate;
+    currentBufferSize = samplesPerBlock;
     
     auto logToFile = [](const juce::String& msg) {
         juce::File logFile("/tmp/whycremisi-debug.log");
@@ -112,6 +113,8 @@ void WhyCremisiProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
             if (!started)
                 logToFile("[WhyCremisi] OscBridge error: " + oscBridge->getLastError());
         }
+        // Push real audio device info to any connected UI clients
+        oscBridge->broadcastPluginStats(sampleRate, samplesPerBlock);
     }
     else
     {

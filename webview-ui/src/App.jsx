@@ -26,12 +26,15 @@ export default function App() {
   const [dawConnected, setDawConnected] = useState(false)
 
   // ── rack / meters ─────────────────────────────────────────────────
-  const [gainDb, setGainDb] = useState(0)       // -60 to +12
+  const [gainDb, setGainDb] = useState(0)
   const [driveVal, setDriveVal] = useState(72.5)
-  const [meterL, setMeterL] = useState(0.6)
-  const [meterR, setMeterR] = useState(0.55)
-  const [lufs, setLufs]     = useState(-14.2)
-  const [peak, setPeak]     = useState(-0.1)
+  const [meterL, setMeterL] = useState(0)
+  const [meterR, setMeterR] = useState(0)
+  const [lufs, setLufs]     = useState(-60)
+  const [peak, setPeak]     = useState(-60)
+
+  // ── plugin stats (from prepareToPlay via WebSocket) ───────────────
+  const [pluginStats, setPluginStats] = useState({ sampleRate: null, bufferSize: null, latencyMs: null })
 
   // ── active tab ────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('COMMAND')
@@ -150,6 +153,16 @@ export default function App() {
       sysMsg(`[${ts()}] OSC ${payload.address}: ${payload.value}`)
     })
 
+    // ── plugin stats (SR, buffer, latency from prepareToPlay) ──
+    const unsubStats = whycremisi.on('plugin.stats', (payload) => {
+      setPluginStats({
+        sampleRate: payload.sampleRate ?? null,
+        bufferSize: payload.bufferSize ?? null,
+        latencyMs:  payload.latencyMs  ?? null,
+      })
+      sysMsg(`[${ts()}] AUDIO: ${payload.sampleRate}Hz / buf ${payload.bufferSize} / lat ${payload.latencyMs?.toFixed(1)}ms`)
+    })
+
     // ── plugin errors ──
     const unsubErr = whycremisi.on('plugin.error', (payload) => {
       setBotState('error')
@@ -164,7 +177,7 @@ export default function App() {
 
     return () => {
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
-      unsubMeter(); unsubOSC(); unsubErr()
+      unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
       whycremisi.disconnect()
     }
   }, [addMsg, sysMsg])
@@ -266,7 +279,6 @@ export default function App() {
       {/* ── HEADER ─────────────────────────────────────────────────── */}
       <header className="bg-[#131313] flex justify-between items-center w-full px-5 py-2 border-b border-[#222222] z-50 relative h-12">
         <div className="flex items-center gap-4">
-          {/* BotFace in header */}
           <BotFace state={botState} className="w-9 h-9" />
           <h1 className="text-lg font-black tracking-tighter text-[#DC143C] uppercase leading-none">WHYCREMISI</h1>
           <nav className="flex gap-5 uppercase tracking-[0.1em] font-bold text-[11px]">
@@ -290,12 +302,12 @@ export default function App() {
             </span>
           </div>
           <div className="flex flex-col items-end border-l border-[#222222] pl-4">
-            <span>SR: 96kHz</span>
-            <span>BUF: 512</span>
+            <span>SR: {pluginStats.sampleRate ? `${(pluginStats.sampleRate/1000).toFixed(1)}k` : '—'}</span>
+            <span>BUF: {pluginStats.bufferSize ?? '—'}</span>
           </div>
           <div className="flex flex-col items-end border-l border-[#222222] pl-4">
-            <span>CPU: 12%</span>
-            <span>LAT: 4.2ms</span>
+            <span>CPU: host</span>
+            <span>LAT: {pluginStats.latencyMs ? `${pluginStats.latencyMs.toFixed(1)}ms` : '—'}</span>
           </div>
 
           {/* Connection LED */}
@@ -349,24 +361,24 @@ export default function App() {
         ))}
       </aside>
 
-      {/* ── SESSION PANEL ──────────────────────────────────────────── */}
+      {/* ── SESSION PANEL — absolute overlay, mai sposta il main ──── */}
       <AnimatePresence>
         {activeTab === 'SESSIONS' && (
           <motion.div
             key="session-panel"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.25, ease: [0.22,1,0.36,1] }}
-            className="ml-16 mt-0 h-[calc(100vh-3rem)] relative z-10"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed top-12 left-16 right-0 bottom-0 z-30 bg-[#0d0d0d]"
           >
             <SessionPanel />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── MAIN GRID ──────────────────────────────────────────────── */}
-      <main className={`ml-16 mt-0 h-[calc(100vh-3rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden bg-[#0d0d0d] relative z-10 ${activeTab !== 'COMMAND' ? 'hidden' : ''}`}>
+      {/* ── MAIN GRID — sempre nel DOM, mai mosso ──────────────────── */}
+      <main className="ml-16 mt-0 h-[calc(100vh-3rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden bg-[#0d0d0d] relative z-10">
 
         {/* ── AI CHAT CONSOLE (9/12 × 4/6) ──────────────────────── */}
         <section className="col-span-9 row-span-4 bg-[#0e0e0e] border border-[#222222] flex flex-col overflow-hidden">
@@ -670,61 +682,104 @@ export default function App() {
           </div>
         </section>
 
-        {/* ── VECTOR SCOPE / WAVEFORM (full width × 2/6) ─────────── */}
-        <section className="col-span-12 row-span-2 bg-[#0e0e0e] border border-[#222222] relative overflow-hidden">
-          <div className="absolute top-2 left-4 z-10 flex items-center gap-3">
-            <span className="text-[10px] font-bold text-[#FFB000] uppercase opacity-80">VECTOR SCOPE · STEREO FIELD</span>
-            <div className="h-[0.5px] w-32 bg-gradient-to-r from-[#FFB000] to-transparent" />
-          </div>
-          <div className="absolute top-2 right-4 z-10 flex gap-6 text-[8px] font-mono text-[#4d4d4d] uppercase">
-            <span>L: {(meterL * -60 + 0).toFixed(1)}dB</span>
-            <span>R: {(meterR * -60 + 0).toFixed(1)}dB</span>
-            <span>LUFS: {lufs.toFixed(1)}</span>
+        {/* ── MASTER MONITOR (full width × 2/6) ──────────────────── */}
+        <section className="col-span-12 row-span-2 bg-[#0e0e0e] border border-[#222222] flex overflow-hidden">
+
+          {/* ── L/R STEREO METERS ─────────────────────────────────── */}
+          <div className="w-48 flex-shrink-0 border-r border-[#222222] flex flex-col px-4 py-2 gap-1.5 justify-center">
+            <div className="text-[9px] font-mono text-[#FFB000] uppercase tracking-widest mb-1">STEREO MASTER</div>
+            {[['L', meterL], ['R', meterR]].map(([ch, val]) => {
+              const pct = Math.max(0, Math.min(100, val * 100))
+              const db = (val * 72 - 60).toFixed(1)
+              const barColor = pct > 88 ? '#DC143C' : pct > 70 ? '#FFB000' : '#00FFaa'
+              return (
+                <div key={ch} className="flex items-center gap-2">
+                  <span className="text-[9px] font-mono font-bold text-[#4d4d4d] w-3">{ch}</span>
+                  <div className="flex-1 h-3 bg-[#111] relative overflow-hidden">
+                    <motion.div
+                      className="h-full absolute left-0 top-0"
+                      animate={{ width: `${pct}%`, backgroundColor: barColor }}
+                      transition={{ duration: 0.05 }}
+                      style={{ boxShadow: `0 0 6px ${barColor}60` }}
+                    />
+                    {/* tick marks at -12, -6, 0 dB */}
+                    {[33, 58, 83].map(p => (
+                      <div key={p} className="absolute top-0 bottom-0 w-[0.5px] bg-[#333]" style={{ left: `${p}%` }} />
+                    ))}
+                  </div>
+                  <span className="text-[9px] font-mono text-[#4d4d4d] w-10 text-right">{db}dB</span>
+                </div>
+              )
+            })}
+            <div className="flex justify-between mt-1 text-[8px] font-mono text-[#333]">
+              <span>-60</span><span>-12</span><span>-6</span><span>0</span>
+            </div>
           </div>
 
-          {/* Grid */}
-          <div className="absolute inset-0 opacity-15"
-            style={{ backgroundImage:'linear-gradient(#4d4d4d 0.5px,transparent 0.5px),linear-gradient(90deg,#4d4d4d 0.5px,transparent 0.5px)', backgroundSize:'40px 40px' }}
-          />
-          <div className="absolute inset-0 opacity-5"
-            style={{ backgroundImage:'linear-gradient(#4d4d4d 0.25px,transparent 0.25px),linear-gradient(90deg,#4d4d4d 0.25px,transparent 0.25px)', backgroundSize:'10px 10px' }}
-          />
-          {/* Center crosshair */}
-          <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
-            <div className="w-full h-[0.5px] bg-[#FFB000]" />
-            <div className="h-full w-[0.5px] bg-[#FFB000] absolute" />
+          {/* ── TRANSPORT + STATS ─────────────────────────────────── */}
+          <div className="w-48 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-2">
+            <div className="text-[9px] font-mono text-[#FFB000] uppercase tracking-widest mb-1">TRANSPORT</div>
+            <div className="flex items-center gap-3">
+              <motion.div
+                className={`text-2xl font-black tracking-tighter ${transport.isPlaying ? 'text-[#00FFaa]' : 'text-[#333]'}`}
+                animate={transport.isPlaying ? { opacity:[1,0.7,1] } : {}}
+                transition={{ repeat: Infinity, duration: 1.2 }}
+              >
+                {transport.isPlaying ? '▶' : '■'}
+              </motion.div>
+              {transport.isRecording && (
+                <motion.div className="text-[#DC143C] text-[10px] font-bold uppercase tracking-widest"
+                  animate={{ opacity:[1,0,1] }} transition={{ repeat: Infinity, duration: 0.8 }}
+                >● REC</motion.div>
+              )}
+            </div>
+            <div className="font-mono text-[18px] font-bold text-[#FFB000] tracking-tight">
+              {transport.bpm.toFixed(1)} <span className="text-[9px] text-[#4d4d4d]">BPM</span>
+            </div>
+            <div className="font-mono text-[11px] text-[#4d4d4d]">
+              {Math.floor(transport.position / 60).toString().padStart(2,'0')}:{(transport.position % 60).toFixed(0).toString().padStart(2,'0')}
+              <span className="text-[8px] ml-1">pos</span>
+            </div>
           </div>
 
-          {/* Scanlines */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <motion.div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#FFB000]/20 to-transparent absolute"
-              animate={{ top:['0%','100%'] }}
-              transition={{ repeat:Infinity, duration:3, ease:'linear' }}
-            />
-            <motion.div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#DC143C]/15 to-transparent absolute"
-              animate={{ top:['0%','100%'] }}
-              transition={{ repeat:Infinity, duration:4.5, ease:'linear', delay:1 }}
-            />
+          {/* ── PLUGIN STATS ──────────────────────────────────────── */}
+          <div className="w-40 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-2">
+            <div className="text-[9px] font-mono text-[#FFB000] uppercase tracking-widest mb-1">PLUGIN</div>
+            {[
+              ['SR',  pluginStats.sampleRate ? `${(pluginStats.sampleRate / 1000).toFixed(1)}kHz` : '—'],
+              ['BUF', pluginStats.bufferSize  ? `${pluginStats.bufferSize} smp`                   : '—'],
+              ['LAT', pluginStats.latencyMs   ? `${pluginStats.latencyMs.toFixed(1)} ms`           : '—'],
+              ['CPU', 'host'],
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between items-center">
+                <span className="text-[9px] font-mono text-[#4d4d4d]">{k}</span>
+                <span className={`text-[9px] font-mono font-bold ${v === '—' ? 'text-[#333]' : 'text-[#e5e2e1]'}`}>{v}</span>
+              </div>
+            ))}
           </div>
 
-          {/* Waveform */}
-          <svg className="w-full h-full" preserveAspectRatio="none">
-            <motion.path
-              d="M0,80 Q50,10 100,90 T200,40 T300,110 T400,20 T500,85 T600,45 T700,95 T800,35 T900,105 T1000,60"
-              fill="none" stroke="#DC143C" strokeOpacity="0.75" strokeWidth="1.5"
-              style={{ filter:'drop-shadow(0 0 6px rgba(220,20,60,0.4))' }}
-              initial={{ pathLength:0 }}
-              animate={{ pathLength:1 }}
-              transition={{ duration:2, ease:'easeInOut' }}
-            />
-            <motion.path
-              d="M0,75 Q55,15 105,85 T205,35 T305,115 T405,25 T505,80 T605,50 T705,90 T805,40 T905,100 T1005,65"
-              fill="none" stroke="#FFB000" strokeOpacity="0.35" strokeWidth="0.8"
-              initial={{ pathLength:0 }}
-              animate={{ pathLength:1 }}
-              transition={{ duration:2.5, ease:'easeInOut', delay:0.3 }}
-            />
-          </svg>
+          {/* ── MINI SESSION FEED ────────────────────────────────── */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a]">
+              <span className="text-[9px] font-mono text-[#DC143C] uppercase tracking-widest">FLIGHT RECORDER</span>
+              <button onClick={() => setActiveTab('SESSIONS')}
+                className="text-[8px] font-mono text-[#4d4d4d] hover:text-[#FFB000] transition-colors uppercase tracking-widest">
+                VIEW ALL →
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden flex flex-col-reverse px-2 py-1 gap-0.5">
+              {[...messages].reverse().filter(m => m.type !== 'advisory').slice(0, 5).map(m => (
+                <div key={m.id} className="flex items-center gap-2 text-[9px] font-mono opacity-60 hover:opacity-100 transition-opacity truncate">
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                    m.type === 'system' ? 'bg-[#4d4d4d]' :
+                    m.type === 'user' ? 'bg-[#FFB000]' : 'bg-[#00CFFF]'
+                  }`} />
+                  <span className="truncate text-[#aaaaaa]">{m.text?.slice(0,60)}</span>
+                  {m.time && <span className="text-[#333] flex-shrink-0">{m.time}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
       </main>
 

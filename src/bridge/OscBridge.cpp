@@ -104,6 +104,7 @@ void OscBridge::timerCallback()
     // Always broadcast meter at ~30fps
     broadcastMeter(-1, lastMeterL.load(), lastMeterR.load(),
                        lastMeterL.load(), lastMeterR.load());
+
 }
 
 bool OscBridge::isRunning() const
@@ -291,6 +292,9 @@ void OscBridge::handleClientConnection(int clientId, bool connected)
 
         // Push current state to the newly connected client
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+
+        // Push real audio device stats (SR, buffer, latency)
+        broadcastPluginStats(lastSampleRate, lastBufferSize);
 
         // Request fresh transport state from Ableton (triggers OSC responses)
         sendOscToDaw("/live/song/get/is_playing", 0.0f);
@@ -824,6 +828,32 @@ void OscBridge::dispatchSessionGet(const juce::String& reqId)
 }
 
 //==============================================================================
+void OscBridge::broadcastPluginStats(double sampleRate, int bufferSize)
+{
+    // Store for new clients that connect later
+    lastSampleRate = sampleRate;
+    lastBufferSize = bufferSize;
+
+    if (!wsServer || !wsServer->isRunning()) return;
+
+    double latencyMs = (bufferSize > 0 && sampleRate > 0)
+                       ? (bufferSize / sampleRate) * 1000.0
+                       : 0.0;
+
+    nlohmann::json msg;
+    msg["type"] = "plugin.stats";
+    msg["id"]   = nullptr;
+    msg["timestamp"] = juce::Time::currentTimeMillis();
+    msg["payload"]["sampleRate"]  = sampleRate;
+    msg["payload"]["bufferSize"]  = bufferSize;
+    msg["payload"]["latencyMs"]   = latencyMs;
+
+    wsServer->broadcast(msg);
+    log("[STATS] SR=" + juce::String(sampleRate, 0) +
+        " BUF=" + juce::String(bufferSize) +
+        " LAT=" + juce::String(latencyMs, 2) + "ms");
+}
+
 void OscBridge::broadcastSessionEvent(const std::string& eventType, const nlohmann::json& data)
 {
     if (!wsServer || !wsServer->isRunning() || wsServer->getConnectedClientsCount() == 0)
