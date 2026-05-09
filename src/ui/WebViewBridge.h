@@ -1,7 +1,7 @@
 /*
    ==============================================================================
    WebViewBridge.h
-   OpenClaw VST Bridge AI - Communication bridge between C++ and React UI
+   WhyCremisi VST Plugin - Communication bridge between C++ and React UI
    ==============================================================================
 */
 

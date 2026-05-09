@@ -1,6 +1,0 @@
-@echo off
-echo Avvio del server di sviluppo UI...
-start cmd /k "cd /d "%~dp0\src\ui\frontend" && npm run dev"
-
-echo Avvio dell'eseguibile VST Standalone...
-start "" "%~dp0\build\OpenClawVSTPlugin_artefacts\Release\Standalone\OpenClaw VST Bridge AI.exe"

@@ -65,7 +65,7 @@ Edo ha promesso di creare una TODO list sul repository, ma non è stata pushata.
 ## Comandi per pushare questa TODO
 
 ```bash
-cd /home/carlo/progetti/OpenClaw-VST-Bridge
+cd /home/carlo/progetti/WhyCremisi-VST-Bridge
 git add PENDING_TODO.md
 git commit -m "AURA: Aggiungi PENDING_TODO con task aggiornati team"
 git push origin master

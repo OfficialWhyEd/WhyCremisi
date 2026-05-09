@@ -13,10 +13,10 @@
 **Flusso:**
 
 1. **Apertura DAW** — Utente apre progetto, plugin viene caricato (manualmente o automaticamente)
-2. **Salvataggio progetto** — Creazione cartella `.openclaw/` nel progetto DAW. File sessione in formato Markdown con frontmatter YAML
+2. **Salvataggio progetto** — Creazione cartella `.whycremisi/` nel progetto DAW. File sessione in formato Markdown con frontmatter YAML
 3. **Creazione autonoma sessione AI** — Il plugin rileva caratteristiche salienti del progetto (track, BPM, plugin caricati, time signature) e le registra nel file sessione
 4. **Chiusura progetto** — Sessione chiusa con timestamp, dump stato parametri, dati "impacchettati e isolati" (embedded nel progetto, non invasivi)
-5. **Riapertura progetto** — Plugin rileva `.openclaw/`, carica ultima sessione come "parent", nuova sessione "child" viene creata
+5. **Riapertura progetto** — Plugin rileva `.whycremisi/`, carica ultima sessione come "parent", nuova sessione "child" viene creata
 6. **Naming sessioni** — AI analizza il contesto e propone nome basato su cosa è stato fatto (es. `sessione-2026-04-14-mixing-eq.md`)
 
 **Formato file sessione:**
@@ -171,7 +171,7 @@ struct AudioWarning {
 **Idea:** Plugin può caricare altri plugin VST dentro se stesso
 
 **Vantaggio:**
-- Utente può caricare FabFilter Pro-Q 3 dentro OpenClaw
+- Utente può caricare FabFilter Pro-Q 3 dentro WhyCremisi
 - Controlla parametri di Pro-Q 3 via OSC/AI
 - Unico punto di controllo per tutti i plugin
 
@@ -252,7 +252,7 @@ struct AudioWarning {
 **Idea:** Controllo vocale del plugin
 
 **Esempio:**
-- Utente dice: "Hey OpenClaw, boost the vocal by 3dB"
+- Utente dice: "Hey WhyCremisi, boost the vocal by 3dB"
 - AI esegue comando
 
 **Tecnologia:**
@@ -432,7 +432,7 @@ struct AudioWarning {
 - Gamification (punti, badges)
 
 ### E2: Certification Program
-- "OpenClaw Certified AI Audio Engineer"
+- "WhyCremisi Certified AI Audio Engineer"
 - Corso online + esame
 - Fee: $199
 - Community di professionisti

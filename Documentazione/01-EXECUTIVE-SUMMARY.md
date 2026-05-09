@@ -8,7 +8,7 @@
 
 ## 🎯 Visione Prodotto
 
-**OpenClaw VST Bridge AI** è un plugin VST3/AU/AAX cross-platform che trasforma qualsiasi DAW in un ambiente di produzione intelligente. Non è un semplice controller remoto: è un **agente di produzione AI** che vede, ascolta, impara e agisce.
+**WhyCremisi VST Bridge AI** è un plugin VST3/AU/AAX cross-platform che trasforma qualsiasi DAW in un ambiente di produzione intelligente. Non è un semplice controller remoto: è un **agente di produzione AI** che vede, ascolta, impara e agisce.
 
 **Unique Selling Proposition:** *"Il primo plugin che non solo controlla il DAW, ma pensa con te"*
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(OpenClaw-VST-Plugin VERSION 0.1.0 LANGUAGES C CXX)
+project(WhyCremisi-VST-Plugin VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,19 +48,19 @@ message(STATUS "CURL found: ${CURL_LIBRARIES}")
 # JUCE Plugin
 # ==============================================================================
 
-juce_add_plugin(OpenClawVSTPlugin
-    COMPANY_NAME "OpenClaw"
-    PLUGIN_MANUFACTURER_CODE OpCl
-    PLUGIN_CODE OcAI
+juce_add_plugin(WhyCremisiVSTPlugin
+    COMPANY_NAME "WhyCremisi"
+    PLUGIN_MANUFACTURER_CODE WyCr
+    PLUGIN_CODE WyCr
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
     FORMATS VST3 Standalone
-    PRODUCT_NAME "OpenClawVSTBridgeAI"
+    PRODUCT_NAME "WhyCremisi"
 )
 
 # Disabilita VST2 fallback
-target_compile_definitions(OpenClawVSTPlugin PRIVATE
+target_compile_definitions(WhyCremisiVSTPlugin PRIVATE
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
@@ -68,7 +68,7 @@ target_compile_definitions(OpenClawVSTPlugin PRIVATE
 # Source Files
 # ==============================================================================
 
-target_sources(OpenClawVSTPlugin
+target_sources(WhyCremisiVSTPlugin
     PRIVATE
         src/core/PluginProcessor.cpp
         src/core/PluginEditor.cpp
@@ -83,7 +83,7 @@ target_sources(OpenClawVSTPlugin
 # Link Libraries
 # ==============================================================================
 
-target_link_libraries(OpenClawVSTPlugin
+target_link_libraries(WhyCremisiVSTPlugin
     PRIVATE
         # Audio modules (required for Standalone)
         juce::juce_audio_utils
@@ -107,7 +107,7 @@ target_link_libraries(OpenClawVSTPlugin
 # Include Directories
 # ==============================================================================
 
-target_include_directories(OpenClawVSTPlugin PRIVATE
+target_include_directories(WhyCremisiVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
@@ -126,13 +126,13 @@ if(NOT WIN32 AND NOT APPLE)
     pkg_check_modules(GTK REQUIRED gtk+-3.0)
     pkg_check_modules(WEBKIT REQUIRED webkit2gtk-4.1)
     
-    target_include_directories(OpenClawVSTPlugin PRIVATE ${GTK_INCLUDE_DIRS})
-    target_include_directories(OpenClawVSTPlugin PRIVATE ${WEBKIT_INCLUDE_DIRS})
+    target_include_directories(WhyCremisiVSTPlugin PRIVATE ${GTK_INCLUDE_DIRS})
+    target_include_directories(WhyCremisiVSTPlugin PRIVATE ${WEBKIT_INCLUDE_DIRS})
     
-    target_link_libraries(OpenClawVSTPlugin PRIVATE ${GTK_LIBRARIES})
-    target_link_libraries(OpenClawVSTPlugin PRIVATE ${WEBKIT_LIBRARIES})
+    target_link_libraries(WhyCremisiVSTPlugin PRIVATE ${GTK_LIBRARIES})
+    target_link_libraries(WhyCremisiVSTPlugin PRIVATE ${WEBKIT_LIBRARIES})
     
-    install(DIRECTORY ${CMAKE_BINARY_DIR}/OpenClawVSTPlugin_artefacts/Release/VST3/
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/Release/VST3/
             DESTINATION ~/.vst3
     )
 endif()

@@ -29,11 +29,11 @@
 **Setup JUCE:**
 ```cpp
 // PluginProcessor.h
-class OpenClawAudioProcessor : public juce::AudioProcessor
+class WhyCremisiAudioProcessor : public juce::AudioProcessor
 {
 public:
-    OpenClawAudioProcessor();
-    ~OpenClawAudioProcessor() override;
+    WhyCremisiAudioProcessor();
+    ~WhyCremisiAudioProcessor() override;
     
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     juce::AudioProcessorEditor* createEditor() override;
@@ -88,7 +88,7 @@ cd gui && npm run build
 // C++ side
 void sendToWebView(const juce::var& data)
 {
-    if (auto* editor = dynamic_cast<OpenClawEditor*>(getActiveEditor()))
+    if (auto* editor = dynamic_cast<WhyCremisiEditor*>(getActiveEditor()))
     {
         editor->sendMessageToWebView(data);
     }
@@ -298,14 +298,14 @@ OSC è protocollo UDP-based per controllo audio. Ableton Live supporta OSC via M
 /tempo f 128.0                 # BPM
 ```
 
-#### Custom Messages (per OpenClaw)
+#### Custom Messages (per WhyCremisi)
 ```
-/openclaw/plugin/name s "FabFilter Pro-Q 3"
-/openclaw/plugin/parameters i 24
-/openclaw/plugin/param/1/name s "Frequency"
-/openclaw/plugin/param/1/value f 1000.0
-/openclaw/plugin/param/1/min f 20.0
-/openclaw/plugin/param/1/max f 20000.0
+/whycremisi/plugin/name s "FabFilter Pro-Q 3"
+/whycremisi/plugin/parameters i 24
+/whycremisi/plugin/param/1/name s "Frequency"
+/whycremisi/plugin/param/1/value f 1000.0
+/whycremisi/plugin/param/1/min f 20.0
+/whycremisi/plugin/param/1/max f 20000.0
 ```
 
 ### Implementazione C++
@@ -384,7 +384,7 @@ private:
 | 64 | Sustain Pedal | On/off |
 | 74 | Brightness | Filter cutoff |
 
-### Mappatura OpenClaw MIDI
+### Mappatura WhyCremisi MIDI
 
 ```cpp
 // MIDI CC → OSC Address translation
@@ -426,10 +426,10 @@ void handleMidiCC(int ccNumber, int value)
 ### Implementazione
 
 ```cpp
-class OpenClawAudioProcessor : public juce::AudioProcessor
+class WhyCremisiAudioProcessor : public juce::AudioProcessor
 {
 public:
-    OpenClawAudioProcessor()
+    WhyCremisiAudioProcessor()
     {
         // Define parameters
         parameters.createAndAddParameter(
@@ -477,7 +477,7 @@ Quando DAW modifica parametro VST3, invia OSC per sync:
 ```cpp
 void parameterChanged(const juce::String& parameterID, float newValue)
 {
-    juce::String oscAddress = "/openclaw/plugin/" + parameterID;
+    juce::String oscAddress = "/whycremisi/plugin/" + parameterID;
     oscHandler.sendMessage(oscAddress, newValue);
     
     // Update React UI
@@ -499,7 +499,7 @@ src/
 ├── core/
 │   ├── PluginProcessor.cpp/h       # Main VST3 plugin
 │   ├── PluginEditor.cpp/h          # GUI wrapper
-│   └── OpenClawEngine.cpp/h        # Main engine
+│   └── WhyCremisiEngine.cpp/h        # Main engine
 ├── osc/
 │   ├── OscHandler.cpp/h            # OSC send/receive
 │   ├── OscMessage.cpp/h            # Message parsing
@@ -526,24 +526,24 @@ src/
 ### CMake (Primary)
 ```cmake
 cmake_minimum_required(VERSION 3.20)
-project(OpenClaw-VST-Bridge-AI)
+project(WhyCremisi-VST-Bridge-AI)
 
 # JUCE
 add_subdirectory(JUCE)
 
 # Plugin
-juce_add_plugin(OpenClawVSTBridgeAI
-    COMPANY_NAME "OpenClaw"
+juce_add_plugin(WhyCremisiVSTBridgeAI
+    COMPANY_NAME "WhyCremisi"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
     PLUGIN_MANUFACTURER_CODE OpCl
     PLUGIN_CODE OcAI
     FORMATS VST3 AU Standalone
-    PRODUCT_NAME "OpenClaw VST Bridge AI"
+    PRODUCT_NAME "WhyCremisi VST Bridge AI"
 )
 
-target_sources(OpenClawVSTBridgeAI
+target_sources(WhyCremisiVSTBridgeAI
     PRIVATE
         src/core/PluginProcessor.cpp
         src/core/PluginEditor.cpp
@@ -551,7 +551,7 @@ target_sources(OpenClawVSTBridgeAI
         src/ai/AiEngine.cpp
 )
 
-target_link_libraries(OpenClawVSTBridgeAI
+target_link_libraries(WhyCremisiVSTBridgeAI
     PRIVATE
         juce::juce_audio_utils
         juce::juce_recommended_config_flags
@@ -693,7 +693,7 @@ Crea `CMakeLists.txt` nella root:
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
-project(OpenClaw-VST-Plugin)
+project(WhyCremisi-VST-Plugin)
 
 # JUCE
 add_subdirectory(${JUCE_ROOT} JUCE)
@@ -702,23 +702,23 @@ add_subdirectory(${JUCE_ROOT} JUCE)
 # Usiamo solo VST3 (standard moderno supportato da tutti i DAW)
 
 # Plugin
-juce_add_plugin(OpenClawVSTPlugin
-    COMPANY_NAME "OpenClaw"
+juce_add_plugin(WhyCremisiVSTPlugin
+    COMPANY_NAME "WhyCremisi"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
     PLUGIN_MANUFACTURER_CODE OpCl
     PLUGIN_CODE OcAI
     FORMATS VST3 Standalone      # VST3 only - no VST2
-    PRODUCT_NAME "OpenClaw VST Bridge AI"
+    PRODUCT_NAME "WhyCremisi VST Bridge AI"
 )
 
 # Disabilita VST2 fallback (richiede SDK non disponibile)
-target_compile_definitions(OpenClawVSTPlugin PRIVATE
+target_compile_definitions(WhyCremisiVSTPlugin PRIVATE
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
-target_sources(OpenClawVSTPlugin
+target_sources(WhyCremisiVSTPlugin
     PRIVATE
         src/core/PluginProcessor.cpp
         src/core/PluginEditor.cpp
@@ -726,7 +726,7 @@ target_sources(OpenClawVSTPlugin
         src/ai/AiEngine.cpp
 )
 
-target_link_libraries(OpenClawVSTPlugin
+target_link_libraries(WhyCremisiVSTPlugin
     PRIVATE
         juce::juce_audio_utils
         juce::juce_audio_processors
@@ -740,7 +740,7 @@ target_link_libraries(OpenClawVSTPlugin
 )
 
 # Include directories
-target_include_directories(OpenClawVSTPlugin PRIVATE
+target_include_directories(WhyCremisiVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
@@ -781,11 +781,11 @@ mkdir src\utils
 #include "../osc/OscHandler.h"
 #include "../ai/AiEngine.h"
 
-class OpenClawAudioProcessor : public juce::AudioProcessor
+class WhyCremisiAudioProcessor : public juce::AudioProcessor
 {
 public:
-    OpenClawAudioProcessor();
-    ~OpenClawAudioProcessor() override;
+    WhyCremisiAudioProcessor();
+    ~WhyCremisiAudioProcessor() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -793,7 +793,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "OpenClaw VST Bridge AI"; }
+    const juce::String getName() const override { return "WhyCremisi VST Bridge AI"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }
 
@@ -805,7 +805,7 @@ private:
     std::unique_ptr<AiEngine> aiEngine;
     juce::AudioProcessorValueTreeState parameters;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OpenClawAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WhyCremisiAudioProcessor)
 };
 ```
 
@@ -814,16 +814,16 @@ private:
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-OpenClawAudioProcessor::OpenClawAudioProcessor()
+WhyCremisiAudioProcessor::WhyCremisiAudioProcessor()
     : parameters(*this, nullptr, "Parameters", createParameterLayout())
 {
     oscHandler = std::make_unique<OscHandler>(9000);
     aiEngine = std::make_unique<AiEngine>();
 }
 
-OpenClawAudioProcessor::~OpenClawAudioProcessor() = default;
+WhyCremisiAudioProcessor::~WhyCremisiAudioProcessor() = default;
 
-juce::AudioProcessorValueTreeState::ParameterLayout OpenClawAudioProcessor::createParameterLayout()
+juce::AudioProcessorValueTreeState::ParameterLayout WhyCremisiAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
@@ -836,17 +836,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout OpenClawAudioProcessor::crea
     return { params.begin(), params.end() };
 }
 
-void OpenClawAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void WhyCremisiAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     oscHandler->start();
 }
 
-void OpenClawAudioProcessor::releaseResources()
+void WhyCremisiAudioProcessor::releaseResources()
 {
     oscHandler->stop();
 }
 
-void OpenClawAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void WhyCremisiAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels = getTotalNumInputChannels();
@@ -860,14 +860,14 @@ void OpenClawAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     buffer.applyGain(juce::Decibels::decibelsToGain(gainParam->load()));
 }
 
-void OpenClawAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+void WhyCremisiAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
 
-void OpenClawAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+void WhyCremisiAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
     if (xmlState.get() != nullptr && xmlState->hasTagName(parameters.state.getType()))
@@ -876,9 +876,9 @@ void OpenClawAudioProcessor::setStateInformation(const void* data, int sizeInByt
     }
 }
 
-juce::AudioProcessorEditor* OpenClawAudioProcessor::createEditor()
+juce::AudioProcessorEditor* WhyCremisiAudioProcessor::createEditor()
 {
-    return new OpenClawAudioProcessorEditor(*this);
+    return new WhyCremisiAudioProcessorEditor(*this);
 }
 ```
 
@@ -893,7 +893,7 @@ cmake -B build -DJUCE_ROOT="/home/carlo/SDKs/JUCE"
 cmake --build build --config Release
 
 # Test
-# Carica build/OpenClawVSTPlugin_artefacts/VST3/OpenClawVSTPlugin.vst3 in Ableton/Reaper
+# Carica build/WhyCremisiVSTPlugin_artefacts/VST3/WhyCremisiVSTPlugin.vst3 in Ableton/Reaper
 ```
 
 #### Windows (Edo)
@@ -905,7 +905,7 @@ cmake -B build -DJUCE_ROOT=C:\SDKs\JUCE -G "Visual Studio 17 2022"
 cmake --build build --config Release
 
 # Test
-# Carica build\OpenClawVSTPlugin_artefacts\VST3\OpenClawVSTPlugin.vst3 in Ableton/Reaper
+# Carica build\WhyCremisiVSTPlugin_artefacts\VST3\WhyCremisiVSTPlugin.vst3 in Ableton/Reaper
 ```
 
 #### macOS
@@ -917,7 +917,7 @@ cmake -B build -DJUCE_ROOT=/Users/edo/SDKs/JUCE -G "Xcode"
 cmake --build build --config Release
 
 # Test
-# Carica build/OpenClawVSTPlugin_artefacts/VST3/OpenClawVSTPlugin.vst3 in Ableton/Logic Pro
+# Carica build/WhyCremisiVSTPlugin_artefacts/VST3/WhyCremisiVSTPlugin.vst3 in Ableton/Logic Pro
 ```
 
 ---

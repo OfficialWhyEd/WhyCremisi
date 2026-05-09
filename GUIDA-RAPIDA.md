@@ -1,4 +1,4 @@
-# 🚀 GUIDA RAPIDA - OpenClaw VST Bridge AI
+# 🚀 GUIDA RAPIDA - WhyCremisi VST Bridge AI
 
 ## 📍 Dove Trovare le Cose
 

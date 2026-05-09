@@ -1,7 +1,7 @@
 /*
    ==============================================================================
    WebViewBridge.cpp
-   OpenClaw VST Bridge AI - Communication bridge between C++ and React UI
+   WhyCremisi VST Plugin - Communication bridge between C++ and React UI
    ==============================================================================
 */
 
@@ -68,7 +68,7 @@ void WebViewBridge::sendToFrontend(const nlohmann::json& message)
     juce::String base64Json = juce::Base64::toBase64(jsonStd.data(), jsonStd.size());
     
     // JS Injection essiccato: nessuna funzione anonima, nessun operatore logico complesso, nessun warning
-    juce::String jsCode = "javascript:if(window.__openclawBridge){window.__openclawBridge.receiveMessage(decodeURIComponent(escape(window.atob('" + base64Json + "'))));}";
+    juce::String jsCode = "javascript:if(window.__whycremisiBridge){window.__whycremisiBridge.receiveMessage(decodeURIComponent(escape(window.atob('" + base64Json + "'))));}";
     
     webView->goToURL(jsCode);
     

@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   OscHandler.cpp
-  OpenClaw VST Bridge AI - OSC Communication Handler Implementation
+  WhyCremisi VST Plugin - OSC Communication Handler Implementation
   
   Phase 1 COMPLETE: Bidirectional OSC
   - Receives on UDP port (default 9000)

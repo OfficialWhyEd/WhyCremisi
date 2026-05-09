@@ -108,7 +108,7 @@ Parametro: da valore A a valore B in T secondi con curva E
 - [x] OscHandler implementato (bidirezionale UDP :9000→:9001)
 - [x] WebSocketServer RFC 6455 (TCP :8080, SHA1 inline)
 - [x] OscBridge bidirezionale OSC↔WebSocket
-- [x] openclaw-bridge.js client React con useOpenClaw hook
+- [x] whycremisi-bridge.js client React con useWhyCremisi hook
 - [x] Protocollo JSON v1.0 implementato in C++ e JS
 - [ ] Mappatura parametri plugin → OSC address
 - [ ] Test con TouchOSC o osc-send tool

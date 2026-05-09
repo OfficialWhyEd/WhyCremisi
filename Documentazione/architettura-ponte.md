@@ -1,4 +1,4 @@
-# Architettura Ponte - OpenClaw VST Bridge AI
+# Architettura Ponte - WhyCremisi VST Bridge AI
 
 **Data creazione:** 2026-04-12  
 **Ultimo aggiornamento:** 2026-04-14  
@@ -49,7 +49,7 @@ WebView (WebKit/GTK) nel plugin VST **crasha** su Linux.
 │                         REACT UI (Browser)                               │
 │                                                                         │
 │   ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐  │
-│   │  openclaw-bridge │───►│   React App     │───►│   Widgets           │  │
+│   │  whycremisi-bridge │───►│   React App     │───►│   Widgets           │  │
 │   │  (WebSocket UI)  │◄───│   (State)       │◄───│   (Sliders/Knobs)  │  │
 │   └─────────────────┘    └─────────────────┘    └─────────────────────┘  │
 │                                                                         │
@@ -115,7 +115,7 @@ Handler OSC UDP esistente — mantenuto per compatibilità MIDI/parametri.
 ```
 DAW ──UDP/OSC──► Plugin ──Internal──► WebSocketServer ──TCP/WS──► Browser
                       │
-                      └──► openclaw-bridge.js (client WebSocket)
+                      └──► whycremisi-bridge.js (client WebSocket)
 ```
 
 **Nota:** Il browser non può ricevere UDP OSC direttamente. Il WebSocketServer fa da ponte TCP.
@@ -185,13 +185,13 @@ make -j$(nproc)
 ```
 
 Il plugin sarà in:
-- VST3: `build/OpenClawVSTPlugin_artefacts/Release/VST3/OpenClawVSTBridgeAI.vst3`
-- Standalone: `build/OpenClawVSTPlugin_artefacts/Release/Standalone/OpenClawVSTBridgeAI`
+- VST3: `build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisiVSTBridgeAI.vst3`
+- Standalone: `build/WhyCremisiVSTPlugin_artefacts/Release/Standalone/WhyCremisiVSTBridgeAI`
 
 ### Test Rapido
 
 1. Avvia Reaper con plugin caricato
-2. Apri browser e connettiti a `ws://localhost:8080` (o usa `openclaw-bridge.js`)
+2. Apri browser e connettiti a `ws://localhost:8080` (o usa `whycremisi-bridge.js`)
 3. Invia `{"type": "plugin.init", ...}` — il plugin risponderà con `plugin.init`
 
 ---
@@ -201,7 +201,7 @@ Il plugin sarà in:
 | # | Task | Stato | Note |
 |---|------|-------|------|
 | 1 | WebSocket server + OscBridge | ✅ Fatto | Questo commit |
-| 2 | Aggiornare openclaw-bridge.js per WebSocket | ⏳ Da fare | Heartbroken |
+| 2 | Aggiornare whycremisi-bridge.js per WebSocket | ⏳ Da fare | Heartbroken |
 | 3 | UI React base connessa | ⏳ Da fare | Heartbroken |
 | 4 | Test integrazione Reaper ↔ browser | ⏳ Da fare | Carlo |
 | 5 | AI integration (Ollama) | ⏳ Da fare | AiEngine |

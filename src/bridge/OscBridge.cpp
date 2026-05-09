@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   OscBridge.cpp
-  OpenClaw VST Bridge AI - Bidirectional OSC-WebSocket Bridge Implementation
+  WhyCremisi VST Plugin - Bidirectional OSC-WebSocket Bridge Implementation
 
   Bridges OSC (UDP) from DAW to WebSocket (TCP) for React UI.
   ==============================================================================
@@ -829,7 +829,7 @@ juce::String OscBridge::generateUUID()
 void OscBridge::log(const juce::String& msg)
 {
     DBG("[OscBridge] " + msg);
-    juce::File logFile("/tmp/openclaw-debug.log");
+    juce::File logFile("/tmp/whycremisi-debug.log");
     juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
     logFile.appendText("[" + timestamp + "] " + msg + "\n");
 }

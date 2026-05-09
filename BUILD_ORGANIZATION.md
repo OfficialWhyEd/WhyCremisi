@@ -7,29 +7,29 @@
 ## Struttura Proposta
 
 ```
-OpenClaw-VST-Bridge/
+WhyCremisi-VST-Bridge/
 ├── build/
 │   ├── windows/
-│   │   └── OpenClawVSTPlugin_artefacts/
+│   │   └── WhyCremisiVSTPlugin_artefacts/
 │   │       └── Release/
 │   │           └── VST3/
-│   │               └── OpenClawVSTBridgeAI.vst3
+│   │               └── WhyCremisiVSTBridgeAI.vst3
 │   ├── linux/
-│   │   └── OpenClawVSTPlugin_artefacts/
+│   │   └── WhyCremisiVSTPlugin_artefacts/
 │   │       └── Release/
 │   │           └── VST3/
-│   │               └── OpenClawVSTBridgeAI.vst3
+│   │               └── WhyCremisiVSTBridgeAI.vst3
 │   └── macos/
-│       └── OpenClawVSTPlugin_artefacts/
+│       └── WhyCremisiVSTPlugin_artefacts/
 │           └── Release/
 │               └── VST3/
-│                   └── OpenClawVSTBridgeAI.vst3
+│                   └── WhyCremisiVSTBridgeAI.vst3
 │
 ├── releases/
 │   ├── v1.0.0/
-│   │   ├── OpenClawVSTBridgeAI-Windows-x64.vst3.zip
-│   │   ├── OpenClawVSTBridgeAI-Linux-x64.vst3.tar.gz
-│   │   └── OpenClawVSTBridgeAI-macOS-universal.vst3.zip
+│   │   ├── WhyCremisiVSTBridgeAI-Windows-x64.vst3.zip
+│   │   ├── WhyCremisiVSTBridgeAI-Linux-x64.vst3.tar.gz
+│   │   └── WhyCremisiVSTBridgeAI-macOS-universal.vst3.zip
 │   └── ...
 │
 └── ...
@@ -60,9 +60,9 @@ cmake --build . --config Release -j$(nproc)
 cd ../..
 
 # Package Linux
-tar -czf "${RELEASE_DIR}/OpenClawVSTBridgeAI-Linux-x64.vst3.tar.gz" \
-  -C "${BUILD_DIR}/linux/OpenClawVSTPlugin_artefacts/Release/VST3" \
-  OpenClawVSTBridgeAI.vst3
+tar -czf "${RELEASE_DIR}/WhyCremisiVSTBridgeAI-Linux-x64.vst3.tar.gz" \
+  -C "${BUILD_DIR}/linux/WhyCremisiVSTPlugin_artefacts/Release/VST3" \
+  WhyCremisiVSTBridgeAI.vst3
 
 echo "Linux build complete!"
 ```
@@ -86,8 +86,8 @@ cmake --build . --config Release
 Set-Location ..\..
 
 # Package Windows
-Compress-Archive -Path "${BUILD_DIR}\OpenClawVSTPlugin_artefacts\Release\VST3\OpenClawVSTBridgeAI.vst3" `
-  -DestinationPath "${RELEASE_DIR}\OpenClawVSTBridgeAI-Windows-x64.vst3.zip"
+Compress-Archive -Path "${BUILD_DIR}\WhyCremisiVSTPlugin_artefacts\Release\VST3\WhyCremisiVSTBridgeAI.vst3" `
+  -DestinationPath "${RELEASE_DIR}\WhyCremisiVSTBridgeAI-Windows-x64.vst3.zip"
 
 Write-Host "Windows build complete!"
 ```
@@ -123,13 +123,13 @@ cd ../..
 # Create Universal Binary
 echo "Creating Universal Binary..."
 lipo -create \
-  "${BUILD_DIR}/intel/OpenClawVSTPlugin_artefacts/Release/VST3/OpenClawVSTBridgeAI.vst3/Contents/MacOS/OpenClawVSTBridgeAI" \
-  "${BUILD_DIR}/arm64/OpenClawVSTPlugin_artefacts/Release/VST3/OpenClawVSTBridgeAI.vst3/Contents/MacOS/OpenClawVSTBridgeAI" \
-  -output "${BUILD_DIR}/OpenClawVSTBridgeAI"
+  "${BUILD_DIR}/intel/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisiVSTBridgeAI.vst3/Contents/MacOS/WhyCremisiVSTBridgeAI" \
+  "${BUILD_DIR}/arm64/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisiVSTBridgeAI.vst3/Contents/MacOS/WhyCremisiVSTBridgeAI" \
+  -output "${BUILD_DIR}/WhyCremisiVSTBridgeAI"
 
 # Package macOS
-zip -r "${RELEASE_DIR}/OpenClawVSTBridgeAI-macOS-universal.vst3.zip" \
-  "${BUILD_DIR}/OpenClawVSTBridgeAI.vst3"
+zip -r "${RELEASE_DIR}/WhyCremisiVSTBridgeAI-macOS-universal.vst3.zip" \
+  "${BUILD_DIR}/WhyCremisiVSTBridgeAI.vst3"
 
 echo "macOS build complete!"
 ```

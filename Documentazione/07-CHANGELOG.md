@@ -21,7 +21,7 @@
 - **OscHandler** — bidirectional OSC UDP (RX :9000, TX :9001)
 - **WebSocketServer** — RFC 6455 completo con SHA1 inline (no OpenSSL dep)
 - **OscBridge** — dispatcher bidirezionale OSC↔WebSocket
-- **openclaw-bridge.js** — client React con useOpenClaw hook, auto-reconnect
+- **whycremisi-bridge.js** — client React con useWhyCremisi hook, auto-reconnect
 - **AiEngine** — supporto Ollama locale (HTTP)
 - **WebViewBridge** — bridge C++↔JS (fallback per WebView interna)
 - **Fallback UI** — JUCE nativa quando WebView non disponibile (Linux)
@@ -60,7 +60,7 @@
 - **OscBridge** usa callback invece di ereditarietà OscCallback
 
 ### Deprecated
-- Node.js bridge architecture (old version in /progetti/OpenClaw-VST-Bridge)
+- Node.js bridge architecture (old version in /progetti/WhyCremisi-VST-Bridge)
 - WebView integrata (crasha su Linux, mantenuta come fallback)
 
 ### Removed
@@ -294,14 +294,14 @@ Fixed in: 1.0.3
 
 Plugin checks for updates on startup (opt-in).
 
-**Endpoint:** `https://api.openclaw.io/v1/check-update`  
+**Endpoint:** `https://api.whycremisi.io/v1/check-update`  
 **Method:** `GET`  
 **Response:**
 ```json
 {
   "latest_version": "1.0.0",
-  "download_url": "https://download.openclaw.io/v1.0.0/",
-  "changelog_url": "https://docs.openclaw.io/changelog",
+  "download_url": "https://download.whycremisi.io/v1.0.0/",
+  "changelog_url": "https://docs.whycremisi.io/changelog",
   "urgent": false
 }
 ```

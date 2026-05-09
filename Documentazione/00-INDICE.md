@@ -1,6 +1,6 @@
 # Documentazione Progetto Edo - INDICE
 
-**Progetto:** OpenClaw VST Bridge AI Edition  
+**Progetto:** WhyCremisi VST Bridge AI Edition  
 **Data Creazione:** 2026-04-09  
 **Versione:** 1.0.0  
 **Stato:** Analisi Iniziale & Brainstorming Critico
@@ -52,7 +52,7 @@ Creare una linea di plugin VST/AU/AAX con **firma AI integrata** - il primo plug
 
 ## ⚠️ REGOLE FERREE DEL PROGETTO
 
-1. **Mai toccare `/home/carlo/.openclaw/` senza permesso esplicito di Carlo**
+1. **Mai toccare `/home/carlo/.whycremisi/` senza permesso esplicito di Carlo**
 2. **Mai dire bugie** - Se non si sa, si dice "non lo so, verifico"
 3. **Testare sempre prima di affermare** - "Funziona" solo dopo aver testato
 4. **Verificare documentazione/protocolli** prima di implementare
@@ -63,7 +63,7 @@ Creare una linea di plugin VST/AU/AAX con **firma AI integrata** - il primo plug
 ## 📁 Struttura Repository
 
 ```
-OpenClaw-VST-Bridge-AI/
+WhyCremisi-VST-Bridge-AI/
 ├── bridge_core/                    # Core engine (C++/Rust)
 ├── gui/                            # Frontend (React + Tauri)
 ├── ai_engine/                      # AI agent system

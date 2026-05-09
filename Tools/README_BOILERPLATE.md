@@ -1,4 +1,4 @@
-# 🚀 Boilerplate React — OpenClaw VST Plugin UI
+# 🚀 Boilerplate React — WhyCremisi VST Plugin UI
 
 **Creato da:** Aura  
 **Data:** 2026-04-12  

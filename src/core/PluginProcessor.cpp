@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   PluginProcessor.cpp
-  OpenClaw VST Bridge AI - Main Audio Processor Implementation
+  WhyCremisi VST Plugin - Main Audio Processor Implementation
   ==============================================================================
 */
 
@@ -11,7 +11,7 @@
 #include "OscBridge.h"
 
 //==============================================================================
-OpenClawAudioProcessor::OpenClawAudioProcessor()
+WhyCremisiProcessor::WhyCremisiProcessor()
     : parameters(*this, nullptr, "Parameters", []() -> juce::AudioProcessorValueTreeState::ParameterLayout
     {
         std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
@@ -64,55 +64,55 @@ OpenClawAudioProcessor::OpenClawAudioProcessor()
     oscBridge->setDawTarget("127.0.0.1", 8000);
 }
 
-OpenClawAudioProcessor::~OpenClawAudioProcessor()
+WhyCremisiProcessor::~WhyCremisiProcessor()
 {
     if (oscBridge)
         oscBridge->stop();
 }
 
 //==============================================================================
-void OpenClawAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void WhyCremisiProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     juce::ignoreUnused(sampleRate, samplesPerBlock);
     
     auto logToFile = [](const juce::String& msg) {
-        juce::File logFile("/tmp/openclaw-debug.log");
+        juce::File logFile("/tmp/whycremisi-debug.log");
         juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
         logFile.appendText("[" + timestamp + "] " + msg + "\n");
         DBG(msg);
     };
     
-    logToFile("[OpenClaw] prepareToPlay called");
+    logToFile("[WhyCremisi] prepareToPlay called");
     
     if (oscBridge)
     {
         bool running = oscBridge->isRunning();
-        logToFile("[OpenClaw] OscBridge running? " + juce::String(running ? "YES" : "NO"));
+        logToFile("[WhyCremisi] OscBridge running? " + juce::String(running ? "YES" : "NO"));
         if (!running)
         {
             bool started = oscBridge->start();
-            logToFile("[OpenClaw] OscBridge start: " + juce::String(started ? "OK" : "FAILED"));
+            logToFile("[WhyCremisi] OscBridge start: " + juce::String(started ? "OK" : "FAILED"));
             if (!started)
-                logToFile("[OpenClaw] OscBridge error: " + oscBridge->getLastError());
+                logToFile("[WhyCremisi] OscBridge error: " + oscBridge->getLastError());
         }
     }
     else
     {
-        logToFile("[OpenClaw] OscBridge is NULL!");
+        logToFile("[WhyCremisi] OscBridge is NULL!");
     }
 }
 
-void OpenClawAudioProcessor::releaseResources()
+void WhyCremisiProcessor::releaseResources()
 {
     if (oscBridge)
     {
         oscBridge->stop();
-        DBG("[OpenClaw] OscBridge stopped");
+        DBG("[WhyCremisi] OscBridge stopped");
     }
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
-bool OpenClawAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+bool WhyCremisiProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
     if (layouts.getMainOutputChannelSet() == juce::AudioChannelSet::mono())
         return true;
@@ -122,7 +122,7 @@ bool OpenClawAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
 }
 #endif
 
-void OpenClawAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
     
@@ -149,19 +149,19 @@ void OpenClawAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 }
 
 //==============================================================================
-void OpenClawAudioProcessor::setCurrentProgram(int index) { juce::ignoreUnused(index); }
-const juce::String OpenClawAudioProcessor::getProgramName(int index) { juce::ignoreUnused(index); return "Default"; }
-void OpenClawAudioProcessor::changeProgramName(int index, const juce::String& newName) { juce::ignoreUnused(index, newName); }
+void WhyCremisiProcessor::setCurrentProgram(int index) { juce::ignoreUnused(index); }
+const juce::String WhyCremisiProcessor::getProgramName(int index) { juce::ignoreUnused(index); return "Default"; }
+void WhyCremisiProcessor::changeProgramName(int index, const juce::String& newName) { juce::ignoreUnused(index, newName); }
 
 //==============================================================================
-void OpenClawAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+void WhyCremisiProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
 
-void OpenClawAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+void WhyCremisiProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
     if (xmlState.get() != nullptr && xmlState->hasTagName(parameters.state.getType()))
@@ -171,9 +171,9 @@ void OpenClawAudioProcessor::setStateInformation(const void* data, int sizeInByt
 }
 
 //==============================================================================
-// OpenClaw specific methods
+// WhyCremisi specific methods
 
-void OpenClawAudioProcessor::updateAiEngineConfig()
+void WhyCremisiProcessor::updateAiEngineConfig()
 {
     if (!aiEngine) return;
     
@@ -206,7 +206,7 @@ void OpenClawAudioProcessor::updateAiEngineConfig()
     aiEngine->configure(config);
 }
 
-juce::String OpenClawAudioProcessor::getAiProvider() const
+juce::String WhyCremisiProcessor::getAiProvider() const
 {
     if (!aiProvider) return "Ollama";
     int idx = static_cast<int>(aiProvider->load());
@@ -214,7 +214,7 @@ juce::String OpenClawAudioProcessor::getAiProvider() const
     return providers[idx];
 }
 
-juce::String OpenClawAudioProcessor::getAiModel() const
+juce::String WhyCremisiProcessor::getAiModel() const
 {
     if (!aiModelIndex) return "llama3.2";
     int idx = static_cast<int>(aiModelIndex->load());
@@ -231,21 +231,21 @@ juce::String OpenClawAudioProcessor::getAiModel() const
     return "llama3.2";
 }
 
-void OpenClawAudioProcessor::setAiApiKey(const juce::String& provider, const juce::String& apiKey)
+void WhyCremisiProcessor::setAiApiKey(const juce::String& provider, const juce::String& apiKey)
 {
     juce::ScopedLock lock(apiKeyLock);
     apiKeys[provider] = apiKey;
     updateAiEngineConfig();
 }
 
-juce::String OpenClawAudioProcessor::getAiApiKey(const juce::String& provider) const
+juce::String WhyCremisiProcessor::getAiApiKey(const juce::String& provider) const
 {
     juce::ScopedLock lock(apiKeyLock);
     auto it = apiKeys.find(provider);
     return (it != apiKeys.end()) ? it->second : juce::String();
 }
 
-void OpenClawAudioProcessor::sendAiPrompt(const juce::String& prompt)
+void WhyCremisiProcessor::sendAiPrompt(const juce::String& prompt)
 {
     if (!aiEngine || !aiEnabled || aiEnabled->load() <= 0.5f)
     {
@@ -257,7 +257,7 @@ void OpenClawAudioProcessor::sendAiPrompt(const juce::String& prompt)
     lastAiResponse = aiEngine->sendPrompt(prompt);
 }
 
-void OpenClawAudioProcessor::setOscPort(int port)
+void WhyCremisiProcessor::setOscPort(int port)
 {
     oscPort = port;
     // OscBridge manages its own OscHandler internally
@@ -273,24 +273,24 @@ void OpenClawAudioProcessor::setOscPort(int port)
     }
 }
 
-bool OpenClawAudioProcessor::isOscBridgeRunning() const
+bool WhyCremisiProcessor::isOscBridgeRunning() const
 {
     return oscBridge ? oscBridge->isRunning() : false;
 }
 
-int OpenClawAudioProcessor::getOscBridgeWsPort() const
+int WhyCremisiProcessor::getOscBridgeWsPort() const
 {
     return oscBridge ? oscBridge->getWebSocketPort() : 0;
 }
 
 //==============================================================================
-juce::AudioProcessorEditor* OpenClawAudioProcessor::createEditor()
+juce::AudioProcessorEditor* WhyCremisiProcessor::createEditor()
 {
-    return new OpenClawAudioProcessorEditor(*this);
+    return new WhyCremisiProcessorEditor(*this);
 }
 
 //==============================================================================
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new OpenClawAudioProcessor();
+    return new WhyCremisiProcessor();
 }

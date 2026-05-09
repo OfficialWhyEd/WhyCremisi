@@ -1,5 +1,5 @@
 /**
- * OpenClaw Bridge - JavaScript Bridge per comunicazione con Plugin VST via WebSocket
+ * WhyCremisi Bridge - JavaScript Bridge per comunicazione con Plugin VST via WebSocket
  * 
  * Sostituisce il vecchio approccio app://message/ (WebView JUCE)
  * con WebSocket RFC 6455 per connettersi al WebSocketServer nel plugin.
@@ -9,8 +9,8 @@
  * - ws://localhost:8080 (stesso)
  * 
  * Usage:
- *   import { openclaw } from './openclaw-bridge.js';
- *   openclaw.connect();
+ *   import { whycremisi } from './whycremisi-bridge.js';
+ *   whycremisi.connect();
  */
 
 const WS_DEFAULT_URL = 'ws://localhost:8080';
@@ -40,9 +40,9 @@ export const ConnectionState = {
 };
 
 /**
- * Classe principale del bridge OpenClaw
+ * Classe principale del bridge WhyCremisi
  */
-class OpenClawBridge {
+class WhyCremisiBridge {
   constructor() {
     this.ws = null;
     this.url = WS_DEFAULT_URL;
@@ -91,7 +91,7 @@ class OpenClawBridge {
 
       this.url = url;
       this._setState(ConnectionState.CONNECTING);
-      console.log('[OpenClaw] Connessione a ' + url + '...');
+      console.log('[WhyCremisi] Connessione a ' + url + '...');
 
       try {
         this.ws = new WebSocket(url);
@@ -116,7 +116,7 @@ class OpenClawBridge {
 
       } catch (e) {
         this._setState(ConnectionState.ERROR);
-        console.error('[OpenClaw] Errore connessione:', e);
+        console.error('[WhyCremisi] Errore connessione:', e);
         reject(e);
       }
     });
@@ -136,7 +136,7 @@ class OpenClawBridge {
     }
 
     this._setState(ConnectionState.DISCONNECTED);
-    console.log('[OpenClaw] Disconnesso');
+    console.log('[WhyCremisi] Disconnesso');
   }
 
   /**
@@ -155,7 +155,7 @@ class OpenClawBridge {
    */
   sendMessage(type, payload = {}, options = {}) {
     if (!this.isConnected()) {
-      console.warn('[OpenClaw] Non connesso, messaggio non inviato:', type);
+      console.warn('[WhyCremisi] Non connesso, messaggio non inviato:', type);
       return null;
     }
 
@@ -182,9 +182,9 @@ class OpenClawBridge {
     // Invia via WebSocket
     try {
       this.ws.send(JSON.stringify(message));
-      console.log('[OpenClaw] Inviato:', type, id ? `(id=${id})` : '');
+      console.log('[WhyCremisi] Inviato:', type, id ? `(id=${id})` : '');
     } catch (e) {
-      console.error('[OpenClaw] Errore invio:', e);
+      console.error('[WhyCremisi] Errore invio:', e);
     }
 
     return id;
@@ -195,13 +195,13 @@ class OpenClawBridge {
    */
   send(jsonMessage) {
     if (!this.isConnected()) {
-      console.warn('[OpenClaw] Non connesso');
+      console.warn('[WhyCremisi] Non connesso');
       return null;
     }
     try {
       this.ws.send(JSON.stringify(jsonMessage));
     } catch (e) {
-      console.error('[OpenClaw] Errore invio:', e);
+      console.error('[WhyCremisi] Errore invio:', e);
     }
   }
 
@@ -392,7 +392,7 @@ class OpenClawBridge {
    */
   setBotState(state) {
     this.botState = state;
-    window.dispatchEvent(new CustomEvent('openclaw-botstate', { detail: state }));
+    window.dispatchEvent(new CustomEvent('whycremisi-botstate', { detail: state }));
   }
 
   getBotState() {
@@ -419,16 +419,16 @@ class OpenClawBridge {
     this._setState(ConnectionState.CONNECTED);
     this.reconnectAttempts = 0;
     this.lastConnectedAt = Date.now();
-    console.log('[OpenClaw] Connesso a', this.url);
+    console.log('[WhyCremisi] Connesso a', this.url);
 
     // Esponi globalmente per retrocompatibilita con prototipo di Edo e C++ WebView
-    window.__openclawBridge = {
+    window.__whycremisiBridge = {
       receiveMessage: (jsonString) => {
         try {
           const msg = JSON.parse(jsonString);
           this._handleMessage({ data: jsonString });
         } catch (e) {
-          console.error('[OpenClaw] Errore parsing:', e);
+          console.error('[WhyCremisi] Errore parsing:', e);
         }
       },
       sendMessage: this.sendMessage.bind(this),
@@ -441,7 +441,7 @@ class OpenClawBridge {
         const msg = JSON.parse(jsonString);
         this._handleMessage({ data: jsonString });
       } catch (e) {
-        console.error('[OpenClaw] Errore parsing receiveFromPlugin:', e);
+        console.error('[WhyCremisi] Errore parsing receiveFromPlugin:', e);
       }
     };
 
@@ -455,7 +455,7 @@ class OpenClawBridge {
   _handleClose(event) {
     const wasConnected = this.state === ConnectionState.CONNECTED;
     this._setState(ConnectionState.DISCONNECTED);
-    console.log('[OpenClaw] Connessione chiusa:', event.code, event.reason);
+    console.log('[WhyCremisi] Connessione chiusa:', event.code, event.reason);
 
     // Cleanup
     this._clearPendingRequests();
@@ -468,7 +468,7 @@ class OpenClawBridge {
   }
 
   _handleError(event) {
-    console.error('[OpenClaw] WebSocket error');
+    console.error('[WhyCremisi] WebSocket error');
     this._setState(ConnectionState.ERROR);
   }
 
@@ -477,14 +477,14 @@ class OpenClawBridge {
     try {
       message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
     } catch (e) {
-      console.error('[OpenClaw] Errore parsing messaggio:', e);
+      console.error('[WhyCremisi] Errore parsing messaggio:', e);
       return;
     }
 
     const { type, id, payload } = message;
 
     // Log per debug
-    console.log('[OpenClaw] Ricevuto:', type, id ? `(id=${id})` : '', payload || '');
+    console.log('[WhyCremisi] Ricevuto:', type, id ? `(id=${id})` : '', payload || '');
 
     // Auto-update bot state based on message type
     if (type === 'ai.prompt' || type === 'daw.request') {
@@ -514,7 +514,7 @@ class OpenClawBridge {
         try {
           callback(payload, message);
         } catch (e) {
-          console.error('[OpenClaw] Errore in listener:', e);
+          console.error('[WhyCremisi] Errore in listener:', e);
         }
       });
     }
@@ -526,7 +526,7 @@ class OpenClawBridge {
         try {
           callback(message);
         } catch (e) {
-          console.error('[OpenClaw] Errore in listener (*):', e);
+          console.error('[WhyCremisi] Errore in listener (*):', e);
         }
       });
     }
@@ -536,7 +536,7 @@ class OpenClawBridge {
     this._clearReconnectTimer();
     this._setState(ConnectionState.RECONNECTING);
     this.reconnectAttempts++;
-    console.log('[OpenClaw] Retry connessione tra ' + RECONNECT_INTERVAL_MS + 'ms (attempt ' + this.reconnectAttempts + '/' + MAX_RECONNECT_ATTEMPTS + ')');
+    console.log('[WhyCremisi] Retry connessione tra ' + RECONNECT_INTERVAL_MS + 'ms (attempt ' + this.reconnectAttempts + '/' + MAX_RECONNECT_ATTEMPTS + ')');
 
     this.reconnectTimer = setTimeout(() => {
       this.connect(this.url).catch(() => {
@@ -565,7 +565,7 @@ class OpenClawBridge {
 // React Hook
 // ========================
 
-export function useOpenClaw() {
+export function useWhyCremisi() {
   const { useState, useEffect, useCallback, useRef } = require('react');
 
   const [transport, setTransport] = useState({
@@ -581,7 +581,7 @@ export function useOpenClaw() {
   const [aiStatus, setAiStatus] = useState('idle');
   const [connectionState, setConnectionState] = useState(ConnectionState.DISCONNECTED);
 
-  const bridgeRef = useRef(openclaw);
+  const bridgeRef = useRef(whycremisi);
 
   // Auto-connect on mount
   useEffect(() => {
@@ -649,7 +649,7 @@ export function useOpenClaw() {
     });
 
     const unsubError = bridge.on('plugin.error', (payload) => {
-      console.error('[OpenClaw] Plugin error:', payload);
+      console.error('[WhyCremisi] Plugin error:', payload);
     });
 
     // Cleanup
@@ -700,5 +700,5 @@ export function useOpenClaw() {
 // Export singleton
 // ========================
 
-export const openclaw = new OpenClawBridge();
-export default openclaw;
+export const whycremisi = new WhyCremisiBridge();
+export default whycremisi;

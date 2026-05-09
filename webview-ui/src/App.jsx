@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { openclaw, ConnectionState } from './openclaw-bridge'
+import { whycremisi, ConnectionState } from './whycremisi-bridge'
 import { BotFace } from './components/BotFace'
 import './index.css'
 
@@ -49,30 +49,30 @@ export default function App() {
 
   // ---------- INIZIALIZZAZIONE BRIDGE ----------
   useEffect(() => {
-    openclaw.onAny((message) => {
+    whycremisi.onAny((message) => {
       setLastMessage(message)
-      console.log('[OpenClaw]', message)
+      console.log('[WhyCremisi]', message)
     })
 
     // Listener cambio stato connessione
-    const stateUnsub = openclaw.onStateChange((state) => {
+    const stateUnsub = whycremisi.onStateChange((state) => {
       setConnectionStatus(state)
-      console.log('[OpenClaw] Connection state:', state)
+      console.log('[WhyCremisi] Connection state:', state)
     })
 
     // Listener bot state da eventi
-    window.addEventListener('openclaw-botstate', (e) => {
+    window.addEventListener('whycremisi-botstate', (e) => {
       setBotState(e.detail)
     })
 
     // Connettiti al plugin
-    openclaw.connect().catch((err) => {
-      console.warn('[OpenClaw] Connessione WebSocket fallita:', err.message)
+    whycremisi.connect().catch((err) => {
+      console.warn('[WhyCremisi] Connessione WebSocket fallita:', err.message)
     })
 
     // ---------- LISTENER AI ----------
-    const unsubAI = openclaw.on('ai.response', (payload) => {
-      console.log('[OpenClaw] AI Response:', payload)
+    const unsubAI = whycremisi.on('ai.response', (payload) => {
+      console.log('[WhyCremisi] AI Response:', payload)
       setBotState('success')
       setTimeout(() => setBotState('idle'), 2000)
       
@@ -88,8 +88,8 @@ export default function App() {
       }
     })
 
-    const unsubAIStream = openclaw.on('ai.stream', (payload) => {
-      console.log('[OpenClaw] AI Stream:', payload)
+    const unsubAIStream = whycremisi.on('ai.stream', (payload) => {
+      console.log('[WhyCremisi] AI Stream:', payload)
       setBotState('typing')
       // Streaming characters - update last bot message
       if (payload && payload.content) {
@@ -104,8 +104,8 @@ export default function App() {
     })
 
     // ---------- LISTENER ERRORI ----------
-    const unsubError = openclaw.on('plugin.error', (payload) => {
-      console.error('[OpenClaw] Plugin Error:', payload)
+    const unsubError = whycremisi.on('plugin.error', (payload) => {
+      console.error('[WhyCremisi] Plugin Error:', payload)
       setBotState('error')
       setTimeout(() => setBotState('idle'), 3000)
       setMessages(prev => [...prev, {
@@ -116,8 +116,8 @@ export default function App() {
     })
 
     // ---------- LISTENER DAW TRANSPORT ----------
-    const unsubTransport = openclaw.on('daw.transport', (payload) => {
-      console.log('[OpenClaw] DAW Transport:', payload)
+    const unsubTransport = whycremisi.on('daw.transport', (payload) => {
+      console.log('[WhyCremisi] DAW Transport:', payload)
       setMessages(prev => [...prev, {
         id: Date.now(),
         type: 'system',
@@ -126,8 +126,8 @@ export default function App() {
     })
 
     // ---------- LISTENER PARAMETRI VST ----------
-    const unsubParam = openclaw.on('daw.parameter', (payload) => {
-      console.log('[OpenClaw] DAW Parameter:', payload)
+    const unsubParam = whycremisi.on('daw.parameter', (payload) => {
+      console.log('[WhyCremisi] DAW Parameter:', payload)
       setMessages(prev => [...prev, {
         id: Date.now(),
         type: 'system',
@@ -137,14 +137,14 @@ export default function App() {
 
     // Cleanup
     return () => {
-      openclaw.off('*')
+      whycremisi.off('*')
       stateUnsub()
       unsubAI()
       unsubAIStream()
       unsubError()
       unsubTransport()
       unsubParam()
-      openclaw.disconnect()
+      whycremisi.disconnect()
     }
   }, [])
 
@@ -191,15 +191,15 @@ export default function App() {
       setBotState('thinking')
 
       // Invia al bridge - PROMPT AI
-      if (openclaw.isConnected()) {
-        openclaw.sendAIPrompt(command, {
+      if (whycremisi.isConnected()) {
+        whycremisi.sendAIPrompt(command, {
           onResponse: (payload) => {
-            console.log('[OpenClaw] Prompt response:', payload)
+            console.log('[WhyCremisi] Prompt response:', payload)
             setBotState('success')
             setTimeout(() => setBotState('idle'), 2000)
           },
           onError: (err) => {
-            console.error('[OpenClaw] Prompt error:', err)
+            console.error('[WhyCremisi] Prompt error:', err)
             setBotState('error')
             setTimeout(() => setBotState('idle'), 2000)
             setMessages(prev => [...prev, {
@@ -224,11 +224,11 @@ export default function App() {
 
   // ---------- HANDLER TRANSPORT DAW ----------
   const handleTransport = useCallback((action) => {
-    if (openclaw.isConnected()) {
-      openclaw.sendDAWCommand(action)
-      console.log('[OpenClaw] DAW Command:', action)
+    if (whycremisi.isConnected()) {
+      whycremisi.sendDAWCommand(action)
+      console.log('[WhyCremisi] DAW Command:', action)
     } else {
-      console.warn('[OpenClaw] Cannot send DAW command - not connected')
+      console.warn('[WhyCremisi] Cannot send DAW command - not connected')
     }
   }, [])
 

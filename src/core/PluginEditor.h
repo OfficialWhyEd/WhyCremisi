@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   PluginEditor.h
-  OpenClaw VST Bridge AI - Plugin Editor with WebView UI
+  WhyCremisi VST Plugin - Plugin Editor with WebView UI
   ==============================================================================
 */
 
@@ -12,14 +12,14 @@
 #include "../ui/WebViewBridge.h"
 
 // Forward declaration
-class OpenClawAudioProcessor;
+class WhyCremisiProcessor;
 
 //==============================================================================
 // Custom WebBrowserComponent che espone i listener methods
-class OpenClawWebBrowserComponent : public juce::WebBrowserComponent
+class WhyCremisiBrowser : public juce::WebBrowserComponent
 {
 public:
-    OpenClawWebBrowserComponent();
+    WhyCremisiBrowser();
     
     // Callback che può essere impostata dall'esterno
     std::function<bool(const juce::String&)> onPageAboutToLoad;
@@ -32,11 +32,11 @@ protected:
 };
 
 //==============================================================================
-class OpenClawAudioProcessorEditor : public juce::AudioProcessorEditor
+class WhyCremisiProcessorEditor : public juce::AudioProcessorEditor
 {
 public:
-    OpenClawAudioProcessorEditor(OpenClawAudioProcessor&);
-    ~OpenClawAudioProcessorEditor() override;
+    WhyCremisiProcessorEditor(WhyCremisiProcessor&);
+    ~WhyCremisiProcessorEditor() override;
 
     //==============================================================================
     void paint(juce::Graphics&) override;
@@ -51,13 +51,13 @@ public:
 
 private:
     // Reference al processor
-    OpenClawAudioProcessor& audioProcessor;
+    WhyCremisiProcessor& audioProcessor;
     
     // WebView Bridge per comunicazione C++ <-> JS
     WebViewBridge webViewBridge;
     
     // UI Components
-    std::unique_ptr<OpenClawWebBrowserComponent> webView;
+    std::unique_ptr<WhyCremisiBrowser> webView;
     
     // Fallback UI (quando WebView non disponibile)
     juce::Label titleLabel;
@@ -80,5 +80,5 @@ private:
     juce::String getUIURL() const;
     
     //==============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OpenClawAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WhyCremisiProcessorEditor)
 };
