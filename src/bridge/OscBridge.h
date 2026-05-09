@@ -106,6 +106,13 @@ public:
         lastMeterR.store(rightDb);
     }
 
+    /** Called from processBlock to update position/bpm from getPlayHead() */
+    void setPosition(float positionSeconds, float bpm)
+    {
+        currentPosition = positionSeconds;
+        currentBpm      = bpm;
+    }
+
 private:
     // juce::Timer callback — broadcasts position + meters at 30ms intervals
     void timerCallback() override;

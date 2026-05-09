@@ -119,6 +119,11 @@ private:
     int meterBroadcastCounter { 0 };
     static constexpr int METER_BROADCAST_EVERY = 512; // blocks
 
+    // Last known transport state (change detection in processBlock)
+    bool  lastIsPlaying   { false };
+    bool  lastIsRecording { false };
+    float lastBpm         { 120.0f };
+
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WhyCremisiProcessor)
 };

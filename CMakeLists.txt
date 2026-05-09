@@ -55,8 +55,12 @@ juce_add_plugin(WhyCremisiVSTPlugin
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
-    FORMATS VST3 Standalone
+    # VST3: Ableton, REAPER, FL Studio, Cubase, Studio One, Bitwig, Pro Tools (via wrapper)
+    # AU:   Logic Pro, GarageBand (macOS only — ignored on Windows/Linux)
+    FORMATS VST3 AU Standalone
     PRODUCT_NAME "WhyCremisi"
+    BUNDLE_ID "com.whycremisi.plugin"
+    AU_MAIN_TYPE "kAudioUnitType_Effect"
 )
 
 # Disabilita VST2 fallback

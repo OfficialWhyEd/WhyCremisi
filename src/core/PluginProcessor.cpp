@@ -144,8 +144,8 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     juce::ScopedNoDenormals noDenormals;
     juce::ignoreUnused(midiMessages);
 
-    const int totalIn  = getTotalNumInputChannels();
-    const int totalOut = getTotalNumOutputChannels();
+    const int totalIn   = getTotalNumInputChannels();
+    const int totalOut  = getTotalNumOutputChannels();
     const int numSamples = buffer.getNumSamples();
 
     for (int i = totalIn; i < totalOut; ++i)
@@ -155,7 +155,44 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     if (gainParam1 != nullptr)
         buffer.applyGain(juce::Decibels::decibelsToGain(gainParam1->load()));
 
-    // ── Compute RMS meters ──────────────────────────────────────────
+    // ── Universal transport via getPlayHead() ───────────────────────
+    // Works in every DAW that implements VST3: Ableton, Logic, REAPER,
+    // FL Studio, Cubase, Studio One, Bitwig, Pro Tools, GarageBand...
+    if (auto* ph = getPlayHead())
+    {
+        juce::AudioPlayHead::CurrentPositionInfo pos;
+        if (ph->getCurrentPosition(pos))
+        {
+            bool  playing   = pos.isPlaying;
+            bool  recording = pos.isRecording;
+            float bpm       = static_cast<float>(pos.bpm > 0.0 ? pos.bpm : 120.0);
+            float posSec    = static_cast<float>(pos.timeInSeconds);
+
+            // Only broadcast + log when something actually changed
+            bool changed = (playing   != lastIsPlaying)   ||
+                           (recording != lastIsRecording)  ||
+                           (std::abs(bpm - lastBpm) > 0.01f);
+
+            if (changed)
+            {
+                lastIsPlaying   = playing;
+                lastIsRecording = recording;
+                lastBpm         = bpm;
+
+                if (oscBridge && oscBridge->isRunning())
+                    oscBridge->broadcastTransport(playing, recording, bpm, posSec);
+
+                if (sessionManager)
+                    sessionManager->logTransport(playing, recording, bpm, posSec);
+            }
+
+            // Always push position to bridge (timer will broadcast it)
+            if (oscBridge)
+                oscBridge->setPosition(posSec, bpm);
+        }
+    }
+
+    // ── RMS meters ──────────────────────────────────────────────────
     if (totalOut >= 1)
     {
         float rmsL = buffer.getRMSLevel(0, 0, numSamples);
@@ -164,7 +201,6 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         float dbL = rmsL > 0.0001f ? juce::Decibels::gainToDecibels(rmsL) : -60.0f;
         float dbR = rmsR > 0.0001f ? juce::Decibels::gainToDecibels(rmsR) : -60.0f;
 
-        // Ballistics: fast attack, slow release
         const float attack  = 0.98f;
         const float release = 0.02f;
         float prevL = meterLevelL.load();
@@ -172,11 +208,14 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         meterLevelL.store(dbL > prevL ? dbL * release + prevL * attack : prevL * attack + dbL * release);
         meterLevelR.store(dbR > prevR ? dbR * release + prevR * attack : prevR * attack + dbR * release);
 
-        // Broadcast to UI every N blocks
+        // Push meter levels into bridge (timer broadcasts at 30fps)
+        if (oscBridge)
+            oscBridge->updateMeter(meterLevelL.load(), meterLevelR.load());
+
+        // Also direct broadcast every N blocks as backup
         if (++meterBroadcastCounter >= METER_BROADCAST_EVERY && oscBridge && oscBridge->isRunning())
         {
             meterBroadcastCounter = 0;
-            // trackId = -1 → master bus convention
             oscBridge->broadcastMeter(-1, meterLevelL.load(), meterLevelR.load(),
                                           meterLevelL.load(), meterLevelR.load());
         }
