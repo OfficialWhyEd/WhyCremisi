@@ -131,6 +131,7 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
         currentIsPlaying = (value > 0.5f);
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        broadcastSessionEvent("transport", {{"is_playing", currentIsPlaying}, {"bpm", currentBpm}});
     }
     else if (address == "/live/song/get/is_recording" || address == "/live/song/is_recording")
     {
@@ -269,6 +270,10 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
         if (message.contains("payload"))
             dispatchOscSend(message["payload"]);
     }
+    else if (msgType == "session.get")
+    {
+        dispatchSessionGet(reqId);
+    }
     else
     {
         log("[WARN] Unknown message type: " + msgType);
@@ -314,6 +319,8 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
 
     if (sessionManager)
         sessionManager->logDawCommand(command, juce::String(payload.dump().data()));
+
+    broadcastSessionEvent("daw_command", {{"command", command.toStdString()}});
 
     // AbletonOSC + REAPER dual-send + optimistic local state update.
     // Optimistic update: change internal state and broadcast immediately so
@@ -501,6 +508,9 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
     if (sessionManager)
         sessionManager->logAiPrompt(prompt, aiEngine->getProviderName());
 
+    broadcastSessionEvent("ai_prompt", {{"prompt", prompt.substring(0, 120).toStdString()},
+                                        {"provider", aiEngine->getProviderName().toStdString()}});
+
     juce::String activeReqId = reqId.isNotEmpty() ? reqId : generateUUID();
 
     // Broadcast "thinking" immediately so UI can react
@@ -550,6 +560,10 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
         // Log the response to session
         if (sessionManager)
             sessionManager->logAiResponse(responseText, durationMs);
+
+        broadcastSessionEvent("ai_response", {{"preview", responseText.substring(0, 80).toStdString()},
+                                              {"duration_ms", durationMs},
+                                              {"success", success}});
 
         log("[AI] Response in " + juce::String(durationMs) + "ms: " +
             responseText.substring(0, 60) + (responseText.length() > 60 ? "..." : ""));
@@ -754,6 +768,74 @@ void OscBridge::dispatchOscSend(const nlohmann::json& payload)
     float value = payload["value"].get<float>();
 
     sendOscToDaw(address, value);
+}
+
+//==============================================================================
+void OscBridge::dispatchSessionGet(const juce::String& reqId)
+{
+    if (!sessionManager)
+        return;
+
+    nlohmann::json resp;
+    resp["type"] = "session.data";
+    resp["id"]   = reqId.isNotEmpty() ? reqId.toStdString() : "";
+    resp["timestamp"] = juce::Time::currentTimeMillis();
+
+    // Load snapshot from current.json
+    auto currentFile = sessionManager->getCurrentSessionFile();
+    nlohmann::json payload;
+
+    if (currentFile.existsAsFile())
+    {
+        try { payload = nlohmann::json::parse(currentFile.loadFileAsString().toStdString()); }
+        catch (...) {}
+    }
+
+    // Load recent events from events.jsonl (last 200 lines)
+    auto eventsFile = sessionManager->getActiveSessionDir().getChildFile("events.jsonl");
+    auto eventsArr  = nlohmann::json::array();
+
+    if (eventsFile.existsAsFile())
+    {
+        juce::StringArray lines;
+        lines.addLines(eventsFile.loadFileAsString());
+
+        // Iterate last 200 non-empty lines
+        int start = juce::jmax(0, lines.size() - 200);
+        for (int i = start; i < lines.size(); ++i)
+        {
+            auto line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            try
+            {
+                eventsArr.push_back(nlohmann::json::parse(line.toStdString()));
+            }
+            catch (...) {}
+        }
+    }
+
+    payload["events"]     = eventsArr;
+    payload["session_dir"] = sessionManager->getActiveSessionDir().getFullPathName().toStdString();
+    payload["started_at_ms"] = 0; // filled from current.json if present
+
+    resp["payload"] = payload;
+    wsServer->broadcast(resp);
+    log("[SESSION] Sent session.data (" + juce::String((int)eventsArr.size()) + " events)");
+}
+
+//==============================================================================
+void OscBridge::broadcastSessionEvent(const std::string& eventType, const nlohmann::json& data)
+{
+    if (!wsServer || !wsServer->isRunning() || wsServer->getConnectedClientsCount() == 0)
+        return;
+
+    nlohmann::json msg;
+    msg["type"] = "session.event";
+    msg["id"]   = nullptr;
+    msg["timestamp"] = juce::Time::currentTimeMillis();
+    msg["payload"]["event_type"] = eventType;
+    msg["payload"]["data"] = data;
+    wsServer->broadcast(msg);
 }
 
 //==============================================================================

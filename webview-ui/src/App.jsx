@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { whycremisi, ConnectionState } from './whycremisi-bridge'
 import { BotFace } from './components/BotFace'
+import { SessionPanel } from './components/SessionPanel'
 import './index.css'
 
 export default function App() {
@@ -31,6 +32,9 @@ export default function App() {
   const [meterR, setMeterR] = useState(0.55)
   const [lufs, setLufs]     = useState(-14.2)
   const [peak, setPeak]     = useState(-0.1)
+
+  // ── active tab ────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('COMMAND')
 
   // ── active side module ────────────────────────────────────────────
   const [activeMod, setActiveMod] = useState('ai')
@@ -268,8 +272,9 @@ export default function App() {
           <nav className="flex gap-5 uppercase tracking-[0.1em] font-bold text-[11px]">
             {['COMMAND','MASTER','TELEMETRY','SESSIONS'].map(tab => (
               <a key={tab}
-                className={tab === 'COMMAND'
-                  ? 'text-[#FFB000] border-b border-[#FFB000] pb-0.5'
+                onClick={() => setActiveTab(tab)}
+                className={activeTab === tab
+                  ? 'text-[#FFB000] border-b border-[#FFB000] pb-0.5 cursor-pointer'
                   : 'text-[#4d4d4d] hover:text-[#FFB000] transition-colors cursor-pointer'}
               >{tab}</a>
             ))}
@@ -344,8 +349,24 @@ export default function App() {
         ))}
       </aside>
 
+      {/* ── SESSION PANEL ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {activeTab === 'SESSIONS' && (
+          <motion.div
+            key="session-panel"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.25, ease: [0.22,1,0.36,1] }}
+            className="ml-16 mt-0 h-[calc(100vh-3rem)] relative z-10"
+          >
+            <SessionPanel />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── MAIN GRID ──────────────────────────────────────────────── */}
-      <main className="ml-16 mt-0 h-[calc(100vh-3rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden bg-[#0d0d0d] relative z-10">
+      <main className={`ml-16 mt-0 h-[calc(100vh-3rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden bg-[#0d0d0d] relative z-10 ${activeTab !== 'COMMAND' ? 'hidden' : ''}`}>
 
         {/* ── AI CHAT CONSOLE (9/12 × 4/6) ──────────────────────── */}
         <section className="col-span-9 row-span-4 bg-[#0e0e0e] border border-[#222222] flex flex-col overflow-hidden">

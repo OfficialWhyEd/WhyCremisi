@@ -174,6 +174,10 @@ private:
     // Generate UUID for message IDs
     juce::String generateUUID();
 
+    // Session protocol
+    void dispatchSessionGet(const juce::String& reqId);
+    void broadcastSessionEvent(const std::string& eventType, const nlohmann::json& data);
+
     // Logging
     void log(const juce::String& msg);
 
