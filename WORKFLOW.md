@@ -1,14 +1,26 @@
 # 🤝 Workflow Git - Regole del Team
 
 **Progetto:** OpenClaw VST Bridge AI  
-**Team:** Carlo (Aura) + Edo (Heartbroken)  
-**Ultimo aggiornamento:** 10 Aprile 2026
+**Team:** Carlo (Aura) + Edo (Heartbroken) + Claude (Heartbroken-Claude)  
+**Ultimo aggiornamento:** 09 Maggio 2026
 
 ---
 
 ## 🎯 Obiettivo
 
-Evitare conflitti e sovrascritture quando Carlo/Aura e Edo/Heartbroken lavorano sullo stesso repository.
+Evitare conflitti e sovrascritture quando i tre agenti lavorano sullo stesso repository.
+
+---
+
+## 👥 Agenti e Branch
+
+| Agente | Proprietario | Branch | Prefix commit |
+|--------|-------------|--------|---------------|
+| **Aura** | Carlo | `aura` | `AURA:` |
+| **Heartbroken** | Edo (precedente) | `heartbroken` | `HEARTBROKEN:` |
+| **Heartbroken-Claude** | Edo (Claude) | `heartbroken-claude` | `HEARTBROKEN-CLAUDE:` |
+
+**Merge verso master:** sempre con messaggio `heartbroken - claude version: <descrizione>`
 
 ---
 
@@ -19,8 +31,11 @@ Evitare conflitti e sovrascritture quando Carlo/Aura e Edo/Heartbroken lavorano 
 Ogni commit DEVE iniziare con il nome dell'AI:
 
 ```bash
-# Per Heartbroken (AI di Edo)
-git commit -m "Heartbroken: Aggiunto componente GainSlider"
+# Per Heartbroken-Claude (Claude — agente attuale di Edo)
+git commit -m "HEARTBROKEN-CLAUDE: feat: aggiunto componente GainSlider"
+
+# Per Heartbroken (AI precedente di Edo — legacy)
+git commit -m "HEARTBROKEN: feat: aggiunto componente GainSlider"
 
 # Per Aura (AI di Carlo)
 git commit -m "AURA: Implementato OscHandler"
@@ -79,12 +94,44 @@ Per progetti complessi, usare branch di staging:
 
 ### Struttura Branch
 ```
-main          ← Stabile, solo merge reviewati
-  ├── aura    ← Staging Carlo/Aura (backend testato)
-  └── heartbroken ← Staging Edo/Heartbroken (UI testata)
+master                  ← Stabile, solo merge reviewati
+  ├── aura              ← Staging Carlo/Aura (backend)
+  ├── heartbroken       ← Staging Edo/Heartbroken (legacy)
+  └── heartbroken-claude ← Staging Edo/Claude (agente attuale)
 ```
 
-### Regole per Heartbroken
+### Regole per Heartbroken-Claude (agente attuale)
+
+#### Workflow standard
+```bash
+# 1. Sempre su heartbroken-claude
+git fetch origin && git switch heartbroken-claude
+
+# 2. Lavora e committa
+git add <file>
+git commit -m "HEARTBROKEN-CLAUDE: feat: descrizione"
+
+# 3. Push sul branch
+git push origin heartbroken-claude
+
+# 4. Merge su master con nome standard
+git switch master
+git merge heartbroken-claude --no-ff -m "heartbroken - claude version: descrizione"
+git push origin master
+
+# 5. Torna subito a heartbroken-claude
+git switch heartbroken-claude
+```
+
+**Regole fisse:**
+- ❌ Non pushare MAI direttamente su master
+- ❌ Non lavorare mai su master
+- ✅ Ogni merge verso master si chiama `heartbroken - claude version: ...`
+- ✅ Ogni commit inizia con `HEARTBROKEN-CLAUDE:`
+
+---
+
+### Regole per Heartbroken (legacy)
 
 #### 1. Prima di lavorare
 ```bash
@@ -145,11 +192,11 @@ git push --force-with-lease origin heartbroken
 | Area | Responsabile | File Tipici |
 |------|--------------|-------------|
 | **Backend C++** | Aura | `src/core/`, `src/osc/`, `src/ai/` |
-| **Frontend UI** | Heartbroken | `src/ui/`, componenti React |
-| **Build System** | Aura | `CMakeLists.txt`, configurazioni |
-| **Documentazione** | Entrambi | `Documentazione/*.md` |
+| **Frontend UI** | Heartbroken-Claude | `webview-ui/`, `src/ui/` |
+| **Build System + Fix** | Heartbroken-Claude | `CMakeLists.txt`, bug fix cross-layer |
+| **Documentazione** | Tutti | `*.md`, `Documentazione/` |
 
-**Nota:** Se Heartbroken deve toccare backend o Aura frontend, avvisa prima.
+**Nota:** Heartbroken-Claude può toccare qualsiasi area per fix e build, ma avvisa Aura se tocca backend core.
 
 ---
 
