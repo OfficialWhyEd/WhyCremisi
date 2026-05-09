@@ -72,6 +72,7 @@ target_sources(WhyCremisiVSTPlugin
     PRIVATE
         src/core/PluginProcessor.cpp
         src/core/PluginEditor.cpp
+        src/core/SessionManager.cpp
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
         src/ui/WebViewBridge.cpp

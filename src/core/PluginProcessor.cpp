@@ -9,6 +9,7 @@
 #include "PluginEditor.h"
 #include "AiEngine.h"
 #include "OscBridge.h"
+#include "SessionManager.h"
 
 //==============================================================================
 WhyCremisiProcessor::WhyCremisiProcessor()
@@ -57,17 +58,24 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     // Initialize AI Engine
     aiEngine = std::make_unique<AiEngine>();
     updateAiEngineConfig();
-    
-    // Initialize OscBridge (single owner of OSC + WebSocket)
+
+    // Initialize Session Manager
+    sessionManager = std::make_unique<SessionManager>();
+    sessionManager->startSession("Unknown DAW");
+
+    // Initialize OscBridge (OSC receive 9000 + WebSocket 8080)
     oscBridge = std::make_unique<OscBridge>(oscPort, 8080);
     oscBridge->setAiEngine(aiEngine.get());
-    oscBridge->setDawTarget("127.0.0.1", 8000);
+    oscBridge->setSessionManager(sessionManager.get());
+    oscBridge->setDawTarget("127.0.0.1", 9001);  // 9001 = DAW OSC receive port
 }
 
 WhyCremisiProcessor::~WhyCremisiProcessor()
 {
     if (oscBridge)
         oscBridge->stop();
+    if (sessionManager)
+        sessionManager->endSession();
 }
 
 //==============================================================================
@@ -125,25 +133,43 @@ bool WhyCremisiProcessor::isBusesLayoutSupported(const BusesLayout& layouts) con
 void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
-    
-    auto totalNumInputChannels = getTotalNumInputChannels();
-    auto totalNumOutputChannels = getTotalNumOutputChannels();
-    
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear(i, 0, buffer.getNumSamples());
-    
+    juce::ignoreUnused(midiMessages);
+
+    const int totalIn  = getTotalNumInputChannels();
+    const int totalOut = getTotalNumOutputChannels();
+    const int numSamples = buffer.getNumSamples();
+
+    for (int i = totalIn; i < totalOut; ++i)
+        buffer.clear(i, 0, numSamples);
+
+    // Apply master gain from parameter
     if (gainParam1 != nullptr)
+        buffer.applyGain(juce::Decibels::decibelsToGain(gainParam1->load()));
+
+    // ── Compute RMS meters ──────────────────────────────────────────
+    if (totalOut >= 1)
     {
-        float gain = juce::Decibels::decibelsToGain(gainParam1->load());
-        buffer.applyGain(gain);
-    }
-    
-    for (const auto midiMessage : midiMessages)
-    {
-        auto message = midiMessage.getMessage();
-        if (message.isController())
+        float rmsL = buffer.getRMSLevel(0, 0, numSamples);
+        float rmsR = (totalOut >= 2) ? buffer.getRMSLevel(1, 0, numSamples) : rmsL;
+
+        float dbL = rmsL > 0.0001f ? juce::Decibels::gainToDecibels(rmsL) : -60.0f;
+        float dbR = rmsR > 0.0001f ? juce::Decibels::gainToDecibels(rmsR) : -60.0f;
+
+        // Ballistics: fast attack, slow release
+        const float attack  = 0.98f;
+        const float release = 0.02f;
+        float prevL = meterLevelL.load();
+        float prevR = meterLevelR.load();
+        meterLevelL.store(dbL > prevL ? dbL * release + prevL * attack : prevL * attack + dbL * release);
+        meterLevelR.store(dbR > prevR ? dbR * release + prevR * attack : prevR * attack + dbR * release);
+
+        // Broadcast to UI every N blocks
+        if (++meterBroadcastCounter >= METER_BROADCAST_EVERY && oscBridge && oscBridge->isRunning())
         {
-            juce::ignoreUnused(message.getControllerNumber(), message.getControllerValue());
+            meterBroadcastCounter = 0;
+            // trackId = -1 → master bus convention
+            oscBridge->broadcastMeter(-1, meterLevelL.load(), meterLevelR.load(),
+                                          meterLevelL.load(), meterLevelR.load());
         }
     }
 }
@@ -268,7 +294,7 @@ void WhyCremisiProcessor::setOscPort(int port)
         // Recreate with new port
         oscBridge = std::make_unique<OscBridge>(oscPort, 8080);
         oscBridge->setAiEngine(aiEngine.get());
-    oscBridge->setDawTarget("192.168.1.12", 8000);
+    oscBridge->setDawTarget("127.0.0.1", 9001);
         oscBridge->start();
     }
 }

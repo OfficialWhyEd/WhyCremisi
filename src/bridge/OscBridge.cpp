@@ -9,6 +9,7 @@
 
 #include "OscBridge.h"
 #include "AiEngine.h"
+#include "SessionManager.h"
 #include <chrono>
 #include <random>
 
@@ -94,18 +95,60 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
 {
     log("[OSC→WS] " + address + " = " + juce::String(value, 3));
 
-    // Parse OSC address and update DAW state
-    if (address.contains("play"))
+    // Rate-limited session logging (SessionManager handles the interval itself)
+    if (sessionManager)
+        sessionManager->logOscEvent(address, value);
+
+    // ── AbletonOSC exact addresses ──────────────────────────────────────────
+    // Ableton sends these after /live/song/get/* queries or live.add_listener
+
+    if (address == "/live/song/get/is_playing" || address == "/live/song/is_playing")
     {
         currentIsPlaying = (value > 0.5f);
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm);
     }
-    else if (address.contains("stop"))
+    else if (address == "/live/song/get/is_recording" || address == "/live/song/is_recording")
+    {
+        currentIsRecording = (value > 0.5f);
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+    }
+    else if (address == "/live/song/get/tempo" || address == "/live/song/tempo")
+    {
+        currentBpm = value;
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+    }
+    else if (address == "/live/song/get/current_song_time" || address == "/live/song/current_song_time")
+    {
+        currentPosition = value;
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+    }
+    else if (address == "/live/song/start_playing")
+    {
+        currentIsPlaying = true;
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        if (sessionManager) sessionManager->logTransport(true, currentIsRecording, currentBpm);
+    }
+    else if (address == "/live/song/stop_playing")
     {
         currentIsPlaying = false;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        if (sessionManager) sessionManager->logTransport(false, currentIsRecording, currentBpm);
     }
-    else if (address.contains("record"))
+    // ── REAPER / generic OSC transport fallback ─────────────────────────────
+    else if (address == "/play" || (address.contains("play") && !address.contains("back")))
+    {
+        currentIsPlaying = (value > 0.5f);
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm);
+    }
+    else if (address == "/stop")
+    {
+        currentIsPlaying = false;
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+        if (sessionManager) sessionManager->logTransport(false, currentIsRecording, currentBpm);
+    }
+    else if (address == "/record" || address.contains("record"))
     {
         currentIsRecording = (value > 0.5f);
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
@@ -115,20 +158,14 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
         currentBpm = value;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
-    else if (address.contains("position") || address.contains("time"))
+    else if (address.contains("song_time") || address.contains("position"))
     {
         currentPosition = value;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
-    else if (address.contains("volume") || address.contains("gain"))
-    {
-        // Track volume change - need track ID parsing
-        // Example: /track/1/volume → trackId=1, value=value
-        forwardOscToUI(address, value);
-    }
+    // ── Track data → forward to UI ──────────────────────────────────────────
     else
     {
-        // Forward all other OSC messages to UI for display
         forwardOscToUI(address, value);
     }
 }
@@ -211,9 +248,21 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
 void OscBridge::handleClientConnection(int clientId, bool connected)
 {
     if (connected)
+    {
         log("[WS] Client " + juce::String(clientId) + " connected");
+
+        // Push current state to the newly connected client
+        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+
+        // Request fresh transport state from Ableton (triggers OSC responses)
+        sendOscToDaw("/live/song/get/is_playing", 0.0f);
+        sendOscToDaw("/live/song/get/tempo", 0.0f);
+        sendOscToDaw("/live/song/get/current_song_time", 0.0f);
+    }
     else
+    {
         log("[WS] Client " + juce::String(clientId) + " disconnected");
+    }
 }
 
 //==============================================================================
@@ -229,21 +278,29 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
 
     log("[CMD] " + command);
 
-    // Reaper OSC addresses: /play, /stop, /record
+    if (sessionManager)
+        sessionManager->logDawCommand(command);
+
+    // AbletonOSC + REAPER dual-send: each command goes to both address spaces
+    // so the plugin works with either DAW without reconfiguration.
     if (command == "play")
     {
-        sendOscToDaw("/play", 1.0f);
+        sendOscToDaw("/live/song/start_playing", 1.0f);  // AbletonOSC
+        sendOscToDaw("/play", 1.0f);                      // REAPER
     }
     else if (command == "stop")
     {
-        sendOscToDaw("/stop", 1.0f);
+        sendOscToDaw("/live/song/stop_playing", 1.0f);   // AbletonOSC
+        sendOscToDaw("/stop", 1.0f);                      // REAPER
     }
     else if (command == "record")
     {
-        sendOscToDaw("/record", 1.0f);
+        sendOscToDaw("/live/song/record", 1.0f);          // AbletonOSC
+        sendOscToDaw("/record", 1.0f);                    // REAPER
     }
     else if (command == "pause")
     {
+        sendOscToDaw("/live/song/continue_playing", 1.0f);
         sendOscToDaw("/pause", 1.0f);
     }
     else if (command == "setTempo")
@@ -251,7 +308,8 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         if (payload.contains("bpm"))
         {
             float bpm = payload["bpm"].get<float>();
-            sendOscToDaw("/tempo", bpm);
+            sendOscToDaw("/live/song/set/tempo", bpm);    // AbletonOSC
+            sendOscToDaw("/tempo", bpm);                   // REAPER
             currentBpm = bpm;
         }
     }
@@ -261,7 +319,9 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         {
             int trackId = payload["trackId"].get<int>();
             float db = payload["valueDb"].get<float>();
-            // Convert dB to linear (0-1 range typically)
+            // AbletonOSC uses 0-1 linear; convert from dB
+            float linear = juce::Decibels::decibelsToGain(db);
+            sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/volume", linear);
             sendOscToDaw("/track/" + juce::String(trackId) + "/volume", db);
         }
     }
@@ -271,6 +331,7 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         {
             int trackId = payload["trackId"].get<int>();
             float pan = payload["value"].get<float>();
+            sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/panning", pan);
             sendOscToDaw("/track/" + juce::String(trackId) + "/pan", pan);
         }
     }
@@ -280,6 +341,7 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         {
             int trackId = payload["trackId"].get<int>();
             float muted = payload["muted"].get<bool>() ? 1.0f : 0.0f;
+            sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/mute", muted);
             sendOscToDaw("/track/" + juce::String(trackId) + "/mute", muted);
         }
     }
@@ -289,7 +351,34 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         {
             int trackId = payload["trackId"].get<int>();
             float soloed = payload["soloed"].get<bool>() ? 1.0f : 0.0f;
+            sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/solo", soloed);
             sendOscToDaw("/track/" + juce::String(trackId) + "/solo", soloed);
+        }
+    }
+    else if (command == "requestTransport")
+    {
+        // Poll AbletonOSC for current state
+        sendOscToDaw("/live/song/get/is_playing", 0.0f);
+        sendOscToDaw("/live/song/get/tempo", 0.0f);
+        sendOscToDaw("/live/song/get/current_song_time", 0.0f);
+    }
+    else if (command == "setGain")
+    {
+        // Master gain (plugin internal, also send to track 0 in Ableton)
+        if (payload.contains("valueDb"))
+        {
+            float db = payload["valueDb"].get<float>();
+            float linear = juce::Decibels::decibelsToGain(db);
+            sendOscToDaw("/live/master_track/set/volume", linear);
+        }
+    }
+    else if (command == "setDrive")
+    {
+        // Generic drive/saturation — forward as custom OSC param
+        if (payload.contains("value"))
+        {
+            float v = payload["value"].get<float>();
+            sendOscToDaw("/whycremisi/drive", v);
         }
     }
     else
@@ -352,7 +441,6 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
 
     if (!aiEngine)
     {
-        // No AI engine configured
         nlohmann::json response;
         response["type"] = "ai.response";
         response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : generateUUID().toStdString();
@@ -364,35 +452,75 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
         return;
     }
 
-    // Send "thinking" status
+    // Log prompt to session before going async
+    if (sessionManager)
+        sessionManager->logAiPrompt(prompt, aiEngine->getProviderName());
+
+    juce::String activeReqId = reqId.isNotEmpty() ? reqId : generateUUID();
+
+    // Broadcast "thinking" immediately so UI can react
     {
         nlohmann::json status;
         status["type"] = "ai.response";
-        status["id"] = reqId.isNotEmpty() ? reqId.toStdString() : generateUUID().toStdString();
+        status["id"] = activeReqId.toStdString();
         status["timestamp"] = juce::Time::currentTimeMillis();
         status["payload"]["status"] = "thinking";
-        status["payload"]["provider"] = "processing";
+        status["payload"]["provider"] = aiEngine->getProviderName().toStdString();
         status["payload"]["content"] = "";
         wsServer->broadcast(status);
     }
 
+    if (aiProcessing.load())
+    {
+        // Already processing — queue not supported, reject gracefully
+        nlohmann::json busy;
+        busy["type"] = "ai.response";
+        busy["id"] = activeReqId.toStdString();
+        busy["timestamp"] = juce::Time::currentTimeMillis();
+        busy["payload"]["status"] = "error";
+        busy["payload"]["content"] = "AI is already processing a request. Please wait.";
+        wsServer->broadcast(busy);
+        return;
+    }
+
     aiProcessing.store(true);
 
-    // Call AI engine (blocking for now - in future use async)
-    juce::String responseText = aiEngine->sendPrompt(prompt);
+    // Detach the previous finished thread to avoid leaking handles
+    if (aiThread && aiThread->joinable())
+        aiThread->detach();
 
-    aiProcessing.store(false);
+    // Capture everything needed by value — the thread outlives this stack frame
+    juce::String capturedPrompt = prompt;
+    juce::String capturedReqId  = activeReqId;
+    int64_t      startMs        = juce::Time::currentTimeMillis();
 
-    // Send final response
-    nlohmann::json response;
-    response["type"] = "ai.response";
-    response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : generateUUID().toStdString();
-    response["timestamp"] = juce::Time::currentTimeMillis();
-    response["payload"]["status"] = "success";
-    response["payload"]["provider"] = "ollama"; // TODO: get from aiEngine
-    response["payload"]["content"] = responseText.toStdString();
+    aiThread = std::make_unique<std::thread>([this, capturedPrompt, capturedReqId, startMs]()
+    {
+        juce::String responseText = aiEngine->sendPrompt(capturedPrompt);
+        bool success = aiEngine->getLastError().isEmpty();
+        int durationMs = static_cast<int>(juce::Time::currentTimeMillis() - startMs);
 
-    wsServer->broadcast(response);
+        aiProcessing.store(false);
+
+        // Log the response to session
+        if (sessionManager)
+            sessionManager->logAiResponse(responseText, durationMs);
+
+        log("[AI] Response in " + juce::String(durationMs) + "ms: " +
+            responseText.substring(0, 60) + (responseText.length() > 60 ? "..." : ""));
+
+        nlohmann::json response;
+        response["type"] = "ai.response";
+        response["id"] = capturedReqId.toStdString();
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["status"] = success ? "success" : "error";
+        response["payload"]["provider"] = aiEngine->getProviderName().toStdString();
+        response["payload"]["model"]    = aiEngine->getModelName().toStdString();
+        response["payload"]["content"]  = responseText.toStdString();
+        response["payload"]["durationMs"] = durationMs;
+
+        wsServer->broadcast(response);
+    });
 }
 
 //==============================================================================
@@ -776,6 +904,12 @@ void OscBridge::setAiEngine(AiEngine* engine)
 {
     aiEngine = engine;
     log("[OscBridge] AI engine " + juce::String(engine ? "connected" : "disconnected"));
+}
+
+void OscBridge::setSessionManager(SessionManager* sm)
+{
+    sessionManager = sm;
+    log("[OscBridge] Session manager " + juce::String(sm ? "connected" : "disconnected"));
 }
 
 //==============================================================================

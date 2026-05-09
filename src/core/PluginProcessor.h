@@ -14,6 +14,7 @@
 // Forward declarations
 class AiEngine;
 class OscBridge;
+class SessionManager;
 
 //==============================================================================
 class WhyCremisiProcessor : public juce::AudioProcessor
@@ -108,7 +109,16 @@ private:
     // OscBridge (OSC + WebSocket for React UI)
     std::unique_ptr<OscBridge> oscBridge;
     int oscPort = 9000;
-    
+
+    // Session Manager
+    std::unique_ptr<SessionManager> sessionManager;
+
+    // Meter state (computed in processBlock, broadcast periodically)
+    std::atomic<float> meterLevelL { -60.0f };
+    std::atomic<float> meterLevelR { -60.0f };
+    int meterBroadcastCounter { 0 };
+    static constexpr int METER_BROADCAST_EVERY = 512; // blocks
+
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WhyCremisiProcessor)
 };

@@ -4,828 +4,736 @@ import { whycremisi, ConnectionState } from './whycremisi-bridge'
 import { BotFace } from './components/BotFace'
 import './index.css'
 
-// ============================================================
-// WHYCREMISI VST PLUGIN - App.jsx
-// Versione FUSA: Layout Heartbroken + Bridge Aure (Aura)
-// ============================================================
-
 export default function App() {
-  // ---------- STATI CONNESSIONE ----------
-  const [connectionStatus, setConnectionStatus] = useState(ConnectionState.DISCONNECTED)
-  const [botState, setBotState] = useState('idle')
-  const [inputValue, setInputValue] = useState('')
-  
-  // ---------- STATI MESSAGGI ----------
+  // ── connection & bot ──────────────────────────────────────────────
+  const [connStatus, setConnStatus] = useState(ConnectionState.DISCONNECTED)
+  const [botState, setBotState]     = useState('idle')
+
+  // ── messages ──────────────────────────────────────────────────────
   const [messages, setMessages] = useState([
     { id: 1, type: 'system', text: '[--:--:--] INITIALIZING NEURAL MATRIX... OK' },
     { id: 2, type: 'system', text: '[--:--:--] SCANNING SPECTRAL DENSITY... COMPLETE' },
-    { id: 3, type: 'system', text: '[--:--:--] ANALYZING TRANSIENT RESPONSE IN 440HZ RANGE... DONE.' },
+    { id: 3, type: 'system', text: '[--:--:--] OSC BRIDGE LISTENING ON PORT 9000... READY' },
     { id: 4, type: 'advisory' }
   ])
-  
-  const [lastMessage, setLastMessage] = useState(null)
-  const chatEndRef = useRef(null)
+  const chatEndRef  = useRef(null)
+  const [inputVal, setInputVal] = useState('')
+  const streamingIdRef = useRef(null)  // tracks current streaming message id
 
-  // ---------- SIDE MODULES ----------
-  const [activeSideModule, setActiveSideModule] = useState('ai')
+  // ── transport / DAW state ─────────────────────────────────────────
+  const [transport, setTransport] = useState({ isPlaying: false, isRecording: false, bpm: 120.0, position: 0 })
+  const [dawConnected, setDawConnected] = useState(false)
+
+  // ── rack / meters ─────────────────────────────────────────────────
+  const [gainDb, setGainDb] = useState(0)       // -60 to +12
+  const [driveVal, setDriveVal] = useState(72.5)
+  const [meterL, setMeterL] = useState(0.6)
+  const [meterR, setMeterR] = useState(0.55)
+  const [lufs, setLufs]     = useState(-14.2)
+  const [peak, setPeak]     = useState(-0.1)
+
+  // ── active side module ────────────────────────────────────────────
+  const [activeMod, setActiveMod] = useState('ai')
 
   const sideModules = [
-    { id: 'ai', icon: 'memory', label: 'AI ENGINE' },
-    { id: 'transport', icon: 'play_arrow', label: 'TRANSPORT' },
-    { id: 'comp', icon: 'settings_input_component', label: 'COMP' },
-    { id: 'limit', icon: 'linear_scale', label: 'LIMIT' },
-    { id: 'eq', icon: 'graphic_eq', label: 'EQ' },
-    { id: 'meters', icon: 'analytics', label: 'METERS' }
+    { id: 'ai',        icon: 'memory',                     label: 'AI' },
+    { id: 'transport', icon: 'play_arrow',                  label: 'TRANSPORT' },
+    { id: 'comp',      icon: 'settings_input_component',    label: 'COMP' },
+    { id: 'limit',     icon: 'linear_scale',                label: 'LIMIT' },
+    { id: 'eq',        icon: 'graphic_eq',                  label: 'EQ' },
+    { id: 'meters',    icon: 'analytics',                   label: 'METERS' }
   ]
 
-  // ---------- SCROLL AUTOMATICO ----------
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  // ── helpers ───────────────────────────────────────────────────────
+  const ts = () => new Date().toLocaleTimeString('en-US', { hour12: false })
 
+  const addMsg = useCallback((msg) => {
+    setMessages(prev => [...prev, { id: Date.now() + Math.random(), ...msg }])
+  }, [])
+
+  const sysMsg = useCallback((text) => addMsg({ type: 'system', text }), [addMsg])
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+
+  // ── bridge init ───────────────────────────────────────────────────
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
-
-  // ---------- INIZIALIZZAZIONE BRIDGE ----------
-  useEffect(() => {
-    whycremisi.onAny((message) => {
-      setLastMessage(message)
-      console.log('[WhyCremisi]', message)
+    const stateUnsub = whycremisi.onStateChange((s) => {
+      setConnStatus(s)
+      if (s === ConnectionState.CONNECTED) {
+        sysMsg(`[${ts()}] WEBSOCKET CONNECTED TO PLUGIN`)
+        setBotState('success')
+        setTimeout(() => setBotState('idle'), 2000)
+      }
+      if (s === ConnectionState.DISCONNECTED || s === ConnectionState.ERROR) {
+        sysMsg(`[${ts()}] CONNECTION LOST — RECONNECTING...`)
+        setBotState('sad')
+      }
+      if (s === ConnectionState.RECONNECTING) {
+        setBotState('loading')
+      }
     })
 
-    // Listener cambio stato connessione
-    const stateUnsub = whycremisi.onStateChange((state) => {
-      setConnectionStatus(state)
-      console.log('[WhyCremisi] Connection state:', state)
-    })
+    window.addEventListener('whycremisi-botstate', (e) => setBotState(e.detail))
 
-    // Listener bot state da eventi
-    window.addEventListener('whycremisi-botstate', (e) => {
-      setBotState(e.detail)
-    })
-
-    // Connettiti al plugin
-    whycremisi.connect().catch((err) => {
-      console.warn('[WhyCremisi] Connessione WebSocket fallita:', err.message)
-    })
-
-    // ---------- LISTENER AI ----------
+    // ── AI response (complete) ──
     const unsubAI = whycremisi.on('ai.response', (payload) => {
-      console.log('[WhyCremisi] AI Response:', payload)
       setBotState('success')
       setTimeout(() => setBotState('idle'), 2000)
-      
-      if (payload && payload.content) {
-        const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false })
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          type: 'bot',
-          text: payload.content,
-          time: timeStr,
-          telemetry: true
-        }])
+      streamingIdRef.current = null
+      if (payload?.content) {
+        addMsg({ type: 'bot', text: payload.content, time: ts(), telemetry: true })
       }
     })
 
-    const unsubAIStream = whycremisi.on('ai.stream', (payload) => {
-      console.log('[WhyCremisi] AI Stream:', payload)
+    // ── AI stream chunks ──
+    const unsubStream = whycremisi.on('ai.stream', (payload) => {
       setBotState('typing')
-      // Streaming characters - update last bot message
-      if (payload && payload.content) {
-        setMessages(prev => {
-          const lastBot = [...prev].reverse().find(m => m.type === 'bot')
-          if (lastBot) {
-            return prev.map(m => m.id === lastBot.id ? { ...m, text: m.text + payload.content } : m)
-          }
-          return prev
-        })
+      const chunk = payload?.chunk ?? payload?.content ?? ''
+      if (!chunk) return
+
+      if (!streamingIdRef.current) {
+        // start new streaming message
+        const newId = Date.now()
+        streamingIdRef.current = newId
+        setMessages(prev => [...prev, { id: newId, type: 'bot', text: chunk, time: ts(), streaming: true }])
+      } else {
+        // append chunk to existing streaming message
+        const sid = streamingIdRef.current
+        setMessages(prev => prev.map(m =>
+          m.id === sid ? { ...m, text: m.text + chunk } : m
+        ))
+      }
+
+      // finalize if isDone
+      if (payload?.isDone) {
+        const sid = streamingIdRef.current
+        setMessages(prev => prev.map(m =>
+          m.id === sid ? { ...m, streaming: false, telemetry: true } : m
+        ))
+        streamingIdRef.current = null
+        setBotState('success')
+        setTimeout(() => setBotState('idle'), 2000)
       }
     })
 
-    // ---------- LISTENER ERRORI ----------
-    const unsubError = whycremisi.on('plugin.error', (payload) => {
-      console.error('[WhyCremisi] Plugin Error:', payload)
+    // ── DAW transport ──
+    const unsubTransport = whycremisi.on('daw.transport', (payload) => {
+      setTransport({
+        isPlaying:   payload.isPlaying  ?? false,
+        isRecording: payload.isRecording ?? false,
+        bpm:         payload.bpm        ?? 120,
+        position:    payload.positionSeconds ?? 0
+      })
+      setDawConnected(true)
+      sysMsg(`[${ts()}] TRANSPORT: ${payload.isPlaying ? '▶ PLAY' : '■ STOP'} | BPM ${payload.bpm?.toFixed(1) ?? '--'}`)
+    })
+
+    // ── DAW meters ──
+    const unsubMeter = whycremisi.on('daw.meter', (payload) => {
+      if (payload.trackId === -1 || payload.trackId === undefined) {
+        // master meters
+        const lDb = payload.leftDb  ?? -20
+        const rDb = payload.rightDb ?? -20
+        setMeterL(Math.max(0, Math.min(1, (lDb + 60) / 72)))
+        setMeterR(Math.max(0, Math.min(1, (rDb + 60) / 72)))
+        setLufs(lDb)
+        setPeak(Math.max(lDb, rDb))
+      }
+    })
+
+    // ── OSC messages ──
+    const unsubOSC = whycremisi.on('osc.message', (payload) => {
+      sysMsg(`[${ts()}] OSC ${payload.address}: ${payload.value}`)
+    })
+
+    // ── plugin errors ──
+    const unsubErr = whycremisi.on('plugin.error', (payload) => {
       setBotState('error')
       setTimeout(() => setBotState('idle'), 3000)
-      setMessages(prev => [...prev, {
-        id: Date.now(),
-        type: 'system',
-        text: `[ERROR] ${payload.message || payload.code || 'Unknown error'}`
-      }])
+      sysMsg(`[${ts()}] [ERROR] ${payload.message || payload.code || 'Unknown error'}`)
     })
 
-    // ---------- LISTENER DAW TRANSPORT ----------
-    const unsubTransport = whycremisi.on('daw.transport', (payload) => {
-      console.log('[WhyCremisi] DAW Transport:', payload)
-      setMessages(prev => [...prev, {
-        id: Date.now(),
-        type: 'system',
-        text: `[TRANSPORT] Play=${payload.isPlaying} Rec=${payload.isRecording} BPM=${payload.bpm || 'N/A'}`
-      }])
+    // connect
+    whycremisi.connect().catch(() => {
+      sysMsg(`[${ts()}] PLUGIN NOT RUNNING — OFFLINE MODE`)
     })
 
-    // ---------- LISTENER PARAMETRI VST ----------
-    const unsubParam = whycremisi.on('daw.parameter', (payload) => {
-      console.log('[WhyCremisi] DAW Parameter:', payload)
-      setMessages(prev => [...prev, {
-        id: Date.now(),
-        type: 'system',
-        text: `[PARAM] ${payload.name || payload.address}: ${payload.value}`
-      }])
-    })
-
-    // Cleanup
     return () => {
-      whycremisi.off('*')
-      stateUnsub()
-      unsubAI()
-      unsubAIStream()
-      unsubError()
-      unsubTransport()
-      unsubParam()
+      stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
+      unsubMeter(); unsubOSC(); unsubErr()
       whycremisi.disconnect()
     }
-  }, [])
+  }, [addMsg, sysMsg])
 
-  // ---------- EFFETTO TYPING (da Heartbroken) ----------
-  const simulateTyping = async (text, messageId, endState = 'idle') => {
-    setBotState('typing')
-    let currentText = ''
-    
-    setMessages(prev => [...prev, {
-      id: messageId,
-      type: 'bot',
-      text: '',
-      telemetry: false
-    }])
-
-    for (let i = 0; i < text.length; i++) {
-      currentText += text[i]
-      setMessages(prev => prev.map(msg =>
-        msg.id === messageId ? { ...msg, text: currentText } : msg
-      ))
-      await new Promise(r => setTimeout(r, 15 + Math.random() * 25))
-    }
-
-    setBotState('success')
-    setTimeout(() => setBotState(endState), 1500)
-  }
-
-  // ---------- HANDLER COMANDI ----------
-  const handleCommand = (e) => {
-    if (e.key === 'Enter' && inputValue.trim() && botState === 'idle') {
-      const newMsgId = Date.now()
-      const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      const command = inputValue.trim()
-
-      // Aggiungi messaggio utente
-      setMessages(prev => [...prev, {
-        id: newMsgId,
-        type: 'user',
-        text: command,
-        time: timeStr
-      }])
-
-      setInputValue('')
-      setBotState('thinking')
-
-      // Invia al bridge - PROMPT AI
-      if (whycremisi.isConnected()) {
-        whycremisi.sendAIPrompt(command, {
-          onResponse: (payload) => {
-            console.log('[WhyCremisi] Prompt response:', payload)
-            setBotState('success')
-            setTimeout(() => setBotState('idle'), 2000)
-          },
-          onError: (err) => {
-            console.error('[WhyCremisi] Prompt error:', err)
-            setBotState('error')
-            setTimeout(() => setBotState('idle'), 2000)
-            setMessages(prev => [...prev, {
-              id: Date.now(),
-              type: 'system',
-              text: `[ERROR] ${err.message || 'Prompt failed'}`
-            }])
-          }
-        })
-      } else {
-        // Offline - simula risposta
-        setBotState('error')
-        setTimeout(() => setBotState('idle'), 2000)
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          type: 'system',
-          text: '[ERROR] Not connected to plugin'
-        }])
-      }
-    }
-  }
-
-  // ---------- HANDLER TRANSPORT DAW ----------
-  const handleTransport = useCallback((action) => {
-    if (whycremisi.isConnected()) {
-      whycremisi.sendDAWCommand(action)
-      console.log('[WhyCremisi] DAW Command:', action)
-    } else {
-      console.warn('[WhyCremisi] Cannot send DAW command - not connected')
-    }
-  }, [])
-
-  // ---------- HANDLER ADVISORY ----------
-  const executeSuggestedChain = () => {
-    if (botState !== 'idle') return
-    setBotState('loading')
-    
-    setTimeout(() => {
-      simulateTyping(
-        "Executing suggested chain. Dynamic dip of -2.4dB applied at 300Hz. Transient preservation locked at 84%. Spectral clarity increased.\n\n[ HB + ]",
-        Date.now()
-      )
-    }, 1000)
-  }
-
-  // ---------- UTILITY ----------
-  const lastBotMsgId = useMemo(() => {
-    const botMsgs = messages.filter(m => m.type === 'bot')
-    return botMsgs.length > 0 ? botMsgs[botMsgs.length - 1].id : null
+  // ── last bot message id ───────────────────────────────────────────
+  const lastBotId = useMemo(() => {
+    const bots = messages.filter(m => m.type === 'bot')
+    return bots.length > 0 ? bots[bots.length - 1].id : null
   }, [messages])
 
-  const dismissAdvisory = (id) => {
-    setMessages(prev => prev.filter(m => m.id !== id))
+  // ── send AI prompt ────────────────────────────────────────────────
+  const handleCommand = (e) => {
+    if (e.key !== 'Enter' || !inputVal.trim() || botState !== 'idle') return
+    const cmd = inputVal.trim()
+    const t = ts()
+    addMsg({ type: 'user', text: cmd, time: t })
+    setInputVal('')
+    setBotState('thinking')
+
+    if (whycremisi.isConnected()) {
+      whycremisi.sendAIPrompt(cmd)
+    } else {
+      // offline fallback — simulate response
+      setTimeout(() => {
+        const offlineId = Date.now()
+        streamingIdRef.current = offlineId
+        setMessages(prev => [...prev, { id: offlineId, type: 'bot', text: '', time: ts(), streaming: true }])
+        setBotState('typing')
+        const reply = '[OFFLINE] Plugin not connected. Connect WhyCremisi VST to enable real AI responses.'
+        let i = 0
+        const ticker = setInterval(() => {
+          i++
+          setMessages(prev => prev.map(m => m.id === offlineId ? { ...m, text: reply.slice(0, i) } : m))
+          if (i >= reply.length) {
+            clearInterval(ticker)
+            setMessages(prev => prev.map(m => m.id === offlineId ? { ...m, streaming: false } : m))
+            streamingIdRef.current = null
+            setBotState('idle')
+          }
+        }, 18)
+      }, 600)
+    }
   }
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-  return (
-    <div className="bg-background select-none h-screen w-screen overflow-hidden text-[#e5e2e1] font-['Space_Grotesk']">
-      {/* CRT Overlay Effect */}
-      <div className="crt-overlay"></div>
+  // ── DAW transport commands ────────────────────────────────────────
+  const dawCmd = useCallback((action, params = {}) => {
+    if (whycremisi.isConnected()) {
+      whycremisi.sendDAWCommand(action, params)
+    } else {
+      sysMsg(`[${ts()}] DAW CMD ${action} — not connected`)
+    }
+  }, [sysMsg])
 
-      {/* ========== TOP NAVIGATION ========== */}
-      <header className="bg-[#131313] flex justify-between items-center w-full px-6 py-3 border-b border-[#222222] z-50 relative">
-        <div className="flex items-center gap-6">
-          <h1 className="text-xl font-black tracking-tighter text-[#DC143C] uppercase">WHYCREMISI</h1>
-          <div className="flex gap-4">
-            <nav className="flex gap-6 font-['Space_Grotesk'] uppercase tracking-[0.1em] font-bold text-sm">
-              <a className="text-[#FFB000] border-b-2 border-[#FFB000] pb-1" href="#">COMMAND</a>
-              <a className="text-[#4d4d4d] hover:text-[#FFB000] transition-colors" href="#">MASTER</a>
-              <a className="text-[#4d4d4d] hover:text-[#FFB000] transition-colors" href="#">TELEMETRY</a>
-              <a className="text-[#4d4d4d] hover:text-[#FFB000] transition-colors" href="#">VECTORS</a>
-            </nav>
-          </div>
+  // ── advisory actions ──────────────────────────────────────────────
+  const executeChain = useCallback(() => {
+    if (botState !== 'idle') return
+    setBotState('loading')
+    if (whycremisi.isConnected()) {
+      whycremisi.sendAIPrompt('Execute suggested mastering chain: apply -2.4dB at 200-400Hz, preserve transients at 84%')
+    } else {
+      const id = Date.now()
+      streamingIdRef.current = id
+      setMessages(prev => [...prev, { id, type: 'bot', text: '', time: ts(), streaming: true }])
+      setBotState('typing')
+      const reply = 'Executing suggested chain.\nDynamic dip of -2.4dB applied at 300Hz.\nTransient preservation locked at 84%.\nSpectral clarity increased.\n\n[ CHAIN APPLIED ]'
+      let i = 0
+      const t = setInterval(() => {
+        i++
+        setMessages(prev => prev.map(m => m.id === id ? { ...m, text: reply.slice(0, i) } : m))
+        if (i >= reply.length) {
+          clearInterval(t)
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, streaming: false, telemetry: true } : m))
+          streamingIdRef.current = null
+          setBotState('success')
+          setTimeout(() => setBotState('idle'), 1500)
+        }
+      }, 16)
+    }
+  }, [botState])
+
+  const dismissAdvisory = useCallback(() => {
+    setMessages(prev => prev.filter(m => m.type !== 'advisory'))
+  }, [])
+
+  // ── gain slider pct ───────────────────────────────────────────────
+  const gainPct = Math.max(0, Math.min(100, ((gainDb + 60) / 72) * 100))
+
+  // ── meter bars ────────────────────────────────────────────────────
+  const meterBars = Array.from({ length: 12 }, (_, i) => ({
+    color: i < 8 ? '#FFB000' : '#DC143C',
+    active: i < Math.round((meterL + meterR) / 2 * 12)
+  }))
+
+  // ── render ────────────────────────────────────────────────────────
+  return (
+    <div className="bg-[#0d0d0d] select-none h-screen w-screen overflow-hidden text-[#e5e2e1] font-['Space_Grotesk']">
+      <div className="crt-overlay" />
+
+      {/* ── HEADER ─────────────────────────────────────────────────── */}
+      <header className="bg-[#131313] flex justify-between items-center w-full px-5 py-2 border-b border-[#222222] z-50 relative h-12">
+        <div className="flex items-center gap-4">
+          {/* BotFace in header */}
+          <BotFace state={botState} className="w-9 h-9" />
+          <h1 className="text-lg font-black tracking-tighter text-[#DC143C] uppercase leading-none">WHYCREMISI</h1>
+          <nav className="flex gap-5 uppercase tracking-[0.1em] font-bold text-[11px]">
+            {['COMMAND','MASTER','TELEMETRY','SESSIONS'].map(tab => (
+              <a key={tab}
+                className={tab === 'COMMAND'
+                  ? 'text-[#FFB000] border-b border-[#FFB000] pb-0.5'
+                  : 'text-[#4d4d4d] hover:text-[#FFB000] transition-colors cursor-pointer'}
+              >{tab}</a>
+            ))}
+          </nav>
         </div>
-        
-        <div className="flex items-center gap-6 text-[10px] font-mono text-[#FFB000] opacity-80">
-          <div className="flex flex-col items-end">
+
+        <div className="flex items-center gap-5 text-[10px] font-mono text-[#FFB000] opacity-80">
+          {/* DAW info */}
+          <div className="flex flex-col items-end text-[9px]">
+            <span>BPM: {transport.bpm.toFixed(1)}</span>
+            <span className={transport.isPlaying ? 'text-[#00FFaa]' : 'text-[#4d4d4d]'}>
+              {transport.isPlaying ? '▶ PLAY' : '■ STOP'}
+            </span>
+          </div>
+          <div className="flex flex-col items-end border-l border-[#222222] pl-4">
             <span>SR: 96kHz</span>
             <span>BUF: 512</span>
           </div>
           <div className="flex flex-col items-end border-l border-[#222222] pl-4">
             <span>CPU: 12%</span>
-            <span>LATENCY: 4.2ms</span>
+            <span>LAT: 4.2ms</span>
           </div>
-          {/* Connection Status Indicator */}
-          <div className="flex items-center gap-2 ml-4">
-            <div className={`w-2 h-2 rounded-full ${
-              connectionStatus === ConnectionState.CONNECTED
-                ? 'bg-[#00FFaa] led-amber-active'
-                : connectionStatus === ConnectionState.CONNECTING
-                ? 'bg-[#FFB000] animate-pulse'
-                : 'bg-[#DC143C] led-red-active'
-            }`}></div>
-            <span>
-              {connectionStatus === ConnectionState.CONNECTED ? 'CONNECTED'
-                : connectionStatus === ConnectionState.CONNECTING ? 'CONNECTING...'
-                : 'DISCONNECTED'}
+
+          {/* Connection LED */}
+          <div className="flex items-center gap-2 ml-3 border-l border-[#222222] pl-4">
+            <motion.div
+              className={`w-2 h-2 rounded-full ${
+                connStatus === ConnectionState.CONNECTED   ? 'bg-[#00FFaa]' :
+                connStatus === ConnectionState.CONNECTING ||
+                connStatus === ConnectionState.RECONNECTING ? 'bg-[#FFB000]' : 'bg-[#DC143C]'
+              }`}
+              animate={connStatus === ConnectionState.CONNECTING || connStatus === ConnectionState.RECONNECTING
+                ? { opacity: [1,0.3,1] } : {}}
+              transition={{ repeat: Infinity, duration: 0.8 }}
+            />
+            <span className="text-[9px] uppercase tracking-widest">
+              {connStatus === ConnectionState.CONNECTED   ? 'CONNECTED' :
+               connStatus === ConnectionState.CONNECTING  ? 'CONNECTING' :
+               connStatus === ConnectionState.RECONNECTING? 'RECONNECT' : 'OFFLINE'}
             </span>
           </div>
-          <div className="flex gap-3 ml-2">
-            <span className="material-symbols-outlined text-sm text-[#4d4d4d] hover:text-[#FFB000] cursor-pointer">settings</span>
-            <span className="material-symbols-outlined text-sm text-[#4d4d4d] hover:text-[#FFB000] cursor-pointer">power_settings_new</span>
+
+          {/* Action icons */}
+          <div className="flex gap-3 ml-1">
+            <span className="material-symbols-outlined text-base text-[#4d4d4d] hover:text-[#FFB000] cursor-pointer">settings</span>
+            <span className="material-symbols-outlined text-base text-[#4d4d4d] hover:text-[#DC143C] cursor-pointer"
+              onClick={() => whycremisi.disconnect()}>power_settings_new</span>
           </div>
         </div>
       </header>
 
-      {/* ========== SIDE MODULE ========== */}
-      <aside className="fixed left-0 top-12 h-[calc(100vh-3rem)] w-20 flex flex-col items-center py-4 bg-[#131313] border-r border-[#222222] z-40">
-        <div className="text-[10px] font-mono text-[#4d4d4d] uppercase mb-8 rotate-180" style={{ writingMode: 'vertical-lr' }}>
-          MODULES // V1.0.4-STABLE
+      {/* ── SIDEBAR ────────────────────────────────────────────────── */}
+      <aside className="fixed left-0 top-12 h-[calc(100vh-3rem)] w-16 flex flex-col items-center py-3 bg-[#131313] border-r border-[#222222] z-40">
+        <div className="text-[9px] font-mono text-[#4d4d4d] uppercase mb-6 rotate-180 select-none" style={{ writingMode:'vertical-lr' }}>
+          MODULES
         </div>
-        <div className="flex flex-col w-full">
-          {sideModules.map(mod => (
-            <motion.div
-              key={mod.id}
-              className={`py-4 flex flex-col items-center gap-1 cursor-pointer transition-all ${
-                activeSideModule === mod.id
-                  ? 'text-[#DC143C] bg-[#1a1a1a] border-l-4 border-[#DC143C]'
-                  : 'text-[#4d4d4d] hover:text-[#FFB000] hover:bg-[#1a1a1a]'
-              }`}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => {
-                setActiveSideModule(mod.id)
-                if (mod.id === 'transport') handleTransport('play')
-                if (mod.id === 'comp') handleTransport('comp')
-                if (mod.id === 'eq') handleTransport('eq')
-                if (mod.id === 'limit') handleTransport('limit')
-                if (mod.id === 'meters') handleTransport('meters')
-              }}
-            >
-              <span className="material-symbols-outlined text-xl">{mod.icon}</span>
-              <span className="font-['Space_Grotesk'] font-mono text-[10px] uppercase">{mod.label}</span>
-            </motion.div>
-          ))}
-        </div>
+        {sideModules.map(mod => (
+          <motion.button
+            key={mod.id}
+            className={`w-full py-3 flex flex-col items-center gap-0.5 transition-colors ${
+              activeMod === mod.id
+                ? 'text-[#DC143C] bg-[#1a1a1a] border-l-4 border-[#DC143C]'
+                : 'text-[#4d4d4d] hover:text-[#FFB000] hover:bg-[#1a1a1a] border-l-4 border-transparent'
+            }`}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.94 }}
+            onClick={() => setActiveMod(mod.id)}
+          >
+            <span className="material-symbols-outlined text-lg">{mod.icon}</span>
+            <span className="text-[8px] font-bold uppercase font-mono">{mod.label}</span>
+          </motion.button>
+        ))}
       </aside>
 
-      {/* ========== MAIN GRID ========== */}
-      <main className="ml-20 mt-0 h-[calc(100vh-3rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden bg-[#0d0d0d] relative z-10">
+      {/* ── MAIN GRID ──────────────────────────────────────────────── */}
+      <main className="ml-16 mt-0 h-[calc(100vh-3rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden bg-[#0d0d0d] relative z-10">
 
-        {/* ========== AI CHAT INTERFACE ========== */}
-        <section className="col-span-9 row-span-4 bg-[#0e0e0e] relative border border-[#222222] flex flex-col overflow-hidden">
-          <div className="bg-[#1a1a1a] px-4 py-2 flex justify-between items-center border-b border-[#222222]">
+        {/* ── AI CHAT CONSOLE (9/12 × 4/6) ──────────────────────── */}
+        <section className="col-span-9 row-span-4 bg-[#0e0e0e] border border-[#222222] flex flex-col overflow-hidden">
+          <div className="bg-[#1a1a1a] px-4 py-1.5 flex justify-between items-center border-b border-[#222222]">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-[#FFB000] led-amber-active"></div>
+              <div className="w-1.5 h-1.5 rounded-full bg-[#FFB000] led-amber-active" />
               <span className="text-[10px] font-bold text-[#FFB000] tracking-widest uppercase">AI COMMAND CONSOLE</span>
             </div>
-            <span className="text-[9px] text-[#4d4d4d] font-mono">NEURAL_MASTERING_V4.2.0</span>
+            <div className="flex items-center gap-4 text-[9px] font-mono text-[#4d4d4d]">
+              <span>NEURAL_MASTERING_V4.2.0</span>
+              {dawConnected && <span className="text-[#00FFaa]">● DAW SYNC</span>}
+            </div>
           </div>
 
-          {/* Message History */}
-          <div className="flex-1 p-6 font-mono overflow-y-auto custom-scrollbar space-y-6">
+          {/* Messages */}
+          <div className="flex-1 px-6 py-4 font-mono overflow-y-auto custom-scrollbar space-y-4">
             <AnimatePresence>
               {messages.map((msg) => {
-                // SYSTEM MESSAGE
-                if (msg.type === 'system') {
-                  return (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 0.4 }}
-                      className="text-[10px] font-mono"
-                    >
-                      {msg.text?.split('...')[0]}... <span className="text-[#FFB000]">{msg.text?.split('...')[1]}</span>
-                    </motion.div>
-                  )
-                }
+                if (msg.type === 'system') return (
+                  <motion.div key={msg.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.45 }}
+                    className="text-[10px] font-mono text-[#e5e2e1]"
+                  >
+                    {msg.text}
+                  </motion.div>
+                )
 
-                // ADVISORY CARD (AI suggerisce azioni)
-                if (msg.type === 'advisory') {
-                  return (
-                    <motion.div
-                      key="advisory-1"
-                      initial={{ opacity: 0, y: 10, scale: 0.98, filter: 'blur(4px)' }}
-                      animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0)' }}
-                      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                      exit={{ opacity: 0, scale: 0.98 }}
-                      className="animate-advisory-in group relative mt-4 mb-6"
-                    >
-                      <div className="absolute -top-4 -right-2 opacity-5 pointer-events-none select-none parallax-item">
-                        <pre className="text-[8px] leading-tight text-white font-mono">
-                          0x45 0x21 0x88{'\n'}
-                          [TRANS_LOCK]{'\n'}
-                          0xFF 0x00 0x12
-                        </pre>
+                if (msg.type === 'advisory') return (
+                  <motion.div key="advisory"
+                    initial={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(4px)' }}
+                    animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0)' }}
+                    exit={{ opacity: 0, scale: 0.97 }}
+                    transition={{ duration: 0.55, ease: [0.22,1,0.36,1] }}
+                    className="mt-2 mb-4"
+                  >
+                    <div className="advisory-breathe bg-[#121212] border border-[#DC143C]/40 p-4 relative">
+                      {/* Decorative mini bar chart */}
+                      <div className="absolute top-2 right-4 flex items-end gap-[2px] h-5 opacity-30">
+                        {[35,70,50,90,60].map((h,i) => (
+                          <div key={i} className="w-[2px] bg-[#DC143C]" style={{ height:`${h}%` }} />
+                        ))}
                       </div>
-                      <div className="advisory-card advisory-breathe bg-[#121212] border border-[#DC143C]/40 p-5 relative font-mono transition-all duration-500 hover:bg-[#161616] group-hover:scale-[1.005]">
-                        {/* Mini bar graph */}
-                        <div className="absolute top-2 right-4 flex items-end gap-[2px] h-6 opacity-40 parallax-item">
-                          {[40, 70, 55, 90, 65].map((h, i) => (
-                            <div key={i} className="w-[2px] bg-[#DC143C]" style={{ height: `${h}%` }}></div>
-                          ))}
+                      <div className="flex items-start gap-3 mb-3 border-b border-[#222222] pb-2">
+                        <div className="w-1 h-6 bg-[#DC143C] relative overflow-hidden flex-shrink-0 mt-0.5">
+                          <motion.div className="absolute inset-0 bg-white/20"
+                            animate={{ y:['0%','100%','0%'] }}
+                            transition={{ repeat:Infinity, duration:2 }}
+                          />
                         </div>
-                        
-                        <div className="flex justify-between items-start mb-4 border-b border-[#222222] pb-2">
-                          <div className="flex items-center gap-3">
-                            <div className="w-1.5 h-6 bg-[#DC143C] relative overflow-hidden">
-                              <motion.div
-                                className="absolute inset-0 bg-white/20"
-                                animate={{ y: ['0%', '100%', '0%'] }}
-                                transition={{ repeat: Infinity, duration: 2 }}
-                              />
-                            </div>
-                            <div>
-                              <span className="text-[#DC143C] text-[11px] font-bold tracking-tighter uppercase block">AI_MASTERING_ADVISORY_CORE</span>
-                              <span className="text-[8px] text-[#4d4d4d] tracking-[0.2em]">NODE: CREMISI_X9</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end">
-                            <span className="text-[9px] text-white/40 font-bold uppercase tracking-widest">Priority: <span className="text-[#DC143C]">High</span></span>
-                            <span className="text-[7px] text-[#4d4d4d] font-mono mt-0.5">ID: #B87-FF01</span>
-                          </div>
-                        </div>
-                        
-                        <div className="text-sm leading-relaxed text-[#FFB000] space-y-5 relative">
-                          <p className="leading-relaxed drop-shadow-[0_0_8px_rgba(255,176,0,0.1)]">
-                            Detected significant harmonic crowding in the <span className="text-white border-b border-[#DC143C]/40 px-1 font-bold">200Hz - 400Hz</span> range.
-                            Suggesting a surgical dynamic dip of <span className="bg-[#DC143C] text-white px-1.5 font-bold">-2.4dB</span> to increase spectral clarity.
-                            Transient preservation currently at <span className="text-white underline decoration-dotted decoration-[#4d4d4d]">84%</span>.
-                          </p>
-                          
-                          <div className="flex gap-4 opacity-30 text-[8px] font-mono parallax-item">
-                            <span>HEX: 0xDC143C</span>
-                            <span>VAL: -2.4dB_COR</span>
-                            <span>SIG: 0.982</span>
-                            <span>LAT: 0.2ms</span>
-                          </div>
-                          
-                          <div className="flex flex-wrap gap-4 pt-2">
-                            <motion.button
-                              className="group/btn relative bg-[#DC143C] text-white px-5 py-2 text-[10px] font-bold uppercase overflow-hidden transition-all duration-300 active:scale-95 hover:shadow-[0_0_20px_rgba(220,20,60,0.6)] hover:bg-white hover:text-[#DC143C] tracking-widest border border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={executeSuggestedChain}
-                              disabled={botState !== 'idle'}
-                            >
-                              <span className="relative z-10 flex items-center gap-2">
-                                <span className="material-symbols-outlined text-[14px]">bolt</span>
-                                EXECUTE SUGGESTED CHAIN
-                              </span>
-                            </motion.button>
-                            
-                            <motion.button
-                              className="group/btn border border-[#4d4d4d] text-[#4d4d4d] px-5 py-2 text-[10px] font-bold uppercase transition-all duration-300 active:scale-95 hover:border-[#FFB000] hover:text-[#FFB000] hover:shadow-[0_0_15px_rgba(255,176,0,0.2)] tracking-widest"
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.95 }}
-                            >
-                              ANALYZE FURTHER
-                            </motion.button>
-                            
-                            <motion.button
-                              className="text-[#4d4d4d] hover:text-white transition-colors text-[9px] font-bold uppercase self-center hover:underline decoration-[#DC143C]"
-                              whileHover={{ scale: 1.05 }}
-                              onClick={() => dismissAdvisory('advisory-1')}
-                            >
-                              DISMISS
-                            </motion.button>
-                          </div>
+                        <div>
+                          <span className="text-[#DC143C] text-[11px] font-bold tracking-tighter uppercase block">AI MASTERING ADVISORY</span>
+                          <span className="text-[8px] text-[#4d4d4d] tracking-[0.2em]">NODE: CREMISI_X9 · PRIORITY: HIGH</span>
                         </div>
                       </div>
-                    </motion.div>
-                  )
-                }
-
-                // USER MESSAGE
-                if (msg.type === 'user') {
-                  return (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="flex flex-col items-end space-y-1 mt-4"
-                    >
-                      <div className="bg-[#222222]/50 border border-[#FFB000]/20 px-4 py-2 max-w-[80%] text-sm text-white/90 font-mono italic">
-                        {msg.text}
+                      <p className="text-sm text-[#FFB000] leading-relaxed mb-4">
+                        Detected harmonic crowding in <span className="text-white font-bold border-b border-[#DC143C]/40 px-1">200Hz–400Hz</span> range.
+                        Suggesting dynamic dip of <span className="bg-[#DC143C] text-white px-1.5 font-bold">-2.4dB</span>.
+                        Transient preservation at <span className="text-white underline decoration-dotted">84%</span>.
+                      </p>
+                      <div className="flex gap-3 flex-wrap">
+                        <motion.button
+                          className="bg-[#DC143C] text-white px-4 py-1.5 text-[10px] font-bold uppercase hover:bg-white hover:text-[#DC143C] transition-colors tracking-widest disabled:opacity-40"
+                          whileTap={{ scale: 0.95 }}
+                          onClick={executeChain}
+                          disabled={botState !== 'idle'}
+                        >
+                          <span className="material-symbols-outlined text-[13px] align-middle mr-1">bolt</span>
+                          EXECUTE CHAIN
+                        </motion.button>
+                        <motion.button
+                          className="border border-[#4d4d4d] text-[#4d4d4d] px-4 py-1.5 text-[10px] font-bold uppercase hover:border-[#FFB000] hover:text-[#FFB000] transition-colors tracking-widest"
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => { if(botState==='idle') { addMsg({type:'user',text:'Analyze the low end further',time:ts()}); setBotState('thinking') } }}
+                        >ANALYZE FURTHER</motion.button>
+                        <button className="text-[#4d4d4d] hover:text-white text-[9px] font-bold uppercase self-center transition-colors"
+                          onClick={dismissAdvisory}>DISMISS</button>
                       </div>
-                      <span className="text-[9px] text-[#4d4d4d] mr-2 uppercase font-bold tracking-widest">
-                        User Request // {msg.time}
-                      </span>
-                    </motion.div>
-                  )
-                }
+                    </div>
+                  </motion.div>
+                )
 
-                // BOT MESSAGE
+                if (msg.type === 'user') return (
+                  <motion.div key={msg.id}
+                    initial={{ opacity:0, x:20 }}
+                    animate={{ opacity:1, x:0 }}
+                    transition={{ duration:0.3 }}
+                    className="flex flex-col items-end gap-1"
+                  >
+                    <div className="bg-[#222222]/50 border border-[#FFB000]/20 px-4 py-2 max-w-[80%] text-sm text-white/90 font-mono italic">
+                      {msg.text}
+                    </div>
+                    <span className="text-[9px] text-[#4d4d4d] mr-1 uppercase font-bold tracking-widest">
+                      User // {msg.time}
+                    </span>
+                  </motion.div>
+                )
+
                 if (msg.type === 'bot') {
-                  const isLatest = msg.id === lastBotMsgId
+                  const isLatest = msg.id === lastBotId
                   return (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.4 }}
-                      className="flex gap-4 mt-6"
+                    <motion.div key={msg.id}
+                      initial={{ opacity:0, y:8 }}
+                      animate={{ opacity:1, y:0 }}
+                      transition={{ duration:0.4 }}
+                      className="flex gap-4"
                     >
-                      {/* BotFace */}
-                      <div className="flex-shrink-0 mt-1 w-16 h-16 flex items-center justify-center">
-                        {isLatest ? (
-                          <BotFace state={botState} className="w-16 h-16" />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full border border-[#FFB000]/20 bg-[#1a1a1a] flex items-center justify-center opacity-30">
-                            <span className="material-symbols-outlined text-[12px] text-[#FFB000]">smart_toy</span>
-                          </div>
-                        )}
+                      <div className="flex-shrink-0 mt-1">
+                        {isLatest
+                          ? <BotFace state={botState} className="w-14 h-14" />
+                          : <div className="w-8 h-8 rounded-full border border-[#FFB000]/20 bg-[#1a1a1a] flex items-center justify-center opacity-30">
+                              <span className="material-symbols-outlined text-[12px] text-[#FFB000]">smart_toy</span>
+                            </div>
+                        }
                       </div>
-
-                      {/* Message content */}
-                      <div className="flex-1 bg-[#1a1a1a] border border-[#FFB000]/10 p-4 relative font-mono">
-                        <div className="absolute top-0 left-0 w-[2px] h-full bg-[#FFB000]"></div>
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-[#FFB000] text-[11px] font-bold tracking-tighter uppercase">AI_TELEMETRY_ENGINE</span>
-                          <span className="text-[9px] text-[#4d4d4d]">DATA_FETCH: SUCCESS</span>
+                      <div className="flex-1 bg-[#1a1a1a] border border-[#FFB000]/10 p-4 relative">
+                        <div className="absolute top-0 left-0 w-[2px] h-full bg-[#FFB000]" />
+                        <div className="flex justify-between items-start mb-1.5">
+                          <span className="text-[#FFB000] text-[10px] font-bold tracking-tighter uppercase">WHYCREMISI AI</span>
+                          <span className="text-[9px] text-[#4d4d4d] font-mono">{msg.time}</span>
                         </div>
-                        
-                        <div className="text-sm text-[#e5e2e1] space-y-4">
-                          <p className="leading-relaxed whitespace-pre-wrap">
-                            {msg.text}
-                            {/* Typing cursor */}
-                            {botState === 'typing' && isLatest && (
-                              <motion.span
-                                className="inline-block w-1.5 h-4 bg-[#FFB000] ml-1"
-                                animate={{ opacity: [1, 0, 1] }}
-                                transition={{ repeat: Infinity, duration: 0.8 }}
-                              />
-                            )}
-                          </p>
-
-                          {/* Telemetry data */}
-                          {msg.telemetry && (
-                            <motion.div
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#0d0d0d]/50 p-3 border border-[#222222]"
-                            >
-                              <div className="space-y-1">
+                        <p className="text-sm text-[#e5e2e1] leading-relaxed whitespace-pre-wrap">
+                          {msg.text}
+                          {msg.streaming && (
+                            <motion.span className="inline-block w-1.5 h-4 bg-[#FFB000] ml-1 align-middle"
+                              animate={{ opacity:[1,0,1] }}
+                              transition={{ repeat:Infinity, duration:0.7 }}
+                            />
+                          )}
+                        </p>
+                        {msg.telemetry && !msg.streaming && (
+                          <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:0.3 }}
+                            className="mt-3 grid grid-cols-2 gap-3 bg-[#0d0d0d]/60 p-3 border border-[#222222]"
+                          >
+                            {[['L/R Balance','52% R','#DC143C',52],['Side Content','38.4%','#FFB000',38.4]].map(([lbl,val,clr,pct])=>(
+                              <div key={lbl} className="space-y-1">
                                 <div className="flex justify-between text-[9px] uppercase font-bold">
-                                  <span className="text-[#4d4d4d]">L/R Balance</span>
-                                  <span className="text-[#DC143C]">52% R</span>
-                                </div>
-                                <div className="h-1.5 bg-[#222222] w-full relative">
-                                  <div className="absolute left-1/2 -translate-x-1/2 w-[1px] h-full bg-[#4d4d4d] z-10"></div>
-                                  <motion.div
-                                    className="h-full bg-[#DC143C] w-[52%]"
-                                    initial={{ width: '0%' }}
-                                    animate={{ width: '52%' }}
-                                    transition={{ duration: 1, ease: 'easeOut' }}
-                                    style={{ marginLeft: '48%' }}
-                                  />
-                                </div>
-                              </div>
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-[9px] uppercase font-bold">
-                                  <span className="text-[#4d4d4d]">Side Content</span>
-                                  <span className="text-[#FFB000]">38.4%</span>
+                                  <span className="text-[#4d4d4d]">{lbl}</span>
+                                  <span style={{ color:clr }}>{val}</span>
                                 </div>
                                 <div className="h-1.5 bg-[#222222] w-full">
-                                  <motion.div
-                                    className="h-full bg-[#FFB000]"
-                                    initial={{ width: '0%' }}
-                                    animate={{ width: '38.4%' }}
-                                    transition={{ duration: 1, ease: 'easeOut' }}
-                                    style={{ boxShadow: '0 0 5px rgba(255,176,0,0.4)' }}
+                                  <motion.div className="h-full"
+                                    style={{ backgroundColor:clr, boxShadow:`0 0 4px ${clr}60` }}
+                                    initial={{ width:'0%' }}
+                                    animate={{ width:`${pct}%` }}
+                                    transition={{ duration:1, ease:'easeOut' }}
                                   />
                                 </div>
                               </div>
-                            </motion.div>
-                          )}
-                        </div>
+                            ))}
+                          </motion.div>
+                        )}
                       </div>
                     </motion.div>
                   )
                 }
-
                 return null
               })}
             </AnimatePresence>
             <div ref={chatEndRef} />
           </div>
 
-          {/* Terminal Input */}
-          <div className="h-14 bg-[#131313] border-t border-[#222222] flex items-center px-6 gap-4">
-            <span className="text-[#FFB000] font-bold text-sm tracking-widest shrink-0">CMD &gt;</span>
+          {/* Terminal input */}
+          <div className="h-12 bg-[#131313] border-t border-[#222222] flex items-center px-5 gap-3">
+            <span className="text-[#FFB000] font-bold text-sm tracking-widest shrink-0">CMD&gt;</span>
             <div className="flex-1 relative flex items-center">
               <input
-                className="w-full bg-transparent border-none text-white font-mono text-sm focus:ring-0 focus:outline-none placeholder-[#4d4d4d] p-0 disabled:opacity-50"
-                placeholder={botState !== 'idle' ? 'PROCESSING...' : 'Type command (e.g. /analyze_spectral, play, stop)...'}
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                className="w-full bg-transparent border-none text-white font-mono text-sm focus:ring-0 focus:outline-none placeholder-[#4d4d4d] p-0 disabled:opacity-40"
+                placeholder={botState !== 'idle' ? 'PROCESSING...' : 'Ask the AI anything about your mix...'}
+                value={inputVal}
+                onChange={e => setInputVal(e.target.value)}
                 onKeyDown={handleCommand}
                 disabled={botState !== 'idle'}
               />
-              {botState === 'idle' && <div className="terminal-cursor"></div>}
+              {botState === 'idle' && <div className="terminal-cursor" />}
             </div>
             <div className="flex gap-2 text-[#4d4d4d]">
-              <span className="material-symbols-outlined text-lg cursor-pointer hover:text-[#FFB000]">mic</span>
-              <span className="material-symbols-outlined text-lg cursor-pointer hover:text-[#FFB000]">attachment</span>
-              <span className="material-symbols-outlined text-lg cursor-pointer hover:text-[#FFB000] ml-2" onClick={() => handleTransport('play')}>play_arrow</span>
-              <span className="material-symbols-outlined text-lg cursor-pointer hover:text-[#FFB000]" onClick={() => handleTransport('stop')}>stop</span>
-              <span className="material-symbols-outlined text-lg cursor-pointer hover:text-[#FFB000]" onClick={() => handleTransport('record')}>fiber_manual_record</span>
+              <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
+                className="material-symbols-outlined text-lg cursor-pointer hover:text-[#FFB000] transition-colors"
+                onClick={() => dawCmd('play')}>play_arrow</motion.button>
+              <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
+                className="material-symbols-outlined text-lg cursor-pointer hover:text-[#FFB000] transition-colors"
+                onClick={() => dawCmd('stop')}>stop</motion.button>
+              <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
+                className={`material-symbols-outlined text-lg cursor-pointer transition-colors ${transport.isRecording ? 'text-[#DC143C] led-red-active' : 'hover:text-[#DC143C]'}`}
+                onClick={() => dawCmd('record')}>fiber_manual_record</motion.button>
             </div>
           </div>
         </section>
 
-        {/* ========== MASTERING RACK ========== */}
+        {/* ── MASTERING RACK (3/12 × 4/6) ───────────────────────── */}
         <section className="col-span-3 row-span-4 bg-[#131313] border border-[#222222] flex flex-col">
-          <div className="bg-[#1a1a1a] px-4 py-2 border-b border-[#222222]">
+          <div className="bg-[#1a1a1a] px-4 py-1.5 border-b border-[#222222] flex justify-between items-center">
             <span className="text-[10px] font-bold text-[#DC143C] tracking-widest uppercase">MASTERING RACK</span>
+            <span className="text-[9px] font-mono text-[#4d4d4d]">STEREO MASTER</span>
           </div>
-          
-          <div className="flex-1 flex p-4 gap-6">
-            {/* Precision Gain Slider */}
-            <div className="w-16 flex flex-col items-center gap-2">
+
+          <div className="flex-1 flex p-4 gap-5 overflow-hidden">
+            {/* Gain fader */}
+            <div className="w-14 flex flex-col items-center gap-1">
               <span className="text-[8px] font-mono text-[#FFB000]">+12</span>
-              <div className="flex-1 w-8 bg-[#0e0e0e] border border-[#222222] relative flex flex-col justify-end p-1">
-                {[10, 25, 50, 75].map(pct => (
-                  <div key={pct} className="absolute inset-x-0 h-[1px] bg-[#4d4d4d] opacity-20" style={{ top: `${pct}%` }}></div>
+              <div
+                className="flex-1 w-8 bg-[#0e0e0e] border border-[#222222] relative flex flex-col justify-end p-1 cursor-ns-resize"
+                onMouseMove={(e) => {
+                  if (e.buttons !== 1) return
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const pct = 1 - (e.clientY - rect.top) / rect.height
+                  setGainDb(Math.round((pct * 72 - 60) * 10) / 10)
+                  if (whycremisi.isConnected()) whycremisi.sendDAWCommand('setGain', { value: pct })
+                }}
+              >
+                {[10,25,50,75].map(p => (
+                  <div key={p} className="absolute inset-x-1 h-[0.5px] bg-[#4d4d4d] opacity-30" style={{ top:`${p}%` }} />
                 ))}
-                <div className="w-full h-[60%] bg-gradient-to-t from-[#DC143C]/20 to-[#DC143C] border-t-2 border-[#ffb3b3] shadow-[0_0_10px_rgba(220,20,60,0.5)] smooth-transition"></div>
-                <div className="absolute bottom-[60%] left-[-10px] right-[-10px] h-4 bg-[#e5e2e1] cursor-ns-resize shadow-lg z-10 smooth-transition"></div>
+                <motion.div
+                  className="w-full bg-gradient-to-t from-[#DC143C]/30 to-[#DC143C] border-t-2 border-[#ffb3b3]"
+                  style={{ height: `${gainPct}%`, boxShadow:'0 0 8px rgba(220,20,60,0.4)' }}
+                  animate={{ height: `${gainPct}%` }}
+                  transition={{ duration:0.1 }}
+                />
               </div>
               <span className="text-[8px] font-mono text-[#FFB000]">-INF</span>
-              <span className="text-[10px] font-bold text-[#e5e2e1] mt-2">GAIN</span>
+              <span className="text-[10px] font-bold text-[#e5e2e1] mt-1">{gainDb > 0 ? `+${gainDb}` : gainDb}dB</span>
+              <span className="text-[8px] font-mono text-[#4d4d4d]">GAIN</span>
             </div>
 
-            {/* Controls Cluster */}
-            <div className="flex-1 flex flex-col gap-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-bold uppercase text-[#4d4d4d]">Deep Neural</span>
-                  <motion.div
-                    className="w-4 h-4 bg-[#1a1a1a] border border-[#DC143C]/30 flex items-center justify-center cursor-pointer"
-                    whileHover={{ scale: 1.1 }}
-                    onClick={() => setBotState(botState === 'idle' ? 'thinking' : 'idle')}
-                  >
-                    <div className={`w-2 h-2 rounded-full ${botState !== 'idle' ? 'bg-[#DC143C] led-red-active' : 'bg-[#222222]'}`}></div>
-                  </motion.div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-bold uppercase text-[#4d4d4d]">Master Chain</span>
-                  <motion.div
-                    className="w-4 h-4 bg-[#1a1a1a] border border-[#4d4d4d] flex items-center justify-center cursor-pointer"
-                    whileHover={{ scale: 1.1 }}
-                  >
-                    <div className="w-2 h-2 rounded-full bg-[#222222]"></div>
-                  </motion.div>
+            {/* Controls cluster */}
+            <div className="flex-1 flex flex-col gap-4 min-w-0">
+              {/* Toggles */}
+              <div className="space-y-3">
+                {[
+                  { label:'Deep Neural', state: botState !== 'idle' },
+                  { label:'Master Chain', state: dawConnected }
+                ].map(({ label, state: on }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="text-[9px] font-bold uppercase text-[#4d4d4d] truncate">{label}</span>
+                    <motion.div
+                      className={`w-4 h-4 border flex items-center justify-center cursor-pointer flex-shrink-0 ${on ? 'border-[#DC143C]/60' : 'border-[#4d4d4d]'}`}
+                      whileHover={{ scale:1.1 }}
+                    >
+                      <div className={`w-2 h-2 rounded-full ${on ? 'bg-[#DC143C] led-red-active' : 'bg-[#222222]'}`} />
+                    </motion.div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Sat type */}
+              <div className="border-t border-[#222222] pt-3">
+                <span className="text-[8px] text-[#FFB000] uppercase opacity-60 block mb-1">Saturation</span>
+                <div className="bg-[#0e0e0e] border border-[#222222] px-2 py-1 text-[10px] text-[#FFB000] flex justify-between items-center">
+                  <span>CRIMSON_TUBE</span>
+                  <span className="material-symbols-outlined text-[13px]">expand_more</span>
                 </div>
               </div>
 
-              <div className="flex-1 border-t border-[#222222] pt-4 flex flex-col gap-4">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[8px] text-[#FFB000] uppercase opacity-60">Saturation Type</span>
-                  <motion.div
-                    className="bg-[#0e0e0e] border border-[#222222] px-2 py-1 text-[10px] text-[#FFB000] flex justify-between items-center cursor-pointer hover:border-[#FFB000]/40 transition-colors"
-                    whileHover={{ borderColor: 'rgba(255,176,0,0.4)' }}
-                  >
-                    <span>CRIMSON_TUBE</span>
-                    <span className="material-symbols-outlined text-[14px]">expand_more</span>
-                  </motion.div>
-                </div>
-
-                {/* Knob SVG */}
-                <div className="flex-1 flex flex-col items-center justify-center relative">
-                  <svg className="w-24 h-24 rotate-[-90deg]" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" fill="none" r="40" stroke="#222222" strokeWidth="4"></circle>
-                    <motion.circle
-                      className="knob-segment"
-                      cx="50" cy="50" fill="none" r="40"
-                      stroke="#DC143C"
-                      strokeDasharray="180 251"
-                      strokeWidth="4"
-                      initial={{ strokeDasharray: '0 251' }}
-                      animate={{ strokeDasharray: '180 251' }}
-                      transition={{ duration: 1, ease: 'easeOut' }}
-                    />
-                  </svg>
-                  <div className="absolute flex flex-col items-center">
-                    <span className="text-[12px] font-bold text-[#e5e2e1]">72.5</span>
-                    <span className="text-[8px] text-[#FFB000] uppercase font-mono">DRIVE</span>
-                  </div>
+              {/* Drive knob */}
+              <div className="flex-1 flex flex-col items-center justify-center relative">
+                <svg className="w-20 h-20 rotate-[-90deg] cursor-pointer" viewBox="0 0 100 100"
+                  onMouseMove={(e) => {
+                    if (e.buttons !== 1) return
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2
+                    const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI
+                    const norm = Math.max(0, Math.min(100, ((angle + 180) / 360) * 100))
+                    setDriveVal(Math.round(norm * 10) / 10)
+                    if (whycremisi.isConnected()) whycremisi.sendDAWCommand('setDrive', { value: norm/100 })
+                  }}
+                >
+                  <circle cx="50" cy="50" r="38" fill="none" stroke="#222222" strokeWidth="4" />
+                  <motion.circle
+                    cx="50" cy="50" r="38" fill="none" stroke="#DC143C" strokeWidth="4"
+                    strokeLinecap="round"
+                    initial={{ strokeDasharray:'0 239' }}
+                    animate={{ strokeDasharray:`${driveVal / 100 * 239} 239` }}
+                    transition={{ duration:0.15 }}
+                    style={{ filter:'drop-shadow(0 0 4px #DC143C)' }}
+                  />
+                </svg>
+                <div className="absolute flex flex-col items-center pointer-events-none">
+                  <span className="text-[13px] font-bold text-[#e5e2e1]">{driveVal.toFixed(1)}</span>
+                  <span className="text-[8px] text-[#FFB000] uppercase font-mono">DRIVE</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Peak Meter */}
-          <div className="h-12 bg-[#0e0e0e] border-t border-[#222222] flex items-center px-4 gap-2">
+          {/* Peak meter strip */}
+          <div className="h-10 bg-[#0e0e0e] border-t border-[#222222] flex items-center px-3 gap-2">
             <div className="flex-1 h-2 bg-[#1a1a1a] flex gap-[1px]">
-              {[40, 40, 60, 80, 100, 60, 100, 100].map((opacity, i) => (
-                <motion.div
-                  key={i}
-                  className="flex-1 h-full"
-                  style={{
-                    backgroundColor: i < 5 ? '#FFB000' : '#DC143C',
-                    opacity: opacity / 100
-                  }}
-                  animate={{
-                    opacity: [opacity / 100, (opacity + 10) / 100, opacity / 100],
-                    scaleY: [1, 1.1, 1]
-                  }}
-                  transition={{
-                    repeat: Infinity,
-                    duration: 0.5 + i * 0.1,
-                    delay: i * 0.05
-                  }}
+              {meterBars.map((bar, i) => (
+                <motion.div key={i} className="flex-1 h-full"
+                  animate={{ opacity: bar.active ? 1 : 0.12, scaleY: bar.active ? [1,1.15,1] : 1 }}
+                  transition={{ scaleY: { repeat:Infinity, duration:0.4+i*0.05, delay:i*0.04 } }}
+                  style={{ backgroundColor: bar.color }}
                 />
               ))}
             </div>
-            <span className="text-[10px] font-mono text-[#DC143C] font-bold">PEAK!</span>
+            <span className={`text-[9px] font-mono font-bold ${peak > -1 ? 'text-[#DC143C]' : 'text-[#4d4d4d]'}`}>
+              {peak > -1 ? 'PEAK!' : 'OK'}
+            </span>
           </div>
         </section>
 
-        {/* ========== VECTOR SCOPE ========== */}
-        <section className="col-span-12 row-span-2 bg-[#0e0e0e] border border-[#222222] relative overflow-hidden flex flex-col">
-          <div className="absolute top-2 left-4 z-10 flex items-center gap-4">
-            <span className="text-[10px] font-bold text-[#FFB000] uppercase opacity-80">Vector Scope: STEREO_FIELD</span>
-            <div className="h-[1px] w-48 bg-gradient-to-r from-[#FFB000] to-transparent"></div>
+        {/* ── VECTOR SCOPE / WAVEFORM (full width × 2/6) ─────────── */}
+        <section className="col-span-12 row-span-2 bg-[#0e0e0e] border border-[#222222] relative overflow-hidden">
+          <div className="absolute top-2 left-4 z-10 flex items-center gap-3">
+            <span className="text-[10px] font-bold text-[#FFB000] uppercase opacity-80">VECTOR SCOPE · STEREO FIELD</span>
+            <div className="h-[0.5px] w-32 bg-gradient-to-r from-[#FFB000] to-transparent" />
+          </div>
+          <div className="absolute top-2 right-4 z-10 flex gap-6 text-[8px] font-mono text-[#4d4d4d] uppercase">
+            <span>L: {(meterL * -60 + 0).toFixed(1)}dB</span>
+            <span>R: {(meterR * -60 + 0).toFixed(1)}dB</span>
+            <span>LUFS: {lufs.toFixed(1)}</span>
           </div>
 
-          <div className="flex-1 relative">
-            {/* Grid background */}
-            <div className="absolute inset-0">
-              <div className="absolute inset-0 bg-gradient-to-b from-[#0d0d0d] via-[#0e0e0e] to-[#0d0d0d]"></div>
-              <div className="absolute inset-0 opacity-20" style={{
-                backgroundImage: 'linear-gradient(#4d4d4d 0.5px, transparent 0.5px), linear-gradient(90deg, #4d4d4d 0.5px, transparent 0.5px)',
-                backgroundSize: '40px 40px'
-              }}></div>
-              <div className="absolute inset-0 opacity-5" style={{
-                backgroundImage: 'linear-gradient(#4d4d4d 0.25px, transparent 0.25px), linear-gradient(90deg, #4d4d4d 0.25px, transparent 0.25px)',
-                backgroundSize: '10px 10px'
-              }}></div>
-              {/* Scanlines */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <motion.div
-                  className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#FFB000]/20 to-transparent absolute"
-                  animate={{ top: ['0%', '100%'] }}
-                  transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
-                />
-                <motion.div
-                  className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#DC143C]/20 to-transparent absolute"
-                  animate={{ top: ['0%', '100%'] }}
-                  transition={{ repeat: Infinity, duration: 4, ease: 'linear', delay: 0.5 }}
-                />
-              </div>
-              {/* Center cross */}
-              <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none">
-                <div className="w-full h-[0.5px] bg-[#FFB000]"></div>
-                <div className="h-full w-[0.5px] bg-[#FFB000] absolute"></div>
-              </div>
-              <div className="absolute bottom-2 right-4 flex gap-4 text-[8px] font-mono text-[#4d4d4d] uppercase">
-                <span>Gain_Scale: Linear</span>
-                <span>Res: 24-bit/96kHz</span>
-              </div>
-            </div>
-
-            {/* Waveform SVG */}
-            <svg className="w-full h-full" preserveAspectRatio="none">
-              <motion.path
-                className="drop-shadow-[0_0_8px_rgba(220,20,60,0.4)]"
-                d="M0,80 Q50,10 100,90 T200,40 T300,110 T400,20 T500,85 T600,45 T700,95 T800,35 T900,105 T1000,60"
-                fill="none"
-                stroke="#DC143C"
-                strokeOpacity="0.8"
-                strokeWidth="1.5"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 2, ease: 'easeInOut' }}
-              />
-              <motion.path
-                className="drop-shadow-[0_0_4px_rgba(255,176,0,0.3)]"
-                d="M0,75 Q55,15 105,85 T205,35 T305,115 T405,25 T505,80 T605,50 T705,90 T805,40 T905,100 T1005,65"
-                fill="none"
-                stroke="#FFB000"
-                strokeOpacity="0.4"
-                strokeWidth="0.8"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 2.5, ease: 'easeInOut', delay: 0.3 }}
-              />
-            </svg>
+          {/* Grid */}
+          <div className="absolute inset-0 opacity-15"
+            style={{ backgroundImage:'linear-gradient(#4d4d4d 0.5px,transparent 0.5px),linear-gradient(90deg,#4d4d4d 0.5px,transparent 0.5px)', backgroundSize:'40px 40px' }}
+          />
+          <div className="absolute inset-0 opacity-5"
+            style={{ backgroundImage:'linear-gradient(#4d4d4d 0.25px,transparent 0.25px),linear-gradient(90deg,#4d4d4d 0.25px,transparent 0.25px)', backgroundSize:'10px 10px' }}
+          />
+          {/* Center crosshair */}
+          <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+            <div className="w-full h-[0.5px] bg-[#FFB000]" />
+            <div className="h-full w-[0.5px] bg-[#FFB000] absolute" />
           </div>
+
+          {/* Scanlines */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <motion.div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#FFB000]/20 to-transparent absolute"
+              animate={{ top:['0%','100%'] }}
+              transition={{ repeat:Infinity, duration:3, ease:'linear' }}
+            />
+            <motion.div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#DC143C]/15 to-transparent absolute"
+              animate={{ top:['0%','100%'] }}
+              transition={{ repeat:Infinity, duration:4.5, ease:'linear', delay:1 }}
+            />
+          </div>
+
+          {/* Waveform */}
+          <svg className="w-full h-full" preserveAspectRatio="none">
+            <motion.path
+              d="M0,80 Q50,10 100,90 T200,40 T300,110 T400,20 T500,85 T600,45 T700,95 T800,35 T900,105 T1000,60"
+              fill="none" stroke="#DC143C" strokeOpacity="0.75" strokeWidth="1.5"
+              style={{ filter:'drop-shadow(0 0 6px rgba(220,20,60,0.4))' }}
+              initial={{ pathLength:0 }}
+              animate={{ pathLength:1 }}
+              transition={{ duration:2, ease:'easeInOut' }}
+            />
+            <motion.path
+              d="M0,75 Q55,15 105,85 T205,35 T305,115 T405,25 T505,80 T605,50 T705,90 T805,40 T905,100 T1005,65"
+              fill="none" stroke="#FFB000" strokeOpacity="0.35" strokeWidth="0.8"
+              initial={{ pathLength:0 }}
+              animate={{ pathLength:1 }}
+              transition={{ duration:2.5, ease:'easeInOut', delay:0.3 }}
+            />
+          </svg>
         </section>
       </main>
 
-      {/* ========== FOOTER ========== */}
-      <footer className="fixed bottom-0 left-0 w-full z-50 flex justify-between items-center h-10 border-t border-[#222222] bg-[#0d0d0d] px-6">
-        <div className="flex items-center gap-4">
-          <motion.div
-            className="flex items-center gap-2 px-4 text-[#FFB000] font-mono text-[12px]"
-            whileHover={{ scale: 1.02 }}
-          >
-            <span className="material-symbols-outlined text-sm">equalizer</span>
-            <span>LUFS: -14.2</span>
-          </motion.div>
-          <div className="flex items-center gap-2 px-4 text-[#4d4d4d] font-mono text-[12px]">
-            <span className="material-symbols-outlined text-sm">priority_high</span>
-            <span>PEAK: -0.1dB</span>
-          </div>
-          <div className="flex items-center gap-2 px-4 text-[#4d4d4d] font-mono text-[12px]">
-            <span className="material-symbols-outlined text-sm">speed</span>
-            <span>RMS: -16.4</span>
-          </div>
+      {/* ── FOOTER ─────────────────────────────────────────────────── */}
+      <footer className="fixed bottom-0 left-0 w-full z-50 flex justify-between items-center h-9 border-t border-[#222222] bg-[#0d0d0d] px-5">
+        <div className="flex items-center gap-5 text-[10px] font-mono">
+          {[
+            { icon:'equalizer', label:`LUFS: ${lufs.toFixed(1)}`, color:'#FFB000' },
+            { icon:'priority_high', label:`PEAK: ${peak.toFixed(1)}dB`, color: peak>-1?'#DC143C':'#4d4d4d' },
+            { icon:'speed', label:`L: ${(meterL*100).toFixed(0)}%  R: ${(meterR*100).toFixed(0)}%`, color:'#4d4d4d' }
+          ].map(({ icon, label, color }) => (
+            <div key={label} className="flex items-center gap-1.5" style={{ color }}>
+              <span className="material-symbols-outlined text-sm">{icon}</span>
+              <span>{label}</span>
+            </div>
+          ))}
         </div>
+
         <div className="flex items-center gap-4">
-          <motion.div
-            className="text-[10px] font-mono text-[#FFB000]"
-            animate={{ opacity: [0.8, 1, 0.8] }}
-            transition={{ repeat: Infinity, duration: 2 }}
+          <motion.span className="text-[9px] font-mono text-[#FFB000] uppercase tracking-widest"
+            animate={{ opacity:[0.7,1,0.7] }}
+            transition={{ repeat:Infinity, duration:2.5 }}
           >
-            {connectionStatus === ConnectionState.CONNECTED
-              ? '[CONNECTED] // READY'
-              : '[OFFLINE] // AWAITING SIGNAL'}
-          </motion.div>
+            {connStatus === ConnectionState.CONNECTED ? '◉ CONNECTED // READY' : '◌ OFFLINE // AWAITING SIGNAL'}
+          </motion.span>
           <motion.div
-            className={`h-4 w-4 ${
-              connectionStatus === ConnectionState.CONNECTED
-                ? 'bg-[#FFB000] led-amber-active'
-                : 'bg-[#4d4d4d]'
-            }`}
-            animate={connectionStatus === ConnectionState.CONNECTED ? {
-              boxShadow: ['0 0 8px #FFB000', '0 0 15px #FFB000', '0 0 8px #FFB000']
-            } : {}}
-            transition={{ repeat: Infinity, duration: 1.5 }}
+            className={`h-3 w-3 ${connStatus === ConnectionState.CONNECTED ? 'bg-[#FFB000] led-amber-active' : 'bg-[#4d4d4d]'}`}
+            animate={connStatus === ConnectionState.CONNECTED
+              ? { boxShadow:['0 0 6px #FFB000','0 0 14px #FFB000','0 0 6px #FFB000'] } : {}}
+            transition={{ repeat:Infinity, duration:1.8 }}
           />
         </div>
       </footer>
