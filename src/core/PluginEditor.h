@@ -41,6 +41,10 @@ public:
     //==============================================================================
     void paint(juce::Graphics&) override;
     void resized() override;
+    void parentHierarchyChanged() override;
+
+    // Richiesto per WKWebView: abilita Core Animation layer-backing nella finestra host
+    bool wantsLayerBackedView() const override { return true; }
 
     //==============================================================================
     // Gestione messaggi dal frontend

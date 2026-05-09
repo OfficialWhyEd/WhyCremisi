@@ -10,7 +10,10 @@
 #include "PluginProcessor.h"
 
 //==============================================================================
-WhyCremisiBrowser::WhyCremisiBrowser() {}
+WhyCremisiBrowser::WhyCremisiBrowser()
+    : juce::WebBrowserComponent (juce::WebBrowserComponent::Options{}
+                                      .withKeepPageLoadedWhenBrowserIsHidden())
+{}
 
 bool WhyCremisiBrowser::pageAboutToLoad(const juce::String& url)
 {
@@ -138,17 +141,18 @@ void WhyCremisiProcessorEditor::setupFallbackUI()
 
 juce::String WhyCremisiProcessorEditor::getUIURL() const
 {
-#if JUCE_DEBUG
-    return "http://localhost:5173";
-#else
-    // In Release: carica il bundle React dall'app package
-    auto appFile = juce::File::getSpecialLocation(juce::File::currentApplicationFile);
-    auto indexFile = appFile.getChildFile("Contents/Resources/webview-ui/index.html");
-    if (indexFile.existsAsFile())
-        return juce::URL(indexFile).toString(false);
-    // Fallback al dev server se il bundle non c'è
-    return "http://localhost:5173";
-#endif
+    // Prova prima Vite dev (5173), poi Vite preview/bundle (4173)
+    // WKWebView su macOS blocca file:// URLs — usiamo sempre HTTP locale
+    auto tryPort = [](int port) -> bool {
+        juce::StreamingSocket sock;
+        bool ok = sock.connect("127.0.0.1", port, 300);
+        sock.close();
+        return ok;
+    };
+
+    if (tryPort(5173)) return "http://localhost:5173";
+    if (tryPort(4173)) return "http://localhost:4173";
+    return "http://localhost:5173"; // fallback (mostrerà errore di connessione, ma aspetta il server)
 }
 
 //==============================================================================
@@ -203,5 +207,13 @@ void WhyCremisiProcessorEditor::paint(juce::Graphics& g)
 void WhyCremisiProcessorEditor::resized()
 {
     if (webView)
+        webView->setBounds(getLocalBounds());
+}
+
+void WhyCremisiProcessorEditor::parentHierarchyChanged()
+{
+    // Quando il componente viene attaccato alla finestra nativa, forza il resize del WebView.
+    // Senza questo, WKWebView rimane a 100x100 (la dimensione iniziale del WKWebViewImpl).
+    if (webView && getWidth() > 0)
         webView->setBounds(getLocalBounds());
 }
