@@ -22,9 +22,11 @@
 #include "WebSocketServer.h"
 #include <juce_core/juce_core.h>
 #include <nlohmann/json.hpp>
+#include <thread>
 
 // Forward declarations
 class AiEngine;
+class SessionManager;
 
 class OscBridge
 {
@@ -88,7 +90,10 @@ public:
     //==============================================================================
     /** Set AI Engine for processing prompts */
     void setAiEngine(AiEngine* engine);
-    
+
+    /** Set Session Manager for event logging */
+    void setSessionManager(SessionManager* sm);
+
     /** Get current AI response status */
     bool isAiProcessing() const { return aiProcessing.load(); }
     
@@ -131,8 +136,12 @@ private:
     void dispatchOscSend(const nlohmann::json& payload);
 
     // AI Engine reference (for ai.prompt messages)
-    AiEngine* aiEngine = nullptr;
-    std::atomic<bool> aiProcessing{false};
+    AiEngine*       aiEngine       = nullptr;
+    SessionManager* sessionManager = nullptr;
+    std::atomic<bool> aiProcessing {false};
+
+    // AI thread (async dispatch)
+    std::unique_ptr<std::thread> aiThread;
 
     // JSON message builders
     nlohmann::json makeDawTransport();
