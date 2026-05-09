@@ -9,6 +9,7 @@
 */
 
 #include "AiEngine.h"
+#include <nlohmann/json.hpp>
 
 AiEngine::AiEngine()
 {
@@ -140,17 +141,15 @@ bool AiEngine::testConnection()
 juce::String AiEngine::makeHttpRequest(const juce::String& urlStr,
                                         const juce::String& method,
                                         const juce::String& jsonBody,
-                                        int timeoutMs)
+                                        int timeoutMs,
+                                        const juce::String& extraHeaders)
 {
     juce::URL url(urlStr);
-    
+
     juce::String headers;
     headers += "Content-Type: application/json\r\n";
-    
-    if (config.apiKey.isNotEmpty())
-    {
-        headers += "Authorization: Bearer " + config.apiKey + "\r\n";
-    }
+    if (extraHeaders.isNotEmpty())
+        headers += extraHeaders;
     
     std::unique_ptr<juce::InputStream> stream;
     
@@ -207,115 +206,67 @@ juce::String AiEngine::makeHttpRequest(const juce::String& urlStr,
     return response;
 }
 
-juce::String AiEngine::parseJsonResponse(const juce::String& json, const juce::String& key)
-{
-    // Simple JSON parsing without external library
-    // Look for "key": "value" or "key":value patterns
-    juce::String searchKey = "\"" + key + "\"";
-    int keyPos = json.indexOf(searchKey);
-    
-    if (keyPos < 0)
-        return {};
-    
-    // Find the value after the key
-    int colonPos = json.indexOf(keyPos, ":");
-    if (colonPos < 0)
-        return {};
-    
-    int valueStart = colonPos + 1; // Skip colon
-    
-    // Skip whitespace
-    while (valueStart < json.length() && (json[valueStart] == ' ' || json[valueStart] == '\t'))
-        valueStart++;
-    
-    // Check if value is quoted
-    if (json[valueStart] == '"')
-    {
-        valueStart++;
-        int valueEnd = json.indexOf(valueStart, "\"");
-        if (valueEnd > valueStart)
-            return json.substring(valueStart, valueEnd);
-    }
-    else
-    {
-        // Unquoted value (number, bool, null)
-        int valueEnd = valueStart;
-        while (valueEnd < json.length() && json[valueEnd] != ',' && json[valueEnd] != '}' && json[valueEnd] != ']' && json[valueEnd] != ' ')
-            valueEnd++;
-        return json.substring(valueStart, valueEnd);
-    }
-    
-    return {};
-}
-
-//==============================================================================
-// JSON Escape Helper
-//==============================================================================
-
-static juce::String escapeJsonString(const juce::String& input)
-{
-    juce::String result = input;
-    result = result.replace("\\", "\\\\");
-    result = result.replace("\"", "\\\"");
-    result = result.replace("\n", "\\n");
-    result = result.replace("\r", "\\r");
-    result = result.replace("\t", "\\t");
-    return result;
-}
-
 //==============================================================================
 // Provider implementations
 //==============================================================================
 
+static juce::String parseError(const juce::String& raw)
+{
+    try {
+        auto j = nlohmann::json::parse(raw.toStdString());
+        if (j.contains("error") && j["error"].is_object() && j["error"].contains("message"))
+            return juce::String(j["error"]["message"].get<std::string>());
+        if (j.contains("error") && j["error"].is_string())
+            return juce::String(j["error"].get<std::string>());
+    } catch (...) {}
+    return raw.substring(0, 200);
+}
+
+// Shared body builder for OpenAI-compatible APIs
+static nlohmann::json buildOpenAIBody(const juce::String& model, const juce::String& prompt,
+                                       float temperature, int maxTokens)
+{
+    nlohmann::json body;
+    body["model"] = model.toStdString();
+    body["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", prompt.toStdString()}}});
+    body["temperature"] = temperature;
+    if (maxTokens > 0)
+        body["max_tokens"] = maxTokens;
+    return body;
+}
+
 juce::String AiEngine::callOllama(const juce::String& prompt)
 {
-    // Ollama API: POST /api/generate
-    // Also supports /api/chat for conversation history
-    juce::String url = config.baseUrl + "/api/generate";
-    
-    // Escape JSON string properly
-    juce::String escapedPrompt = escapeJsonString(prompt);
-    
-    // Build JSON body manually
-    juce::String jsonBody = "{";
-    jsonBody += "\"model\": \"" + config.model + "\",";
-    jsonBody += "\"prompt\": \"" + escapedPrompt + "\",";
-    jsonBody += "\"stream\": false,";
-    jsonBody += "\"options\": {";
-    jsonBody += "\"temperature\": " + juce::String(config.temperature);
+    nlohmann::json body;
+    body["model"] = config.model.toStdString();
+    body["prompt"] = prompt.toStdString();
+    body["stream"] = false;
+    body["options"]["temperature"] = config.temperature;
     if (config.maxTokens > 0)
-        jsonBody += ", \"num_predict\": " + juce::String(config.maxTokens);
-    jsonBody += "}";
-    jsonBody += "}";
-    
-    // Make HTTP POST request
-    juce::String response = makeHttpRequest(url, "POST", jsonBody, config.timeoutMs);
-    
-    if (response.isEmpty())
+        body["options"]["num_predict"] = config.maxTokens;
+
+    juce::String raw = makeHttpRequest(config.baseUrl + "/api/generate", "POST",
+                                       juce::String(body.dump()), config.timeoutMs);
+    if (raw.isEmpty())
     {
-        if (lastError.isEmpty())
-            lastError = "Empty response from Ollama. Is it running?";
+        if (lastError.isEmpty()) lastError = "Empty response from Ollama. Is it running?";
         return "[ERROR] " + lastError;
     }
-    
-    // Parse response - Ollama returns: {"response": "...", "done": true}
-    juce::String aiResponse = parseJsonResponse(response, "response");
-    
-    if (aiResponse.isEmpty())
-    {
-        // Check for error in response
-        if (response.contains("error"))
+
+    try {
+        auto j = nlohmann::json::parse(raw.toStdString());
+        if (j.contains("response"))
+            return juce::String(j["response"].get<std::string>());
+        if (j.contains("error"))
         {
-            juce::String errorMsg = parseJsonResponse(response, "error");
-            lastError = "Ollama error: " + errorMsg;
+            lastError = "Ollama: " + juce::String(j["error"].get<std::string>());
             return "[ERROR] " + lastError;
         }
-        // Try alternative parsing - response might be in different format
-        // Some Ollama versions return response directly in body
-        return "[Ollama] Response received but could not parse: " + response.substring(0, 200);
+    } catch (const std::exception& e) {
+        lastError = juce::String("JSON parse: ") + e.what();
     }
-    
-    return aiResponse;
+
+    return "[ERROR] " + lastError + " | Raw: " + raw.substring(0, 200);
 }
 
 juce::String AiEngine::callGemini(const juce::String& prompt)
@@ -325,46 +276,31 @@ juce::String AiEngine::callGemini(const juce::String& prompt)
         lastError = "Gemini API key not configured";
         return "[ERROR] " + lastError;
     }
-    
-    // Google Gemini API: POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
-    juce::String url = "https://generativelanguage.googleapis.com/v1beta/models/" 
+
+    juce::String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                        + config.model + ":generateContent?key=" + config.apiKey;
-    
-    // Escape prompt for JSON
-    juce::String escapedPrompt = escapeJsonString(prompt);
-    
-    juce::String jsonBody = "{";
-    jsonBody += "\"contents\": [{";
-    jsonBody += "\"parts\": [{";
-    jsonBody += "\"text\": \"" + escapedPrompt + "\"";
-    jsonBody += "}]";
-    jsonBody += "}],";
-    jsonBody += "\"generationConfig\": {";
-    jsonBody += "\"temperature\": " + juce::String(config.temperature);
+
+    nlohmann::json body;
+    body["contents"] = nlohmann::json::array({{{"parts", nlohmann::json::array({{{"text", prompt.toStdString()}}})}}});
+    body["generationConfig"]["temperature"] = config.temperature;
     if (config.maxTokens > 0)
-        jsonBody += ", \"maxOutputTokens\": " + juce::String(config.maxTokens);
-    jsonBody += "}";
-    jsonBody += "}";
-    
-    juce::String response = makeHttpRequest(url, "POST", jsonBody, config.timeoutMs);
-    
-    if (response.isEmpty())
+        body["generationConfig"]["maxOutputTokens"] = config.maxTokens;
+
+    juce::String raw = makeHttpRequest(url, "POST", juce::String(body.dump()), config.timeoutMs);
+    if (raw.isEmpty())
     {
-        if (lastError.isEmpty())
-            lastError = "Empty response from Gemini API";
+        if (lastError.isEmpty()) lastError = "Empty response from Gemini API";
         return "[ERROR] " + lastError;
     }
-    
-    // Parse Gemini response: candidates[0].content.parts[0].text
-    // Simplified parsing - look for "text": "..."
-    juce::String aiResponse = parseJsonResponse(response, "text");
-    if (aiResponse.isEmpty())
-    {
-        lastError = "Failed to parse Gemini response";
-        return "[ERROR] " + lastError + " | Raw: " + response.substring(0, 200);
+
+    try {
+        auto j = nlohmann::json::parse(raw.toStdString());
+        return juce::String(j.at("candidates").at(0).at("content").at("parts").at(0).at("text").get<std::string>());
+    } catch (const std::exception& e) {
+        lastError = juce::String("Gemini parse: ") + e.what() + " | " + parseError(raw);
     }
-    
-    return aiResponse;
+
+    return "[ERROR] " + lastError;
 }
 
 juce::String AiEngine::callAnthropic(const juce::String& prompt)
@@ -374,177 +310,74 @@ juce::String AiEngine::callAnthropic(const juce::String& prompt)
         lastError = "Anthropic API key not configured";
         return "[ERROR] " + lastError;
     }
-    
-    // Anthropic API: POST https://api.anthropic.com/v1/messages
-    juce::String url = "https://api.anthropic.com/v1/messages";
-    
-    // Escape prompt for JSON
-    juce::String escapedPrompt = escapeJsonString(prompt);
-    
-    juce::String jsonBody = "{";
-    jsonBody += "\"model\": \"" + config.model + "\",";
-    jsonBody += "\"max_tokens\": " + juce::String(config.maxTokens > 0 ? config.maxTokens : 1024) + ",";
-    jsonBody += "\"messages\": [{";
-    jsonBody += "\"role\": \"user\",";
-    jsonBody += "\"content\": \"" + escapedPrompt + "\"";
-    jsonBody += "}],";
-    jsonBody += "\"temperature\": " + juce::String(config.temperature);
-    jsonBody += "}";
-    
-    // Note: Anthropic requires custom header "x-api-key" instead of Authorization Bearer
-    // We'll need to modify makeHttpRequest for this, but for now use standard auth
-    juce::String response = makeHttpRequest(url, "POST", jsonBody, config.timeoutMs);
-    
-    if (response.isEmpty())
+
+    nlohmann::json body;
+    body["model"] = config.model.toStdString();
+    body["max_tokens"] = (config.maxTokens > 0 ? config.maxTokens : 1024);
+    body["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", prompt.toStdString()}}});
+
+    // Anthropic requires x-api-key + anthropic-version, NOT Authorization: Bearer
+    juce::String authHeaders = "x-api-key: " + config.apiKey + "\r\n"
+                               "anthropic-version: 2023-06-01\r\n";
+
+    juce::String raw = makeHttpRequest("https://api.anthropic.com/v1/messages", "POST",
+                                       juce::String(body.dump()), config.timeoutMs, authHeaders);
+    if (raw.isEmpty())
     {
-        if (lastError.isEmpty())
-            lastError = "Empty response from Anthropic API";
+        if (lastError.isEmpty()) lastError = "Empty response from Anthropic API";
         return "[ERROR] " + lastError;
     }
-    
-    // Parse Anthropic response: content[0].text
-    juce::String aiResponse = parseJsonResponse(response, "text");
-    if (aiResponse.isEmpty())
-    {
-        lastError = "Failed to parse Anthropic response";
-        return "[ERROR] " + lastError + " | Raw: " + response.substring(0, 200);
+
+    try {
+        auto j = nlohmann::json::parse(raw.toStdString());
+        return juce::String(j.at("content").at(0).at("text").get<std::string>());
+    } catch (const std::exception& e) {
+        lastError = juce::String("Anthropic parse: ") + e.what() + " | " + parseError(raw);
     }
-    
-    return aiResponse;
+
+    return "[ERROR] " + lastError;
+}
+
+juce::String AiEngine::callOpenAICompatible(const juce::String& url, const juce::String& prompt)
+{
+    if (config.apiKey.isEmpty())
+    {
+        lastError = "API key not configured";
+        return "[ERROR] " + lastError;
+    }
+
+    auto body = buildOpenAIBody(config.model, prompt, config.temperature, config.maxTokens);
+    juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n";
+
+    juce::String raw = makeHttpRequest(url, "POST", juce::String(body.dump()),
+                                       config.timeoutMs, authHeader);
+    if (raw.isEmpty())
+    {
+        if (lastError.isEmpty()) lastError = "Empty response from " + url;
+        return "[ERROR] " + lastError;
+    }
+
+    try {
+        auto j = nlohmann::json::parse(raw.toStdString());
+        return juce::String(j.at("choices").at(0).at("message").at("content").get<std::string>());
+    } catch (const std::exception& e) {
+        lastError = juce::String("Parse error: ") + e.what() + " | " + parseError(raw);
+    }
+
+    return "[ERROR] " + lastError;
 }
 
 juce::String AiEngine::callOpenAI(const juce::String& prompt)
 {
-    if (config.apiKey.isEmpty())
-    {
-        lastError = "OpenAI API key not configured";
-        return "[ERROR] " + lastError;
-    }
-    
-    // OpenAI API: POST https://api.openai.com/v1/chat/completions
-    juce::String url = "https://api.openai.com/v1/chat/completions";
-    
-    // Escape prompt for JSON
-    juce::String escapedPrompt = escapeJsonString(prompt);
-    
-    juce::String jsonBody = "{";
-    jsonBody += "\"model\": \"" + config.model + "\",";
-    jsonBody += "\"messages\": [{";
-    jsonBody += "\"role\": \"user\",";
-    jsonBody += "\"content\": \"" + escapedPrompt + "\"";
-    jsonBody += "}],";
-    jsonBody += "\"temperature\": " + juce::String(config.temperature);
-    if (config.maxTokens > 0)
-        jsonBody += ", \"max_tokens\": " + juce::String(config.maxTokens);
-    jsonBody += "}";
-    
-    juce::String response = makeHttpRequest(url, "POST", jsonBody, config.timeoutMs);
-    
-    if (response.isEmpty())
-    {
-        if (lastError.isEmpty())
-            lastError = "Empty response from OpenAI API";
-        return "[ERROR] " + lastError;
-    }
-    
-    // Parse OpenAI response: choices[0].message.content
-    // First try to find "content" key
-    juce::String aiResponse = parseJsonResponse(response, "content");
-    if (aiResponse.isEmpty())
-    {
-        lastError = "Failed to parse OpenAI response";
-        return "[ERROR] " + lastError + " | Raw: " + response.substring(0, 200);
-    }
-    
-    return aiResponse;
+    return callOpenAICompatible("https://api.openai.com/v1/chat/completions", prompt);
 }
 
 juce::String AiEngine::callOpenRouter(const juce::String& prompt)
 {
-    if (config.apiKey.isEmpty())
-    {
-        lastError = "OpenRouter API key not configured";
-        return "[ERROR] " + lastError;
-    }
-    
-    // OpenRouter API: POST https://openrouter.ai/api/v1/chat/completions
-    juce::String url = "https://openrouter.ai/api/v1/chat/completions";
-    
-    // Escape prompt for JSON
-    juce::String escapedPrompt = escapeJsonString(prompt);
-    
-    juce::String jsonBody = "{";
-    jsonBody += "\"model\": \"" + config.model + "\",";
-    jsonBody += "\"messages\": [{";
-    jsonBody += "\"role\": \"user\",";
-    jsonBody += "\"content\": \"" + escapedPrompt + "\"";
-    jsonBody += "}],";
-    jsonBody += "\"temperature\": " + juce::String(config.temperature);
-    if (config.maxTokens > 0)
-        jsonBody += ", \"max_tokens\": " + juce::String(config.maxTokens);
-    jsonBody += "}";
-    
-    juce::String response = makeHttpRequest(url, "POST", jsonBody, config.timeoutMs);
-    
-    if (response.isEmpty())
-    {
-        if (lastError.isEmpty())
-            lastError = "Empty response from OpenRouter API";
-        return "[ERROR] " + lastError;
-    }
-    
-    // Parse OpenRouter response (same format as OpenAI): choices[0].message.content
-    juce::String aiResponse = parseJsonResponse(response, "content");
-    if (aiResponse.isEmpty())
-    {
-        lastError = "Failed to parse OpenRouter response";
-        return "[ERROR] " + lastError + " | Raw: " + response.substring(0, 200);
-    }
-    
-    return aiResponse;
+    return callOpenAICompatible("https://openrouter.ai/api/v1/chat/completions", prompt);
 }
 
 juce::String AiEngine::callGroq(const juce::String& prompt)
 {
-    if (config.apiKey.isEmpty())
-    {
-        lastError = "Groq API key not configured";
-        return "[ERROR] " + lastError;
-    }
-    
-    // Groq API: POST https://api.groq.com/openai/v1/chat/completions
-    juce::String url = "https://api.groq.com/openai/v1/chat/completions";
-    
-    // Escape prompt for JSON
-    juce::String escapedPrompt = escapeJsonString(prompt);
-    
-    juce::String jsonBody = "{";
-    jsonBody += "\"model\": \"" + config.model + "\",";
-    jsonBody += "\"messages\": [{";
-    jsonBody += "\"role\": \"user\",";
-    jsonBody += "\"content\": \"" + escapedPrompt + "\"";
-    jsonBody += "}],";
-    jsonBody += "\"temperature\": " + juce::String(config.temperature);
-    if (config.maxTokens > 0)
-        jsonBody += ", \"max_tokens\": " + juce::String(config.maxTokens);
-    jsonBody += "}";
-    
-    juce::String response = makeHttpRequest(url, "POST", jsonBody, config.timeoutMs);
-    
-    if (response.isEmpty())
-    {
-        if (lastError.isEmpty())
-            lastError = "Empty response from Groq API";
-        return "[ERROR] " + lastError;
-    }
-    
-    // Parse Groq response (same format as OpenAI): choices[0].message.content
-    juce::String aiResponse = parseJsonResponse(response, "content");
-    if (aiResponse.isEmpty())
-    {
-        lastError = "Failed to parse Groq response";
-        return "[ERROR] " + lastError + " | Raw: " + response.substring(0, 200);
-    }
-    
-    return aiResponse;
+    return callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", prompt);
 }

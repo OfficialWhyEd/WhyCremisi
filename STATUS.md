@@ -1,6 +1,22 @@
 # OpenClaw VST Bridge AI - Stato Progetto
 
-**Ultimo aggiornamento:** 2026-04-14 (Sessione 2)
+**Ultimo aggiornamento:** 2026-05-09 — Claude (sessione setup macOS + bug fixes)
+
+---
+
+## ✅ Completato — Sessione 09/05 (Claude — macOS setup + bug fixes)
+
+| Fix | File | Dettaglio |
+|-----|------|-----------|
+| Build macOS JUCE 8 | `CMakeLists.txt` | Aggiunto path `/Users/whyed/` — build [100%] pulita su Monterey + AppleClang 14 |
+| Anthropic headers | `src/ai/AiEngine.cpp` | Era `Authorization: Bearer` → ora `x-api-key` + `anthropic-version: 2023-06-01` come da spec API |
+| JSON parser | `src/ai/AiEngine.cpp` | Rimosso parser manuale fragile, tutti i provider usano nlohmann (già in third_party) |
+| Deduplicazione AI | `src/ai/AiEngine.cpp` | OpenAI/OpenRouter/Groq unificati in `callOpenAICompatible()` |
+| OSC type tag bug | `src/osc/OscHandler.cpp` | Null terminator del type tag non veniva saltato se già allineato → args puntava al null invece dei dati payload |
+| Race condition OSC | `src/bridge/OscBridge.cpp` | `isRunning()` chiamato prima che il thread OSC completasse il bind — aggiunto sleep(50ms) |
+| npm install | `webview-ui/` | Dipendenze React installate localmente |
+
+**Build verificata:** VST3 + Standalone compilati senza errori su macOS 12.6.3, JUCE 8.0.12.
 
 ---
 
