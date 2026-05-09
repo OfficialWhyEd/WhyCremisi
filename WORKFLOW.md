@@ -1,6 +1,6 @@
 # 🤝 Workflow Git - Regole del Team
 
-**Progetto:** OpenClaw VST Bridge AI  
+**Progetto:** WhyCremisi VST Bridge AI  
 **Team:** Carlo (Aura) + Edo (Heartbroken) + Claude (Heartbroken-Claude)  
 **Ultimo aggiornamento:** 09 Maggio 2026
 

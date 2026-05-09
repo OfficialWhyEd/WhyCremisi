@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   PluginProcessor.h
-  OpenClaw VST Bridge AI - Main Audio Processor
+  WhyCremisi VST Plugin - Main Audio Processor
   ==============================================================================
 */
 
@@ -16,12 +16,12 @@ class AiEngine;
 class OscBridge;
 
 //==============================================================================
-class OpenClawAudioProcessor : public juce::AudioProcessor
+class WhyCremisiProcessor : public juce::AudioProcessor
 {
 public:
     //==============================================================================
-    OpenClawAudioProcessor();
-    ~OpenClawAudioProcessor() override;
+    WhyCremisiProcessor();
+    ~WhyCremisiProcessor() override;
 
     //==============================================================================
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
@@ -38,7 +38,7 @@ public:
     bool hasEditor() const override { return true; }
 
     //==============================================================================
-    const juce::String getName() const override { return "OpenClaw VST Bridge AI"; }
+    const juce::String getName() const override { return "WhyCremisi VST Plugin"; }
 
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }
@@ -59,7 +59,7 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     //==============================================================================
-    // OpenClaw specific methods
+    // WhyCremisi specific methods
     
     // AI Engine
     void sendAiPrompt(const juce::String& prompt);
@@ -110,5 +110,5 @@ private:
     int oscPort = 9000;
     
     //==============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OpenClawAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WhyCremisiProcessor)
 };

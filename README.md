@@ -1,4 +1,4 @@
-# OpenClaw VST Bridge AI
+# WhyCremisi VST Bridge AI
 
 **⚠️ IMPORTANTE: Leggi prima `WORKFLOW.md` per le regole di collaborazione tra Aura e Heartbroken.**
 
@@ -22,7 +22,7 @@ cmake --build build --config Release
 ### Install Plugin
 ```bash
 # VST3 location
-cp build/OpenClawVSTPlugin_artefacts/VST3/OpenClawVSTPlugin.vst3 ~/.vst3/
+cp build/WhyCremisiVSTPlugin_artefacts/VST3/WhyCremisiVSTPlugin.vst3 ~/.vst3/
 ```
 
 ## Project Structure

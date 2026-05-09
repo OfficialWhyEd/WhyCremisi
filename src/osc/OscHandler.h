@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   OscHandler.h
-  OpenClaw VST Bridge AI - OSC Communication Handler
+  WhyCremisi VST Plugin - OSC Communication Handler
   
   Bidirectional OSC: receives from DAW and sends back.
   Receive: UDP listener on configurable port (default 9000)

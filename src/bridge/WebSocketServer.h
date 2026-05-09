@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   WebSocketServer.h
-  OpenClaw VST Bridge AI - WebSocket Server for React UI Communication
+  WhyCremisi VST Plugin - WebSocket Server for React UI Communication
 
   Minimal WebSocket server that runs inside the VST plugin process.
   Listens on a configurable port (default 8080) and accepts connections

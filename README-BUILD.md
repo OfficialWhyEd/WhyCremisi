@@ -1,4 +1,4 @@
-# OpenClaw VST Bridge AI - Build Instructions
+# WhyCremisi VST Bridge AI - Build Instructions
 
 **Cross-platform build guide for Linux, Windows, and macOS.**
 
@@ -92,7 +92,7 @@ cmake -B build -DJUCE_ROOT=$JUCE_ROOT
 cmake --build build --config Release
 
 # Install VST3 to user directory
-cp build/OpenClawVSTPlugin_artefacts/Release/VST3/OpenClawVSTPlugin.vst3 ~/.vst3/
+cp build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisiVSTPlugin.vst3 ~/.vst3/
 ```
 
 ### Windows (with vcpkg)
@@ -108,7 +108,7 @@ cmake -B build -G "Visual Studio 17 2022" -A x64 ^
 cmake --build build --config Release
 
 # VST3 location (copy to your DAW's VST3 folder)
-build\OpenClawVSTPlugin_artefacts\Release\VST3\OpenClawVSTPlugin.vst3
+build\WhyCremisiVSTPlugin_artefacts\Release\VST3\WhyCremisiVSTPlugin.vst3
 ```
 
 ### macOS
@@ -118,7 +118,7 @@ cmake -B build -DJUCE_ROOT=$JUCE_ROOT -G "Xcode"
 cmake --build build --config Release
 
 # Install VST3
-cp -R build/OpenClawVSTPlugin_artefacts/Release/VST3/OpenClawVSTPlugin.vst3 ~/Library/Audio/Plug-Ins/VST3/
+cp -R build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisiVSTPlugin.vst3 ~/Library/Audio/Plug-Ins/VST3/
 ```
 
 ---
@@ -128,16 +128,16 @@ cp -R build/OpenClawVSTPlugin_artefacts/Release/VST3/OpenClawVSTPlugin.vst3 ~/Li
 ### Verify Build
 ```bash
 # Linux/macOS - list built files
-ls -la build/OpenClawVSTPlugin_artefacts/Release/
+ls -la build/WhyCremisiVSTPlugin_artefacts/Release/
 
 # Windows - check VST3 was created
-dir build\OpenClawVSTPlugin_artefacts\Release\VST3\
+dir build\WhyCremisiVSTPlugin_artefacts\Release\VST3\
 ```
 
 ### Load in DAW
 1. Open Ableton Live, Reaper, or other VST3-compatible DAW
 2. Scan/rescan VST3 plugins
-3. Load "OpenClaw VST Bridge AI"
+3. Load "WhyCremisi VST Bridge AI"
 4. Check that the GUI appears (800x600 window with knobs)
 
 ---

@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   AiEngine.cpp
-  OpenClaw VST Bridge AI - AI Engine Implementation
+  WhyCremisi VST Plugin - AI Engine Implementation
   
   Phase 2 PROGRESS: Ollama local HTTP implemented
   Uses JUCE URL and WebInputStream for HTTP requests

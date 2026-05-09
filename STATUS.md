@@ -1,4 +1,4 @@
-# OpenClaw VST Bridge AI - Stato Progetto
+# WhyCremisi VST Bridge AI - Stato Progetto
 
 **Ultimo aggiornamento:** 2026-05-09 — Claude (sessione setup macOS + bug fixes)
 
@@ -39,7 +39,7 @@
 | Design system WhyCremisi | `webview-ui/src/index.css` | ✅ Tailwind + custom CSS |
 | App principale | `webview-ui/src/App.jsx` | ✅ Refactoring completo |
 | Toolbox con transport | `webview-ui/src/components/Toolbox.jsx` | ✅ Bridge WebSocket |
-| Bridge compatibilità | `webview-ui/src/openclaw-bridge.js` | ✅ +`window.receiveFromPlugin`, `__openclawBridge` |
+| Bridge compatibilità | `webview-ui/src/whycremisi-bridge.js` | ✅ +`window.receiveFromPlugin`, `__whycremisiBridge` |
 | Dipendenze | `package.json` | ✅ framer-motion, tailwindcss |
 | Vite config | `vite.config.js` | ✅ +tailwindcss plugin |
 | HTML | `index.html` | ✅ Space Grotesk, Material Symbols |
@@ -59,8 +59,8 @@
 - OSC Plugin → Reaper: Play, Stop, Rec funzionano (`/play`, `/stop`, `/record`)
 - OSC ricezione: il plugin ascolta su porta 9000, invia a 192.168.1.12:8000
 - UI WhyCremisi: Header, Side Module, AI Chat Console con BotFace, Toolbox, Vector Scope placeholder, Footer
-- Bridge: `openclaw.sendDAWCommand()`, `openclaw.sendAIPrompt()`, auto-reconnect, request/response con timeout
-- Compatibilità C++ WebView: `window.receiveFromPlugin()` e `window.__openclawBridge`
+- Bridge: `whycremisi.sendDAWCommand()`, `whycremisi.sendAIPrompt()`, auto-reconnect, request/response con timeout
+- Compatibilità C++ WebView: `window.receiveFromPlugin()` e `window.__whycremisiBridge`
 
 ---
 
@@ -68,7 +68,7 @@
 
 | # | Task | Priorità |
 |---|------|----------|
-| 1 | Rimuovere log di debug da `/tmp/openclaw-debug.log` | Media |
+| 1 | Rimuovere log di debug da `/tmp/whycremisi-debug.log` | Media |
 | 2 | Fix parsing OSC in OscHandler.cpp (pointer arithmetic linee 122-136) | Alta |
 | 3 | Mappare tutti i parametri OSC Reaper (volume, pan, mute, solo, tempo, position) | Alta |
 | 4 | Verificare OSC Reaper → Plugin (feedback bidirezionale) | Alta |
@@ -97,7 +97,7 @@
 webview-ui/
 ├── src/
 │   ├── App.jsx               # UI WhyCremisi completa
-│   ├── openclaw-bridge.js     # Bridge WebSocket RFC 6455
+│   ├── whycremisi-bridge.js     # Bridge WebSocket RFC 6455
 │   ├── index.css              # Tailwind + stili WhyCremisi
 │   ├── main.jsx
 │   └── components/

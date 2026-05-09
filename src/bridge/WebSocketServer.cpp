@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   WebSocketServer.cpp
-  OpenClaw VST Bridge AI - WebSocket Server Implementation
+  WhyCremisi VST Plugin - WebSocket Server Implementation
 
   Minimal RFC 6455 WebSocket server for browser communication.
   ==============================================================================
@@ -101,7 +101,7 @@ void WebSocketServer::stop()
 void WebSocketServer::acceptLoop()
 {
     {
-        juce::File logFile("/tmp/openclaw-debug.log");
+        juce::File logFile("/tmp/whycremisi-debug.log");
         juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
         logFile.appendText("[" + timestamp + "] WebSocketServer accept loop started\n");
     }
@@ -150,7 +150,7 @@ void WebSocketServer::acceptLoop()
 //==============================================================================
 void WebSocketServer::clientLoop(ClientInfo* client)
 {
-    juce::File logFile("/tmp/openclaw-debug.log");
+    juce::File logFile("/tmp/whycremisi-debug.log");
     auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
 
     logFile.appendText("[" + ts() + "] [WS] Client " + juce::String(client->id) + " thread started\n");
@@ -282,12 +282,12 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
 {
     if (!client || !client->socket)
     {
-        juce::File logFile("/tmp/openclaw-debug.log");
+        juce::File logFile("/tmp/whycremisi-debug.log");
         logFile.appendText("[WS-HS] No client or socket\n");
         return false;
     }
 
-    juce::File logFile("/tmp/openclaw-debug.log");
+    juce::File logFile("/tmp/whycremisi-debug.log");
     auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
 
     // Read HTTP upgrade request with polling

@@ -1,4 +1,4 @@
-# 🧪 TEST GUIDE - OpenClaw VST Bridge AI
+# 🧪 TEST GUIDE - WhyCremisi VST Bridge AI
 
 **Per:** Edo e Heartbroken  
 **Ultimo aggiornamento:** 10 Aprile 2026  
@@ -56,8 +56,8 @@ cmake --build . --config Release
 
 ### Step 5: Trova i file compilati
 ```
-build\OpenClawVSTPlugin_artefacts\Release\VST3\OpenClaw VST Bridge AI.vst3\
-build\OpenClawVSTPlugin_artefacts\Release\Standalone\OpenClaw VST Bridge AI.exe
+build\WhyCremisiVSTPlugin_artefacts\Release\VST3\WhyCremisi VST Bridge AI.vst3\
+build\WhyCremisiVSTPlugin_artefacts\Release\Standalone\WhyCremisi VST Bridge AI.exe
 ```
 
 ---
@@ -65,20 +65,20 @@ build\OpenClawVSTPlugin_artefacts\Release\Standalone\OpenClaw VST Bridge AI.exe
 ## 🎹 Installa in DAW
 
 ### Ableton Live
-1. Copia `OpenClaw VST Bridge AI.vst3` in:
+1. Copia `WhyCremisi VST Bridge AI.vst3` in:
    - `C:\Program Files\Common Files\VST3\`
    - O in una cartella personalizzata
 2. Apri Ableton
 3. Vai su **Options → Plug-ins → VST Plug-in System**
 4. Clicca **Rescan** o aggiungi la cartella VST3
-5. Il plugin appare sotto **VST3 → OpenClaw**
+5. Il plugin appare sotto **VST3 → WhyCremisi**
 
 ### Reaper
-1. Copia `OpenClaw VST Bridge AI.vst3` in `C:\Program Files\Common Files\VST3\`
+1. Copia `WhyCremisi VST Bridge AI.vst3` in `C:\Program Files\Common Files\VST3\`
 2. Apri Reaper
 3. Vai su **Options → Preferences → Plug-ins → VST**
 4. Clicca **Re-scan** o **Clear cache/re-scan**
-5. Crea una traccia, clicca **FX**, cerca "OpenClaw"
+5. Crea una traccia, clicca **FX**, cerca "WhyCremisi"
 
 ---
 
@@ -86,12 +86,12 @@ build\OpenClawVSTPlugin_artefacts\Release\Standalone\OpenClaw VST Bridge AI.exe
 
 ### Lancio
 ```cmd
-cd build\OpenClawVSTPlugin_artefacts\Release\Standalone
-OpenClaw VST Bridge AI.exe
+cd build\WhyCremisiVSTPlugin_artefacts\Release\Standalone
+WhyCremisi VST Bridge AI.exe
 ```
 
 ### Cosa dovresti vedere
-- Finestra con titolo "OpenClaw VST Bridge AI"
+- Finestra con titolo "WhyCremisi VST Bridge AI"
 - Due slider: **Gain 1** e **Gain 2**
 - Campo di testo "Ask the AI about your mix..."
 - Bottone "Ask AI"
@@ -114,7 +114,7 @@ OpenClaw VST Bridge AI.exe
 | Opzione | Valore |
 |---------|--------|
 | Mode | `Configure device IP + local port` |
-| Device name | `OpenClaw` |
+| Device name | `WhyCremisi` |
 | Device IP | `127.0.0.1` |
 | Local port | `9000` |
 | Allow binding messages | ✅ ON |
@@ -125,7 +125,7 @@ Clicca **OK**.
 
 In Reaper:
 1. **Options → Preferences → Control/OSC/Web**
-2. Doppio-click sulla riga "OpenClaw"
+2. Doppio-click sulla riga "WhyCremisi"
 3. Clicca **"Open browser..."** o vai su **Actions → Control Surface Browser**
 
 ### Step 4: Fai Learn OSC

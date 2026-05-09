@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { openclaw } from '../openclaw-bridge'
+import { whycremisi } from '../whycremisi-bridge'
 
 function Toolbox({ lastMessage }) {
   const [widgets, setWidgets] = useState([])
@@ -65,19 +65,19 @@ function Toolbox({ lastMessage }) {
     const widget = widgets.find(w => w.id === widgetId)
     if (!widget) return
 
-    if (openclaw.isConnected()) {
+    if (whycremisi.isConnected()) {
       if (widget.address) {
-        openclaw.send({ type: 'osc.send', address: widget.address, value: value })
+        whycremisi.send({ type: 'osc.send', address: widget.address, value: value })
       } else if (widget.param) {
-        openclaw.sendDAWCommand('setVolume', { trackId: widget.track_id, param: widget.param, value })
+        whycremisi.sendDAWCommand('setVolume', { trackId: widget.track_id, param: widget.param, value })
       }
       addLog(`Inviato: ${widget.label} = ${value.toFixed(2)}`)
     }
   }
 
   const handleTransportCommand = (action) => {
-    if (openclaw.isConnected()) {
-      openclaw.sendDAWCommand(action)
+    if (whycremisi.isConnected()) {
+      whycremisi.sendDAWCommand(action)
       addLog(`Transport: ${action}`)
     }
   }

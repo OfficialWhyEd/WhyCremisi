@@ -430,7 +430,7 @@ void WebViewBridge::sendToFrontend(const nlohmann::json& message)
     jsonStr = jsonStr.replace("\r", "\\r");       // carriage return
     
     // Chiama la funzione globale nella UI
-    String jsCode = "javascript:if(window.__openclawBridge){window.__openclawBridge.receiveMessage(\"" + jsonStr + "\");}";
+    String jsCode = "javascript:if(window.__whycremisiBridge){window.__whycremisiBridge.receiveMessage(\"" + jsonStr + "\");}";
     webView->goToURL(jsCode);
 }
 ```
@@ -443,14 +443,14 @@ void WebViewBridge::sendToFrontend(const nlohmann::json& message)
 
 ```javascript
 // Questo viene iniettato da C++ o incluso nella build React
-window.__openclawBridge = {
+window.__whycremisiBridge = {
   // Ricezione messaggi da C++
   receiveMessage: (jsonString) => {
     try {
       const message = JSON.parse(jsonString);
-      window.dispatchEvent(new CustomEvent('openclaw-message', { detail: message }));
+      window.dispatchEvent(new CustomEvent('whycremisi-message', { detail: message }));
     } catch (e) {
-      console.error('OpenClaw: Failed to parse message', e);
+      console.error('WhyCremisi: Failed to parse message', e);
     }
   },
   
@@ -463,9 +463,9 @@ window.__openclawBridge = {
 };
 
 // Hook React per usare il bridge
-export const useOpenClaw = () => {
+export const useWhyCremisi = () => {
   const sendMessage = (type, payload) => {
-    window.__openclawBridge?.sendMessage({
+    window.__whycremisiBridge?.sendMessage({
       type,
       id: generateUUID(),
       timestamp: Date.now(),
@@ -478,8 +478,8 @@ export const useOpenClaw = () => {
       // Processa messaggi da C++
       console.log('Message from C++:', e.detail);
     };
-    window.addEventListener('openclaw-message', handler);
-    return () => window.removeEventListener('openclaw-message', handler);
+    window.addEventListener('whycremisi-message', handler);
+    return () => window.removeEventListener('whycremisi-message', handler);
   }, []);
   
   return { sendMessage };
@@ -493,7 +493,7 @@ export const useOpenClaw = () => {
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "OpenClaw Message",
+  "title": "WhyCremisi Message",
   "type": "object",
   "required": ["type", "timestamp", "payload"],
   "properties": {

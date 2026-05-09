@@ -1,4 +1,4 @@
-# Guida Sviluppo UI — OpenClaw VST Bridge AI Edition
+# Guida Sviluppo UI — WhyCremisi VST Bridge AI Edition
 
 **Versione:** 1.0
 **Data:** 2026-04-14
@@ -18,7 +18,7 @@ src/ui/
 │   ├── Front End Ui Test 1/           # PROTOTIPO MATURO — qui Edo sviluppa
 │   │   ├── src/
 │   │   │   ├── App.tsx                # UI completa WhyCremisi
-│   │   │   ├── openclaw-bridge.js     # Bridge AURA Protocol v1.0 (app://message/)
+│   │   │   ├── whycremisi-bridge.js     # Bridge AURA Protocol v1.0 (app://message/)
 │   │   │   ├── components/
 │   │   │   │   └── BotFace.tsx        # Avatar animato SVG morphing
 │   │   │   ├── index.css              # Stili WhyCremisi (Tailwind)
@@ -33,7 +33,7 @@ src/ui/
 webview-ui/                           # ★ FRONTEND PRODUZIONE ★
 ├── src/
 │   ├── App.jsx                       # App principale (UI WhyCremisi integrata)
-│   ├── openclaw-bridge.js            # Bridge WebSocket RFC 6455 (PRODUZIONE)
+│   ├── whycremisi-bridge.js            # Bridge WebSocket RFC 6455 (PRODUZIONE)
 │   ├── components/
 │   │   ├── BotFace.jsx               # Avatar animato (da Prototipo)
 │   │   ├── Toolbox.jsx              # Widget system (proposal/accept)
@@ -51,10 +51,10 @@ webview-ui/                           # ★ FRONTEND PRODUZIONE ★
 
 | | Prototipo (Edo) | Produzione (webview-ui) |
 |---|---|---|
-| **File** | `Prototipi/.../openclaw-bridge.js` | `webview-ui/src/openclaw-bridge.js` |
+| **File** | `Prototipi/.../whycremisi-bridge.js` | `webview-ui/src/whycremisi-bridge.js` |
 | **Protocollo** | `app://message/` URL interception | WebSocket RFC 6455 (`ws://localhost:8080`) |
 | **Uso** | Sviluppo in isolamento, Google AI Studio | VST3 in Reaper, Standalone |
-| **API** | `bridge.send(type, payload)` | `openclaw.sendDAWCommand()`, `openclaw.sendAIPrompt()`, ecc. |
+| **API** | `bridge.send(type, payload)` | `whycremisi.sendDAWCommand()`, `whycremisi.sendAIPrompt()`, ecc. |
 
 **Il pattern comune:** entrambi espongono `bridge.send(type, payload)` e `bridge.on(type, callback)`.
 
@@ -81,7 +81,7 @@ Apri `http://localhost:5173` nel browser.
 
 1. **Usa sempre `bridge.send()` e `bridge.on()`** per comunicare con il backend
 2. **Non usare `window.receiveFromPlugin` direttamente** nei componenti — è responsabilità del bridge
-3. **Non importare `openclaw-bridge.js` direttamente nei componenti** — importa sempre `bridge` dal file bridge
+3. **Non importare `whycremisi-bridge.js` direttamente nei componenti** — importa sempre `bridge` dal file bridge
 4. **Mantieni il design system WhyCremisi** (palette, font, CRT overlay) come in MASTER_SPEC.md
 5. **Ogni nuovo componente React deve essere standalone** — un file, una responsabilità
 
@@ -111,7 +111,7 @@ Tipi messaggi che la UI riceve:
 ### 2.4 Esempio: collegare un componente al bridge
 
 ```jsx
-import bridge from './openclaw-bridge';
+import bridge from './whycremisi-bridge';
 
 function MyComponent() {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -138,20 +138,20 @@ function MyComponent() {
 ### 3.1 Build del plugin
 
 ```bash
-cd /home/carlo/HDs/AI-Ubuntu/progetti/OpenClaw-VST-Bridge/build
+cd /home/carlo/HDs/AI-Ubuntu/progetti/WhyCremisi-VST-Bridge/build
 cmake .. && make -j4
 ```
 
 ### 3.2 Installazione VST3
 
 ```bash
-cp -r build/OpenClawVSTPlugin_artefacts/Release/VST3/OpenClawVSTBridgeAI.vst3 ~/.vst3/
+cp -r build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisiVSTBridgeAI.vst3 ~/.vst3/
 ```
 
 ### 3.3 Test in Reaper
 
 1. Apri Reaper
-2. Inserisci FX → OpenClawVSTBridgeAI
+2. Inserisci FX → WhyCremisiVSTBridgeAI
 3. Il plugin si apre con la GUI WebView
 4. La GUI si connette via WebSocket a `ws://localhost:8080`
 5. I controlli nella GUI inviano messaggi JSON al plugin C++
@@ -174,7 +174,7 @@ cp -r build/OpenClawVSTPlugin_artefacts/Release/VST3/OpenClawVSTBridgeAI.vst3 ~/
 ### 3.5 Test standalone (secondario)
 
 ```bash
-./build/OpenClawVSTPlugin_artefacts/Release/Standalone/OpenClawVSTBridgeAI
+./build/WhyCremisiVSTPlugin_artefacts/Release/Standalone/WhyCremisiVSTBridgeAI
 ```
 
 Lo standalone NON è ancora autosufficiente — richiede Reaper in esecuzione per il feedback OSC.

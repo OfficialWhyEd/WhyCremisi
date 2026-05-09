@@ -1,7 +1,7 @@
 /*
   ==============================================================================
   OscBridge.h
-  OpenClaw VST Bridge AI - Bidirectional OSC-WebSocket Bridge
+  WhyCremisi VST Plugin - Bidirectional OSC-WebSocket Bridge
 
   Connects:
   - OscHandler (UDP OSC from/to DAW)

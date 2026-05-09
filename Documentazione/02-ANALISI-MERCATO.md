@@ -157,7 +157,7 @@
 | MIDI Agent | ✅ | ✅ | ✅ | ❌ | ✅ | $49 | Manca controllo DAW |
 | Ableton MCP | ✅ | ❌ | ❌ | ❌ | ❌ | Free | Solo Ableton, nessuna UI |
 | ReaLearn | ❌ | ❌ | ✅ | ⚠️ | ✅ | Free | Solo Reaper, nessuna AI |
-| **OpenClaw AI** | ✅ | ✅ | ✅ | ✅ | ✅ | TBD | **Nessun gap** |
+| **WhyCremisi AI** | ✅ | ✅ | ✅ | ✅ | ✅ | TBD | **Nessun gap** |
 
 **Legenda:** ✅ Sì, ❌ No, ⚠️ Parziale
 

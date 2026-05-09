@@ -10,21 +10,21 @@
 #include "PluginProcessor.h"
 
 //==============================================================================
-OpenClawWebBrowserComponent::OpenClawWebBrowserComponent() {}
+WhyCremisiBrowser::WhyCremisiBrowser() {}
 
-bool OpenClawWebBrowserComponent::pageAboutToLoad(const juce::String& url)
+bool WhyCremisiBrowser::pageAboutToLoad(const juce::String& url)
 {
     if (onPageAboutToLoad) return onPageAboutToLoad(url);
     return true;
 }
 
-void OpenClawWebBrowserComponent::pageFinishedLoading(const juce::String& url)
+void WhyCremisiBrowser::pageFinishedLoading(const juce::String& url)
 {
     if (onPageFinishedLoading) onPageFinishedLoading(url);
 }
 
 //==============================================================================
-OpenClawAudioProcessorEditor::OpenClawAudioProcessorEditor(OpenClawAudioProcessor& p)
+WhyCremisiProcessorEditor::WhyCremisiProcessorEditor(WhyCremisiProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
     setSize(800, 600);
@@ -33,7 +33,7 @@ OpenClawAudioProcessorEditor::OpenClawAudioProcessorEditor(OpenClawAudioProcesso
     DBG("[WhyCremisi] Editor avviato con UI nativa JUCE");
 }
 
-OpenClawAudioProcessorEditor::~OpenClawAudioProcessorEditor()
+WhyCremisiProcessorEditor::~WhyCremisiProcessorEditor()
 {
     if (webView)
     {
@@ -45,10 +45,10 @@ OpenClawAudioProcessorEditor::~OpenClawAudioProcessorEditor()
 }
 
 //==============================================================================
-void OpenClawAudioProcessorEditor::loadUI()  { setupFallbackUI(); }
-void OpenClawAudioProcessorEditor::setupWebView() {}  // Disabilitata — vedi STATUS.md
+void WhyCremisiProcessorEditor::loadUI()  { setupFallbackUI(); }
+void WhyCremisiProcessorEditor::setupWebView() {}  // Disabilitata — vedi STATUS.md
 
-void OpenClawAudioProcessorEditor::setupFallbackUI()
+void WhyCremisiProcessorEditor::setupFallbackUI()
 {
     // Titolo
     titleLabel.setText("WhyCremisi // VST Bridge AI", juce::dontSendNotification);
@@ -116,13 +116,13 @@ void OpenClawAudioProcessorEditor::setupFallbackUI()
         audioProcessor.getParameters(), "gain2", gainSlider2);
 }
 
-juce::String OpenClawAudioProcessorEditor::getUIURL() const
+juce::String WhyCremisiProcessorEditor::getUIURL() const
 {
     return "http://127.0.0.1:9000";
 }
 
 //==============================================================================
-void OpenClawAudioProcessorEditor::handleFrontendMessage(const nlohmann::json& message)
+void WhyCremisiProcessorEditor::handleFrontendMessage(const nlohmann::json& message)
 {
     if (!message.contains("type")) return;
     std::string type = message["type"];
@@ -140,13 +140,13 @@ void OpenClawAudioProcessorEditor::handleFrontendMessage(const nlohmann::json& m
     }
 }
 
-void OpenClawAudioProcessorEditor::sendToFrontend(const nlohmann::json& message)
+void WhyCremisiProcessorEditor::sendToFrontend(const nlohmann::json& message)
 {
     webViewBridge.sendToFrontend(message);
 }
 
 //==============================================================================
-void OpenClawAudioProcessorEditor::paint(juce::Graphics& g)
+void WhyCremisiProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(0xff0a0a0f));
 
@@ -170,7 +170,7 @@ void OpenClawAudioProcessorEditor::paint(juce::Graphics& g)
                juce::Justification::centred, false);
 }
 
-void OpenClawAudioProcessorEditor::resized()
+void WhyCremisiProcessorEditor::resized()
 {
     auto area = getLocalBounds();
 
