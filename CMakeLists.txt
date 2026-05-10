@@ -98,8 +98,6 @@ target_link_libraries(WhyCremisiVSTPlugin
         juce::juce_core
         juce::juce_data_structures
         juce::juce_events
-        # HTTP
-        ${CURL_LIBRARIES}
 )
 
 # ==============================================================================
@@ -115,6 +113,28 @@ target_include_directories(WhyCremisiVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bridge
     ${CURL_INCLUDE_DIRS}
 )
+
+# ==============================================================================
+# Unit Tests (if enabled)
+# ==============================================================================
+
+if(BUILD_UNIT_TESTS)
+    # Unit test for PluginProcessor
+    juce_add_unit_test(PluginProcessorTest
+        SOURCES
+            src/core/tests/PluginProcessorTest.cpp
+    )
+    
+    # Unit test for OscBridge
+    juce_add_unit_test(OscBridgeTest
+        SOURCES
+            src/bridge/tests/OscBridgeTest.cpp
+    )
+    
+    # Link the unit tests with the main plugin target so they can access its classes
+    target_link_libraries(PluginProcessorTest PRIVATE WhyCremisiVSTPlugin)
+    target_link_libraries(OscBridgeTest PRIVATE WhyCremisiVSTPlugin)
+endif()
 
 # ==============================================================================
 # Linux-specific (GTK, WebKit, install)
