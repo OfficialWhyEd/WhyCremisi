@@ -381,6 +381,67 @@ class WhyCremisiBridge {
   }
 
   /**
+   * Start MIDI Learn for a widget
+   * @param {string} widgetId
+   * @param {object} options - {onComplete, onStatus}
+   * @returns {string} message ID
+   */
+  midiLearnStart(widgetId, options = {}) {
+    const msgId = generateUUID();
+
+    if (options.onComplete) {
+      const unbind = this.on('midi.learn.complete', (payload) => {
+        if (payload.widgetId === widgetId) {
+          unbind();
+          options.onComplete(payload);
+        }
+      });
+    }
+
+    if (options.onStatus) {
+      const unbind = this.on('midi.learn.status', (payload) => {
+        if (payload.widgetId === widgetId) {
+          options.onStatus(payload);
+          if (payload.status === 'cancelled' || payload.cc !== undefined) {
+            unbind();
+          }
+        }
+      });
+    }
+
+    return this.sendMessage('midi.learn.start', { widgetId }, { id: msgId });
+  }
+
+  /**
+   * Stop MIDI Learn
+   */
+  midiLearnStop() {
+    return this.sendMessage('midi.learn.stop', {});
+  }
+
+  /**
+   * Get plugin chain (DAW plugin list)
+   */
+  getPluginChain() {
+    return new Promise((resolve, reject) => {
+      this.sendMessage('chain.get', {}, {
+        onResponse: (response) => {
+          if (response.error) reject(new Error(response.error));
+          else resolve(response.plugins || []);
+        },
+        timeout: 3000
+      });
+    });
+  }
+
+  /**
+   * Set plugin chain
+   */
+  setPluginChain(plugins) {
+    return this.sendMessage('chain.set', { plugins });
+  }
+
+  /**
    * Gets the connection state
    */
   getState() {
@@ -448,7 +509,7 @@ class WhyCremisiBridge {
     // Notifica plugin che siamo pronti
     this.sendMessage('plugin.init', {
       version: this.version,
-      capabilities: ['widgets', 'ai', 'osc', 'daw']
+        capabilities: ['widgets', 'ai', 'osc', 'daw', 'midi']
     });
   }
 

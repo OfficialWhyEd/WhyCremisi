@@ -10,6 +10,9 @@
 #include "OscBridge.h"
 #include "AiEngine.h"
 #include "SessionManager.h"
+#include "MidiHandler.h"
+#include "ParameterMapper.h"
+#include "PluginChain.h"
 #include <chrono>
 #include <random>
 
@@ -115,6 +118,27 @@ void OscBridge::timerCallback()
     broadcastMeter(-1, lastMeterL.load(), lastMeterR.load(),
                        lastMeterL.load(), lastMeterR.load());
 
+    // Broadcast analyzer data every 10 ticks (~330ms)
+    if (meterTickCounter % 10 == 0)
+    {
+        float corr = lastCorrelation.load();
+        float loud = lastLoudness.load();
+
+        nlohmann::json ana;
+        ana["type"] = "daw.analyzer";
+        ana["timestamp"] = juce::Time::currentTimeMillis();
+        ana["payload"]["correlation"] = corr;
+        ana["payload"]["loudness"] = loud;
+
+        // Send first 256 bins of spectrum
+        nlohmann::json specArr = nlohmann::json::array();
+        int numBins = juce::jmin(256, (int)lastSpectrum.size());
+        for (int i = 0; i < numBins; ++i)
+            specArr.push_back(lastSpectrum[i]);
+        ana["payload"]["spectrum"] = specArr;
+
+        wsServer->broadcast(ana);
+    }
 }
 
 bool OscBridge::isRunning() const
@@ -304,7 +328,7 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
     else if (msgType == "config.get" || msgType == "config.set")
     {
         if (message.contains("payload"))
-            dispatchConfig(message["payload"]);
+            dispatchConfig(message["payload"], reqId);
     }
     else if (msgType == "osc.send")
     {
@@ -314,6 +338,25 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
     else if (msgType == "session.get")
     {
         dispatchSessionGet(reqId);
+    }
+    else if (msgType == "midi.learn.start" || msgType == "midi.learn.stop")
+    {
+        if (message.contains("payload"))
+            dispatchMidiLearn(msgType, message["payload"], reqId);
+    }
+    else if (msgType == "ai.action")
+    {
+        if (message.contains("payload"))
+            dispatchAiAction(message["payload"], reqId);
+    }
+    else if (msgType == "chain.get")
+    {
+        dispatchChainGet(reqId);
+    }
+    else if (msgType == "chain.set")
+    {
+        if (message.contains("payload"))
+            dispatchChainSet(message["payload"]);
     }
     else
     {
@@ -595,22 +638,22 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
 
     aiThread = std::make_unique<std::thread>([this, capturedPrompt, capturedReqId, startMs]()
     {
-        juce::String responseText = aiEngine->sendPrompt(capturedPrompt);
-        bool success = aiEngine->getLastError().isEmpty();
+        auto structured = aiEngine->sendPromptStructured(capturedPrompt);
+        bool success = structured.success;
         int durationMs = static_cast<int>(juce::Time::currentTimeMillis() - startMs);
 
         aiProcessing.store(false);
 
         // Log the response to session
         if (sessionManager)
-            sessionManager->logAiResponse(responseText, durationMs);
+            sessionManager->logAiResponse(structured.text, durationMs);
 
-        broadcastSessionEvent("ai_response", {{"preview", responseText.substring(0, 80).toStdString()},
+        broadcastSessionEvent("ai_response", {{"preview", structured.text.substring(0, 80).toStdString()},
                                               {"duration_ms", durationMs},
                                               {"success", success}});
 
         log("[AI] Response in " + juce::String(durationMs) + "ms: " +
-            responseText.substring(0, 60) + (responseText.length() > 60 ? "..." : ""));
+            structured.text.substring(0, 60) + (structured.text.length() > 60 ? "..." : ""));
 
         nlohmann::json response;
         response["type"] = "ai.response";
@@ -619,8 +662,35 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
         response["payload"]["status"] = success ? "success" : "error";
         response["payload"]["provider"] = aiEngine->getProviderName().toStdString();
         response["payload"]["model"]    = aiEngine->getModelName().toStdString();
-        response["payload"]["content"]  = responseText.toStdString();
+        response["payload"]["content"]  = structured.text.toStdString();
         response["payload"]["durationMs"] = durationMs;
+
+        // Include actions in response for UI
+        nlohmann::json actionsArray = nlohmann::json::array();
+        for (const auto& a : structured.actions)
+        {
+            nlohmann::json act;
+            act["widgetId"] = a.widgetId.toStdString();
+            act["value"] = a.value;
+            act["previousValue"] = a.previousValue;
+            act["description"] = a.description.toStdString();
+            actionsArray.push_back(act);
+
+            // Log to session
+            if (sessionManager)
+                sessionManager->logAiAction(a.widgetId, a.value, a.previousValue, a.description);
+
+            // Broadcast each action separately for action log
+            nlohmann::json actionLog;
+            actionLog["type"] = "ai.action.log";
+            actionLog["timestamp"] = juce::Time::currentTimeMillis();
+            actionLog["payload"]["widgetId"] = a.widgetId.toStdString();
+            actionLog["payload"]["value"] = a.value;
+            actionLog["payload"]["previousValue"] = a.previousValue;
+            actionLog["payload"]["description"] = a.description.toStdString();
+            wsServer->broadcast(actionLog);
+        }
+        response["payload"]["actions"] = actionsArray;
 
         wsServer->broadcast(response);
     });
@@ -632,31 +702,115 @@ void OscBridge::dispatchWidgetChange(const nlohmann::json& payload)
     if (!payload.contains("widgetId") || !payload.contains("value"))
         return;
 
-    std::string widgetId = payload["widgetId"];
+    juce::String widgetId = juce::String(payload["widgetId"].get<std::string>().data());
     float value = payload["value"].get<float>();
 
-    log("[WIDGET] " + juce::String(widgetId.data()) + " = " + juce::String(value));
+    log("[WIDGET] " + widgetId + " = " + juce::String(value));
 
-    // Forward to DAW as OSC if it's a DAW-controllable widget
-    // For now, just log - implementation depends on widget type mapping
+    if (widgetChangeCallback)
+        widgetChangeCallback(widgetId, value);
 }
 
 //==============================================================================
-void OscBridge::dispatchConfig(const nlohmann::json& payload)
+void OscBridge::dispatchMidiLearn(const juce::String& msgType,
+                                   const nlohmann::json& payload,
+                                   const juce::String& reqId)
+{
+    if (msgType == "midi.learn.start")
+    {
+        if (!payload.contains("widgetId"))
+            return;
+
+        juce::String widgetId = juce::String(payload["widgetId"].get<std::string>().data());
+        log("[MIDI] Learn start for widget: " + widgetId);
+
+        if (midiHandler)
+            midiHandler->startLearn(widgetId);
+
+        nlohmann::json response;
+        response["type"] = "midi.learn.status";
+        response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["widgetId"] = widgetId.toStdString();
+        response["payload"]["status"] = "listening";
+        wsServer->broadcast(response);
+    }
+    else if (msgType == "midi.learn.stop")
+    {
+        if (midiHandler)
+            midiHandler->stopLearn();
+
+        nlohmann::json response;
+        response["type"] = "midi.learn.status";
+        response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["status"] = "cancelled";
+        wsServer->broadcast(response);
+
+        log("[MIDI] Learn stopped");
+    }
+}
+
+//==============================================================================
+void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String& reqId)
 {
     if (!payload.contains("key"))
         return;
 
     std::string key = payload["key"];
     juce::String configKey(key.data(), key.size());
+    bool isRead = !payload.contains("value");
 
-    // AI Provider configuration
-    if (configKey == "ai.provider" && payload.contains("value"))
+    // Helper to send a config.response
+    auto sendConfigResponse = [&](nlohmann::json responsePayload) {
+        nlohmann::json response;
+        response["type"] = "config.response";
+        response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"] = responsePayload;
+        wsServer->broadcast(response);
+    };
+
+    // ── Read path (config.get) ──────────────────────────────────
+    if (isRead)
+    {
+        nlohmann::json rp;
+        rp["key"] = key;
+
+        if (configKey == "ai.provider")
+        {
+            rp["value"] = aiEngine ? aiEngine->getProviderName().toStdString() : "none";
+        }
+        else if (configKey == "ai.model")
+        {
+            rp["value"] = aiEngine ? aiEngine->getModelName().toStdString() : "none";
+        }
+        else if (configKey == "ai.getModels")
+        {
+            juce::StringArray models = aiEngine ? aiEngine->getAvailableModels() : juce::StringArray{"Not configured"};
+            nlohmann::json modelArray = nlohmann::json::array();
+            for (const auto& model : models)
+                modelArray.push_back(model.toStdString());
+            rp["models"] = modelArray;
+            rp["provider"] = aiEngine ? aiEngine->getProviderName().toStdString() : "none";
+        }
+        else
+        {
+            rp["status"] = "unknown_key";
+            rp["value"] = nullptr;
+        }
+
+        rp["status"] = "ok";
+        sendConfigResponse(rp);
+        return;
+    }
+
+    // ── Write path (config.set) ─────────────────────────────────
+    if (configKey == "ai.provider")
     {
         std::string provider = payload["value"];
         log("[CONFIG] AI provider set to: " + juce::String(provider.data()));
         
-        // Update AI engine config
         if (aiEngine)
         {
             AiEngine::Config cfg;
@@ -679,17 +833,13 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload)
             aiEngine->configure(cfg);
         }
         
-        // Send confirmation
-        nlohmann::json response;
-        response["type"] = "config.response";
-        response["id"] = nullptr;
-        response["timestamp"] = juce::Time::currentTimeMillis();
-        response["payload"]["key"] = "ai.provider";
-        response["payload"]["value"] = provider;
-        response["payload"]["status"] = "ok";
-        wsServer->broadcast(response);
+        nlohmann::json rp;
+        rp["key"] = "ai.provider";
+        rp["value"] = provider;
+        rp["status"] = "ok";
+        sendConfigResponse(rp);
     }
-    else if (configKey == "ai.model" && payload.contains("value"))
+    else if (configKey == "ai.model")
     {
         std::string model = payload["value"];
         log("[CONFIG] AI model set to: " + juce::String(model.data()));
@@ -701,16 +851,13 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload)
             aiEngine->configure(cfg);
         }
         
-        nlohmann::json response;
-        response["type"] = "config.response";
-        response["id"] = nullptr;
-        response["timestamp"] = juce::Time::currentTimeMillis();
-        response["payload"]["key"] = "ai.model";
-        response["payload"]["value"] = model;
-        response["payload"]["status"] = "ok";
-        wsServer->broadcast(response);
+        nlohmann::json rp;
+        rp["key"] = "ai.model";
+        rp["value"] = model;
+        rp["status"] = "ok";
+        sendConfigResponse(rp);
     }
-    else if (configKey == "ai.apiKey" && payload.contains("value") && payload.contains("provider"))
+    else if (configKey == "ai.apiKey" && payload.contains("provider"))
     {
         std::string provider = payload["provider"];
         std::string apiKey = payload["value"];
@@ -723,17 +870,14 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload)
             aiEngine->configure(cfg);
         }
         
-        nlohmann::json response;
-        response["type"] = "config.response";
-        response["id"] = nullptr;
-        response["timestamp"] = juce::Time::currentTimeMillis();
-        response["payload"]["key"] = "ai.apiKey";
-        response["payload"]["provider"] = provider;
-        response["payload"]["status"] = "ok";
-        response["payload"]["masked"] = true; // Don't echo the key back
-        wsServer->broadcast(response);
+        nlohmann::json rp;
+        rp["key"] = "ai.apiKey";
+        rp["provider"] = provider;
+        rp["status"] = "ok";
+        rp["masked"] = true;
+        sendConfigResponse(rp);
     }
-    else if (configKey == "ai.ollamaUrl" && payload.contains("value"))
+    else if (configKey == "ai.ollamaUrl")
     {
         std::string url = payload["value"];
         log("[CONFIG] Ollama URL set to: " + juce::String(url.data()));
@@ -746,74 +890,52 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload)
             aiEngine->configure(cfg);
         }
         
-        nlohmann::json response;
-        response["type"] = "config.response";
-        response["id"] = nullptr;
-        response["timestamp"] = juce::Time::currentTimeMillis();
-        response["payload"]["key"] = "ai.ollamaUrl";
-        response["payload"]["value"] = url;
-        response["payload"]["status"] = "ok";
-        wsServer->broadcast(response);
+        nlohmann::json rp;
+        rp["key"] = "ai.ollamaUrl";
+        rp["value"] = url;
+        rp["status"] = "ok";
+        sendConfigResponse(rp);
     }
     else if (configKey == "ai.testConnection")
     {
-        // Test connection to current AI provider
         bool connected = aiEngine ? aiEngine->testConnection() : false;
         juce::String errorMsg = aiEngine ? aiEngine->getLastError() : "AI engine not initialized";
         
-        nlohmann::json response;
-        response["type"] = "config.response";
-        response["id"] = nullptr;
-        response["timestamp"] = juce::Time::currentTimeMillis();
-        response["payload"]["key"] = "ai.testConnection";
-        response["payload"]["connected"] = connected;
-        response["payload"]["error"] = errorMsg.toStdString();
-        wsServer->broadcast(response);
+        nlohmann::json rp;
+        rp["key"] = "ai.testConnection";
+        rp["connected"] = connected;
+        rp["error"] = errorMsg.toStdString();
+        sendConfigResponse(rp);
         
         log("[CONFIG] AI test connection: " + juce::String(connected ? "SUCCESS" : "FAILED"));
     }
     else if (configKey == "ai.getModels")
     {
-        // Return available models for current provider
         juce::StringArray models = aiEngine ? aiEngine->getAvailableModels() : juce::StringArray{"Not configured"};
-        
         nlohmann::json modelArray = nlohmann::json::array();
         for (const auto& model : models)
             modelArray.push_back(model.toStdString());
         
-        nlohmann::json response;
-        response["type"] = "config.response";
-        response["id"] = nullptr;
-        response["timestamp"] = juce::Time::currentTimeMillis();
-        response["payload"]["key"] = "ai.getModels";
-        response["payload"]["models"] = modelArray;
-        response["payload"]["provider"] = aiEngine ? aiEngine->getProviderName().toStdString() : "none";
-        wsServer->broadcast(response);
+        nlohmann::json rp;
+        rp["key"] = "ai.getModels";
+        rp["models"] = modelArray;
+        rp["provider"] = aiEngine ? aiEngine->getProviderName().toStdString() : "none";
+        sendConfigResponse(rp);
     }
     else if (configKey == "osc.port")
     {
-        if (payload.contains("value"))
-        {
-            int newPort = payload["value"].get<int>();
-            log("[CONFIG] Would change OSC port to " + juce::String(newPort));
-            // Note: Port change requires restart
-        }
+        int newPort = payload["value"].get<int>();
+        log("[CONFIG] Would change OSC port to " + juce::String(newPort));
     }
     else
     {
-        // Generic key: store in-memory and echo back an "ok" so the sender
-        // can track rapid config changes (e.g. stress tests, custom keys).
         log("[CONFIG] Generic key: " + configKey);
 
-        nlohmann::json response;
-        response["type"] = "config.response";
-        response["id"] = nullptr;
-        response["timestamp"] = juce::Time::currentTimeMillis();
-        response["payload"]["key"] = configKey.toStdString();
-        response["payload"]["status"] = "ok";
-        if (payload.contains("value"))
-            response["payload"]["value"] = payload["value"];
-        wsServer->broadcast(response);
+        nlohmann::json rp;
+        rp["key"] = configKey.toStdString();
+        rp["status"] = "ok";
+        rp["value"] = payload["value"];
+        sendConfigResponse(rp);
     }
 }
 
@@ -908,6 +1030,13 @@ void OscBridge::broadcastPluginStats(double sampleRate, int bufferSize)
     log("[STATS] SR=" + juce::String(sampleRate, 0) +
         " BUF=" + juce::String(bufferSize) +
         " LAT=" + juce::String(latencyMs, 2) + "ms");
+}
+
+void OscBridge::updateAnalyzer(float correlation, float loudness, const std::vector<float>& spectrum)
+{
+    lastCorrelation.store(correlation);
+    lastLoudness.store(loudness);
+    lastSpectrum = spectrum;
 }
 
 void OscBridge::broadcastSessionEvent(const std::string& eventType, const nlohmann::json& data)
@@ -1116,7 +1245,105 @@ void OscBridge::setDawTarget(const juce::String& host, int sendPort)
 void OscBridge::setAiEngine(AiEngine* engine)
 {
     aiEngine = engine;
-    log("[OscBridge] AI engine " + juce::String(engine ? "connected" : "disconnected"));
+}
+
+void OscBridge::setMidiHandler(MidiHandler* mh) { midiHandler = mh; }
+
+void OscBridge::setParameterMapper(ParameterMapper* pm) { paramMapper = pm; }
+
+void OscBridge::setPluginChain(PluginChain* pc) { pluginChain = pc; }
+
+void OscBridge::broadcastJson(const nlohmann::json& msg) { wsServer->broadcast(msg); }
+
+void OscBridge::dispatchChainGet(const juce::String& reqId)
+{
+    nlohmann::json response;
+    response["type"] = "chain.response";
+    response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : nullptr;
+    response["timestamp"] = juce::Time::currentTimeMillis();
+
+    if (pluginChain)
+    {
+        nlohmann::json pluginsArray = nlohmann::json::array();
+        for (const auto& p : pluginChain->getPlugins())
+        {
+            nlohmann::json jp;
+            jp["id"] = p.id.toStdString();
+            jp["name"] = p.name.toStdString();
+            jp["manufacturer"] = p.manufacturer.toStdString();
+            jp["format"] = p.format.toStdString();
+            jp["slot"] = p.slot;
+            jp["enabled"] = p.enabled;
+            pluginsArray.push_back(jp);
+        }
+        response["payload"]["plugins"] = pluginsArray;
+        response["payload"]["status"] = "ok";
+    }
+    else
+    {
+        response["payload"]["plugins"] = nlohmann::json::array();
+        response["payload"]["status"] = "ok";
+    }
+
+    wsServer->broadcast(response);
+}
+
+void OscBridge::dispatchChainSet(const nlohmann::json& payload)
+{
+    if (!pluginChain || !payload.contains("plugins") || !payload["plugins"].is_array())
+        return;
+
+    std::vector<PluginInfo> plugins;
+    for (const auto& jp : payload["plugins"])
+    {
+        PluginInfo p;
+        p.id           = juce::String(jp.value("id", "").data());
+        p.name         = juce::String(jp.value("name", "").data());
+        p.manufacturer = juce::String(jp.value("manufacturer", "").data());
+        p.format       = juce::String(jp.value("format", "VST3").data());
+        p.slot         = jp.value("slot", 0);
+        p.enabled      = jp.value("enabled", true);
+        if (p.name.isNotEmpty())
+            plugins.push_back(p);
+    }
+
+    pluginChain->setPlugins(plugins);
+    log("[CHAIN] Updated: " + juce::String(plugins.size()) + " plugins");
+
+    // Broadcast confirmation
+    dispatchChainGet({});
+}
+
+void OscBridge::dispatchAiAction(const nlohmann::json& payload, const juce::String& reqId)
+{
+    if (!payload.contains("widgetId") || !payload.contains("value"))
+        return;
+
+    juce::String widgetId = juce::String(payload["widgetId"].get<std::string>().data());
+    float value = payload["value"].get<float>();
+    juce::String description;
+    if (payload.contains("description"))
+        description = juce::String(payload["description"].get<std::string>().data());
+
+    log("[AI ACTION] " + widgetId + " = " + juce::String(value) + (description.isNotEmpty() ? " (" + description + ")" : ""));
+
+    // Execute via ParameterMapper
+    if (paramMapper)
+        paramMapper->setValue(widgetId, value);
+
+    // Log to session
+    if (sessionManager)
+        sessionManager->logAiAction(widgetId, value, 0.0f, description);
+
+    // Broadcast action to UI
+    nlohmann::json response;
+    response["type"] = "ai.action.log";
+    response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : nullptr;
+    response["timestamp"] = juce::Time::currentTimeMillis();
+    response["payload"]["widgetId"] = widgetId.toStdString();
+    response["payload"]["value"] = value;
+    response["payload"]["description"] = description.toStdString();
+    wsServer->broadcast(response);
 }
 
 void OscBridge::setSessionManager(SessionManager* sm)

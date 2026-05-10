@@ -28,6 +28,9 @@
 // Forward declarations
 class AiEngine;
 class SessionManager;
+class MidiHandler;
+class ParameterMapper;
+class PluginChain;
 
 class OscBridge : private juce::Timer
 {
@@ -79,6 +82,9 @@ public:
     /** Forward raw OSC message to WebSocket clients (for debugging) */
     void forwardOscToUI(const juce::String& address, float value);
 
+    /** Broadcast raw JSON to all WebSocket clients */
+    void broadcastJson(const nlohmann::json& msg);
+
     //==============================================================================
     /** Set the DAW OSC target (plugin sends to this address) */
     void setDawTarget(const juce::String& host, int sendPort);
@@ -92,15 +98,30 @@ public:
     /** Set AI Engine for processing prompts */
     void setAiEngine(AiEngine* engine);
 
+    /** Set MIDI Handler for MIDI Learn */
+    void setMidiHandler(MidiHandler* mh);
+
+    /** Set Parameter Mapper for action execution */
+    void setParameterMapper(ParameterMapper* pm);
+
+    /** Set Plugin Chain for chain management */
+    void setPluginChain(PluginChain* pc);
+
     /** Set Session Manager for event logging */
     void setSessionManager(SessionManager* sm);
 
     /** Get current AI response status */
     bool isAiProcessing() const { return aiProcessing.load(); }
 
+    /** Callback: widget value changed from UI → ParameterMapper */
+    std::function<void(const juce::String&, float)> widgetChangeCallback;
+
     //==============================================================================
     /** Called from prepareToPlay with real audio device info */
     void broadcastPluginStats(double sampleRate, int bufferSize);
+
+    /** Called from processBlock to update analyzer data (thread-safe) */
+    void updateAnalyzer(float correlation, float loudness, const std::vector<float>& spectrum);
 
     /** Called from processBlock to update meter levels (thread-safe) */
     void updateMeter(float leftDb, float rightDb)
@@ -155,11 +176,19 @@ private:
     void dispatchDawRequest(const nlohmann::json& payload, const juce::String& reqId);
     void dispatchAiPrompt(const nlohmann::json& payload, const juce::String& reqId);
     void dispatchWidgetChange(const nlohmann::json& payload);
-    void dispatchConfig(const nlohmann::json& payload);
+    void dispatchMidiLearn(const juce::String& msgType, const nlohmann::json& payload,
+                           const juce::String& reqId);
+    void dispatchConfig(const nlohmann::json& payload, const juce::String& reqId);
     void dispatchOscSend(const nlohmann::json& payload);
+    void dispatchAiAction(const nlohmann::json& payload, const juce::String& reqId);
+    void dispatchChainGet(const juce::String& reqId);
+    void dispatchChainSet(const nlohmann::json& payload);
 
     // AI Engine reference (for ai.prompt messages)
     AiEngine*       aiEngine       = nullptr;
+    MidiHandler*    midiHandler    = nullptr;
+    ParameterMapper* paramMapper   = nullptr;
+    PluginChain*     pluginChain   = nullptr;
     SessionManager* sessionManager = nullptr;
     std::atomic<bool> aiProcessing {false};
 
@@ -170,6 +199,11 @@ private:
     std::atomic<float> lastMeterL { -60.0f };
     std::atomic<float> lastMeterR { -60.0f };
     int meterTickCounter { 0 }; // only broadcast meter every N timer ticks
+
+    // Analyzer state (written from processBlock, broadcast periodically)
+    std::atomic<float> lastCorrelation { 0.0f };
+    std::atomic<float> lastLoudness { -96.0f };
+    std::vector<float> lastSpectrum;
 
     // Audio device info (set from prepareToPlay via broadcastPluginStats)
     double lastSampleRate { 44100.0 };

@@ -76,6 +76,14 @@ target_sources(WhyCremisiVSTPlugin
         src/ui/WebViewBridge.cpp
         src/bridge/WebSocketServer.cpp
         src/bridge/OscBridge.cpp
+        src/midi/MidiHandler.cpp
+        src/core/ParameterMapper.cpp
+        src/core/PluginChain.cpp
+        src/dsp/EQBand.cpp
+        src/dsp/Compressor.cpp
+        src/dsp/Limiter.cpp
+        src/dsp/Analyzer.cpp
+        src/dsp/DSPEngine.cpp
 )
 
 # ==============================================================================
@@ -86,6 +94,7 @@ target_link_libraries(WhyCremisiVSTPlugin
     PRIVATE
         # Audio modules (required for Standalone)
         juce::juce_audio_utils
+        juce::juce_dsp
         juce::juce_audio_devices
         juce::juce_audio_processors
         juce::juce_audio_formats
@@ -109,6 +118,8 @@ target_include_directories(WhyCremisiVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/midi
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bridge
 )

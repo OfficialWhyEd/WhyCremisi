@@ -45,6 +45,8 @@ public:
     void logParameter   (const juce::String& name, float value);
     void logAiPrompt    (const juce::String& prompt, const juce::String& provider, const juce::String& model = "");
     void logAiResponse  (const juce::String& response, int durationMs, bool success = true);
+    void logAiAction    (const juce::String& widgetId, float value, float previousValue,
+                         const juce::String& description = "");
     void logWsConnect   (int clientId, bool connected);
     void logError       (const juce::String& code, const juce::String& msg);
     void logNote        (const juce::String& text);  // free-form note

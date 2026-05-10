@@ -1,30 +1,21 @@
-/*
-  ==============================================================================
-  AiEngine.h
-  WhyCremisi VST Plugin - AI Engine for multi-provider support
-  
-  Phase 2 IN PROGRESS: Ollama local implemented
-  Phase 3: Will add Gemini, Anthropic, OpenAI, OpenRouter, Groq
-  ==============================================================================
-*/
-
 #pragma once
 
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <memory>
+#include <vector>
 
 class AiEngine
 {
 public:
     enum class Provider { 
-        Ollama,      // Local LLM (default)
-        Gemini,      // Google Gemini
-        Anthropic,   // Claude
-        OpenAI,      // GPT
-        OpenRouter,  // Multi-provider
-        Groq         // Fast inference
+        Ollama,
+        Gemini,
+        Anthropic,
+        OpenAI,
+        OpenRouter,
+        Groq
     };
     
     struct Config {
@@ -36,77 +27,85 @@ public:
         int maxTokens = 2048;
         float temperature = 0.7f;
     };
-    
+
+    struct AiAction {
+        juce::String widgetId;
+        float value = 0.0f;
+        float previousValue = 0.0f;
+        juce::String description;
+    };
+
+    struct StructuredResponse {
+        juce::String text;
+        std::vector<AiAction> actions;
+        bool success = false;
+    };
+
+    struct WidgetInfo {
+        juce::String widgetId;
+        juce::String label;
+        float min = 0.0f;
+        float max = 1.0f;
+        float currentValue = 0.0f;
+        juce::String unit = "";
+    };
+
     AiEngine();
     ~AiEngine();
     
-    //==============================================================================
-    /** Configure the AI provider */
     void configure(const Config& config);
-    
-    //==============================================================================
-    /** Update partial config (preserves other settings) */
     void updateConfig(std::function<void(Config&)> updater);
-    
-    //==============================================================================
-    /** Get current config */
     const Config& getConfig() const { return config; }
-    
-    //==============================================================================
-    /** Send a prompt and get response (synchronous - blocks!) */
+
     juce::String sendPrompt(const juce::String& prompt);
-    
-    //==============================================================================
-    /** Send a prompt asynchronously (non-blocking) */
+
     using ResponseCallback = std::function<void(const juce::String& response, bool success)>;
     void sendPromptAsync(const juce::String& prompt, ResponseCallback callback);
+
+    StructuredResponse sendPromptStructured(const juce::String& prompt);
     
-    //==============================================================================
-    /** Get available models for current provider */
+    using StructuredCallback = std::function<void(const StructuredResponse& response)>;
+    void sendPromptAsyncStructured(const juce::String& prompt, StructuredCallback callback);
+
     juce::StringArray getAvailableModels();
-    
-    //==============================================================================
-    /** Test connection to provider */
     bool testConnection();
-    
-    //==============================================================================
-    /** Get last error message */
     juce::String getLastError() const { return lastError; }
-    
-    //==============================================================================
-    /** Check if configured */
     bool isConfigured() const { return configured; }
-    
-    //==============================================================================
-    /** Get current provider name */
     juce::String getProviderName() const;
-    
-    //==============================================================================
-    /** Get current model name */
     juce::String getModelName() const { return config.model; }
+
+    void setWidgetList(const std::vector<WidgetInfo>& widgets);
+    void setContext(const juce::String& meterData, const juce::String& transportData);
+    juce::String buildSystemPrompt() const;
+
+    using ActionCallback = std::function<void(const AiAction& action)>;
+    void setActionCallback(ActionCallback cb) { actionCallback = cb; }
 
 private:
     Config config;
     bool configured = false;
-    juce::String lastError;
-    
-    //==============================================================================
-    /** HTTP helper for making requests */
+    mutable juce::String lastError;
+
+    std::vector<WidgetInfo> widgets;
+    juce::String lastMeterData;
+    juce::String lastTransportData;
+    ActionCallback actionCallback;
+
+    StructuredResponse parseStructuredResponse(const juce::String& raw) const;
+
     juce::String makeHttpRequest(const juce::String& url,
                                   const juce::String& method,
                                   const juce::String& jsonBody,
                                   int timeoutMs,
                                   const juce::String& extraHeaders = {});
     
-    //==============================================================================
-    /** Internal implementations for each provider */
     juce::String callOllama(const juce::String& prompt);
     juce::String callGemini(const juce::String& prompt);
     juce::String callAnthropic(const juce::String& prompt);
     juce::String callOpenAI(const juce::String& prompt);
     juce::String callOpenRouter(const juce::String& prompt);
     juce::String callGroq(const juce::String& prompt);
-    juce::String callOpenAICompatible(const juce::String& url, const juce::String& prompt);
-    
+    juce::String callOpenAICompatible(const juce::String& url, const juce::String& prompt, const juce::String& systemPrompt = {});
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AiEngine)
 };

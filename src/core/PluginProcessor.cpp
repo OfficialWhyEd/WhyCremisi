@@ -10,6 +10,10 @@
 #include "AiEngine.h"
 #include "OscBridge.h"
 #include "SessionManager.h"
+#include "MidiHandler.h"
+#include "ParameterMapper.h"
+#include "PluginChain.h"
+#include "DSPEngine.h"
 
 //==============================================================================
 WhyCremisiProcessor::WhyCremisiProcessor()
@@ -58,6 +62,12 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     // Get parameter pointers
     gainParam1 = parameters.getRawParameterValue("gain1");
     gainParam2 = parameters.getRawParameterValue("gain2");
+    gainParam3 = parameters.getRawParameterValue("gain3");
+    gainParam4 = parameters.getRawParameterValue("gain4");
+    gainParam5 = parameters.getRawParameterValue("gain5");
+    gainParam6 = parameters.getRawParameterValue("gain6");
+    gainParam7 = parameters.getRawParameterValue("gain7");
+    gainParam8 = parameters.getRawParameterValue("gain8");
     aiEnabled = parameters.getRawParameterValue("aiEnabled");
     aiProvider = parameters.getRawParameterValue("aiProvider");
     aiModelIndex = parameters.getRawParameterValue("aiModelIndex");
@@ -78,13 +88,85 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     dawIp = parameters.state.getProperty("dawIp", "127.0.0.1").toString();
     dawOscPort = static_cast<int>(dawOscPortParam->load());
     wsPort = static_cast<int>(wsPortParam->load());
+
+    // Initialize MIDI + Parameter Mapping
+    midiHandler = std::make_unique<MidiHandler>();
+    paramMapper = std::make_unique<ParameterMapper>();
+    paramMapper->setMidiHandler(midiHandler.get());
+
+    // Initialize Plugin Chain
+    pluginChain = std::make_unique<PluginChain>();
+
+    // Initialize DSP Engine
+    dspEngine = std::make_unique<DSPEngine>();
     
     // Initialize OscBridge (OSC receive port from parameter + WebSocket port from parameter)
     oscBridge = std::make_unique<OscBridge>(oscPort, wsPort);
     oscBridge->setAiEngine(aiEngine.get());
     oscBridge->setSessionManager(sessionManager.get());
     oscBridge->setDawTarget(dawIp, dawOscPort);  // DAW IP and OSC port from parameters
-    
+    oscBridge->setMidiHandler(midiHandler.get());
+    oscBridge->setParameterMapper(paramMapper.get());
+    oscBridge->setPluginChain(pluginChain.get());
+    paramMapper->setOscBridge(oscBridge.get());
+
+    // Route widget changes from UI → ParameterMapper → MIDI/OSC
+    oscBridge->widgetChangeCallback = [this](const juce::String& widgetId, float value) {
+        if (paramMapper)
+            paramMapper->setValue(widgetId, value);
+    };
+
+    // Set up AI engine widget context + action execution
+    if (aiEngine)
+    {
+        aiEngine->setActionCallback([this](const AiEngine::AiAction& action) {
+            if (paramMapper)
+                paramMapper->setValue(action.widgetId, action.value);
+        });
+
+        // Provide initial widget list to AI engine
+        std::vector<AiEngine::WidgetInfo> widgetList;
+        auto addWidget = [&](const juce::String& id, const juce::String& label,
+                              float val, float mn, float mx, const juce::String& unit = {})
+        {
+            AiEngine::WidgetInfo w;
+            w.widgetId = id; w.label = label; w.currentValue = val;
+            w.min = mn; w.max = mx; w.unit = unit;
+            widgetList.push_back(w);
+        };
+        addWidget("masterGain", "Master Gain", gainParam1 ? gainParam1->load() : 0.0f, -60.0f, 12.0f, "dB");
+        for (int i = 1; i <= 8; ++i)
+        {
+            auto id = "gain" + juce::String(i);
+            float val = 0.0f;
+            auto ptr = parameters.getRawParameterValue(id);
+            if (ptr) val = ptr->load();
+            addWidget(id, "Gain " + juce::String(i), val, -60.0f, 12.0f, "dB");
+        }
+        aiEngine->setWidgetList(widgetList);
+
+        // Plugin chain context
+        if (pluginChain)
+        {
+            juce::String chainDesc = pluginChain->toDescriptiveString();
+            aiEngine->setContext(chainDesc, {});
+        }
+    }
+
+    // MIDI Learn complete: notify UI via broadcast
+    midiHandler->learnCompleteCallback = [this](const juce::String& widgetId, int cc, int channel) {
+        if (oscBridge)
+        {
+            nlohmann::json response;
+            response["type"] = "midi.learn.complete";
+            response["timestamp"] = juce::Time::currentTimeMillis();
+            response["payload"]["widgetId"] = widgetId.toStdString();
+            response["payload"]["cc"] = cc;
+            response["payload"]["channel"] = channel;
+            oscBridge->broadcastJson(response);
+        }
+    };
+
     // Start bridge immediately so it's available before prepareToPlay
     // (critical for Standalone mode where prepareToPlay needs an audio device)
     {
@@ -142,6 +224,10 @@ void WhyCremisiProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     {
         logToFile("[WhyCremisi] OscBridge is NULL!");
     }
+
+    // Prepare DSP Engine
+    if (dspEngine)
+        dspEngine->prepare(sampleRate, samplesPerBlock);
 }
 
 void WhyCremisiProcessor::releaseResources()
@@ -167,7 +253,26 @@ bool WhyCremisiProcessor::isBusesLayoutSupported(const BusesLayout& layouts) con
 void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
-    juce::ignoreUnused(midiMessages);
+
+    // Route incoming MIDI messages to MidiHandler (for MIDI Learn)
+    if (midiHandler)
+    {
+        for (const auto& metadata : midiMessages)
+        {
+            auto msg = metadata.getMessage();
+            if (msg.isController())
+                midiHandler->onMidiInput(msg);
+        }
+    }
+
+    // Flush MIDI CC output messages (control external plugins)
+    if (midiHandler)
+        midiHandler->flush(midiMessages, 0);
+
+    // MIDI Through: keep incoming MIDI in output when learning
+    bool isLearning = midiHandler && midiHandler->isLearning();
+    if (!isLearning && !midiThroughEnabled)
+        midiMessages.clear();
 
     const int totalIn   = getTotalNumInputChannels();
     const int totalOut  = getTotalNumOutputChannels();
@@ -176,13 +281,49 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     for (int i = totalIn; i < totalOut; ++i)
         buffer.clear(i, 0, numSamples);
 
-    // Apply master gain from parameters
-    if (gainParam1 != nullptr)
-        buffer.applyGain(juce::Decibels::decibelsToGain(gainParam1->load()));
-    
-    // Apply second gain parameter
-    if (gainParam2 != nullptr)
-        buffer.applyGain(juce::Decibels::decibelsToGain(gainParam2->load()));
+    // Apply all 8 gain parameters
+    for (auto* g : { gainParam1, gainParam2, gainParam3, gainParam4,
+                     gainParam5, gainParam6, gainParam7, gainParam8 })
+    {
+        if (g != nullptr)
+            buffer.applyGain(juce::Decibels::decibelsToGain(g->load()));
+    }
+
+    // ── DSP Processing ──────────────────────────────────────────────
+    if (dspEngine)
+    {
+        dspEngine->process(buffer);
+
+        // Push analyzer data to OscBridge for UI broadcast
+        auto& dspAnalyzer = dspEngine->analyzer;
+        if (dspAnalyzer && dspAnalyzer->hasNewData() && oscBridge)
+        {
+            const auto& data = dspAnalyzer->getData();
+
+            // Compute correlation directly
+            float corr = 0.0f;
+            if (buffer.getNumChannels() >= 2)
+            {
+                int n = buffer.getNumSamples();
+                float sumL = 0.0f, sumR = 0.0f, sumLR = 0.0f, sumL2 = 0.0f, sumR2 = 0.0f;
+                for (int s = 0; s < n; ++s)
+                {
+                    float l = buffer.getSample(0, s);
+                    float r = buffer.getSample(1, s);
+                    sumL += l; sumR += r;
+                    sumLR += l * r;
+                    sumL2 += l * l; sumR2 += r * r;
+                }
+                float denom = std::sqrt((sumL2 - sumL * sumL / n) * (sumR2 - sumR * sumR / n));
+                if (denom > 1e-10f)
+                    corr = (sumLR - sumL * sumR / n) / denom;
+            }
+
+            std::vector<float> spectrum = data.magnitudes;
+            oscBridge->updateAnalyzer(corr, data.loudness, spectrum);
+            dspAnalyzer->clearNewData();
+        }
+    }
 
     // ── Universal transport via getPlayHead() ───────────────────────
     // Works in every DAW that implements VST3: Ableton, Logic, REAPER,
@@ -261,6 +402,10 @@ void WhyCremisiProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
     state.setProperty("dawIp", dawIp, nullptr);
+    if (midiHandler)
+        state.appendChild(midiHandler->save(), nullptr);
+    if (pluginChain)
+        state.appendChild(pluginChain->save(), nullptr);
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -273,6 +418,18 @@ void WhyCremisiProcessor::setStateInformation(const void* data, int sizeInBytes)
         auto restored = juce::ValueTree::fromXml(*xmlState);
         parameters.replaceState(restored);
         dawIp = restored.getProperty("dawIp", "127.0.0.1").toString();
+        if (midiHandler)
+        {
+            auto midiTree = restored.getChildWithName("midiMappings");
+            if (midiTree.isValid())
+                midiHandler->load(midiTree);
+        }
+        if (pluginChain)
+        {
+            auto chainTree = restored.getChildWithName("pluginChain");
+            if (chainTree.isValid())
+                pluginChain->load(chainTree);
+        }
         if (oscBridge)
             oscBridge->setDawTarget(dawIp, dawOscPort);
     }

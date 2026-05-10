@@ -1,20 +1,24 @@
 # WhyCremisi VST Bridge AI - Stato Progetto
 
-**Ultimo aggiornamento:** 2026-05-09 — Claude (sessione setup macOS + bug fixes)
+**Ultimo aggiornamento:** 2026-05-11 — Claude (sessione OSC fix + review work-in-progress)
 
 ---
 
-## ✅ Completato — Sessione 09/05 (Claude — macOS setup + bug fixes)
+## ✅ Completato — Sessione 11/05 (Claude — OSC fix + review WIP)
 
 | Fix | File | Dettaglio |
 |-----|------|-----------|
-| Build macOS JUCE 8 | `CMakeLists.txt` | Aggiunto path `/Users/whyed/` — build [100%] pulita su Monterey + AppleClang 14 |
-| Anthropic headers | `src/ai/AiEngine.cpp` | Era `Authorization: Bearer` → ora `x-api-key` + `anthropic-version: 2023-06-01` come da spec API |
-| JSON parser | `src/ai/AiEngine.cpp` | Rimosso parser manuale fragile, tutti i provider usano nlohmann (già in third_party) |
-| Deduplicazione AI | `src/ai/AiEngine.cpp` | OpenAI/OpenRouter/Groq unificati in `callOpenAICompatible()` |
-| OSC type tag bug | `src/osc/OscHandler.cpp` | Null terminator del type tag non veniva saltato se già allineato → args puntava al null invece dei dati payload |
-| Race condition OSC | `src/bridge/OscBridge.cpp` | `isRunning()` chiamato prima che il thread OSC completasse il bind — aggiunto sleep(50ms) |
-| npm install | `webview-ui/` | Dipendenze React installate localmente |
+| OSC parsing double null skip | `src/osc/OscHandler.cpp` | Rimosso `ptr++` erroneo dopo padding (linea 133) — causava misalignment e type tag saltato |
+| Verified build [100%] | `CMakeLists.txt` | VST3 + AU + Standalone compilano con nuovi moduli (MidiHandler, ParameterMapper, PluginChain, DSPEngine) |
+| Nuovi moduli C++ | `src/core/`, `src/midi/`, `src/dsp/` | MidiHandler, ParameterMapper, PluginChain, DSPEngine (Analyzer, Compressor, Limiter, EQBand) |
+| Refactor OscBridge | `src/bridge/OscBridge.cpp` | `sendConfigResponse()` per risposte configurabili, dispatch MIDI learn, chain management, AI action execution |
+| 8 gain parameters | `src/core/PluginProcessor.cpp` | Da 2 a 8 parametri gain, midi learn routing, DSP processing, analyzer data push |
+| MIDI Learn UI | `webview-ui/src/App.jsx` | Pulsante LEARN sui widget, pannello Parameter Mapping, pannello Plugin Chain |
+| AI Action log | `webview-ui/src/App.jsx` | Undo/redo azioni AI, action log timeline |
+| Bridge API | `webview-ui/src/whycremisi-bridge.js` | `midiLearnStart()`, `midiLearnStop()`, `getPluginChain()`, `setPluginChain()` |
+| AiEngine refactor | `src/ai/AiEngine.cpp/h` | Action callbacks, widget context, provider deduplicazione estesa |
+
+**Build verificata:** VST3 + AU + Standalone compilati senza errori su macOS, JUCE 8.0.12.
 
 **Build verificata:** VST3 + Standalone compilati senza errori su macOS 12.6.3, JUCE 8.0.12.
 
@@ -68,17 +72,14 @@
 
 | # | Task | Priorità |
 |---|------|----------|
-| 1 | Rimuovere log di debug da `/tmp/whycremisi-debug.log` | Media |
-| 2 | Fix parsing OSC in OscHandler.cpp (pointer arithmetic linee 122-136) | Alta |
-| 3 | Mappare tutti i parametri OSC Reaper (volume, pan, mute, solo, tempo, position) | Alta |
-| 4 | Verificare OSC Reaper → Plugin (feedback bidirezionale) | Alta |
-| 5 | Preferences configurabili (IP/porte OSC e WebSocket senza editare codice) | Media |
-| 6 | Documentazione parametri OSC/WS per Edo | Media |
-| 7 | gain1/gain2 non collegati | Bassa |
-| 8 | WebSocket reconnect logic cleanup | Bassa |
-| 9 | Integrare Mastering Rack knobs (da prototipo di Edo) | Media |
-| 10 | Vector Scope con dati audio reali | Bassa |
-| 11 | Supporto OSC Ableton | Media |
+| 1 | Mappare tutti i parametri OSC Reaper (volume, pan, mute, solo, tempo, position) | Alta |
+| 2 | Verificare OSC Reaper → Plugin (feedback bidirezionale) | Alta |
+| 3 | Preferences configurabili (IP/porte OSC e WebSocket senza editare codice) | Media |
+| 4 | Documentazione parametri OSC/WS per Edo | Media |
+| 5 | WebSocket reconnect logic cleanup | Bassa |
+| 6 | Vector Scope con dati audio reali (ora riceve dall'analyzer!) | Bassa |
+| 7 | Supporto OSC Ableton | Media |
+| 8 | `getCurrentPosition` deprecato → usare `getPosition` in PluginProcessor | Bassa |
 
 ---
 

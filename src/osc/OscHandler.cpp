@@ -127,13 +127,8 @@ void OscHandler::handleOscPacket(const char* data, int size)
         {
             addressPattern += *ptr++;
         }
-        // Skip padding
         ptr += (4 - ((addressPattern.length() + 1) % 4)) % 4;
         if (ptr >= data + size) return;
-        ptr++; // Skip null terminator
-        
-        // Align to 4 bytes
-        while (ptr < data + size && (ptr - data) % 4 != 0) ptr++;
         
         // Extract type tag (starts with ',')
         if (ptr >= data + size || *ptr != ',')

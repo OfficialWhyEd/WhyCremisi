@@ -10,11 +10,16 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <memory>
 #include <map>
+#include <functional>
 
 // Forward declarations
 class AiEngine;
 class OscBridge;
 class SessionManager;
+class MidiHandler;
+class ParameterMapper;
+class PluginChain;
+class DSPEngine;
 
 //==============================================================================
 class WhyCremisiProcessor : public juce::AudioProcessor
@@ -97,6 +102,12 @@ private:
     // Parameter pointers
     std::atomic<float>* gainParam1 = nullptr;
     std::atomic<float>* gainParam2 = nullptr;
+    std::atomic<float>* gainParam3 = nullptr;
+    std::atomic<float>* gainParam4 = nullptr;
+    std::atomic<float>* gainParam5 = nullptr;
+    std::atomic<float>* gainParam6 = nullptr;
+    std::atomic<float>* gainParam7 = nullptr;
+    std::atomic<float>* gainParam8 = nullptr;
     std::atomic<float>* aiEnabled = nullptr;
     std::atomic<float>* aiProvider = nullptr;
     std::atomic<float>* aiModelIndex = nullptr;
@@ -118,6 +129,17 @@ private:
     juce::String dawIp = "127.0.0.1";
     int dawOscPort = 9001;
     int wsPort = 8080;
+
+    // MIDI + Parameter Mapping
+    std::unique_ptr<MidiHandler> midiHandler;
+    std::unique_ptr<ParameterMapper> paramMapper;
+    bool midiThroughEnabled = false;
+
+    // Plugin Chain
+    std::unique_ptr<PluginChain> pluginChain;
+
+    // DSP Engine
+    std::unique_ptr<DSPEngine> dspEngine;
     
     // Session Manager
     std::unique_ptr<SessionManager> sessionManager;

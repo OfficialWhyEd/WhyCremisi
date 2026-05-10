@@ -242,30 +242,21 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
     					</div>
     				</div>
     			</div>
-    			<svg className="absolute inset-0" width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
-    				<div className="absolute inset-0">
-    					<circle cx="50" cy="50" r="45" fill="none" stroke="#222222" strokeWidth="1" />
-    					<line x1="50" y1="5" x2="50" y2="95" stroke="#222222" strokeWidth="0.5" strokeDasharray="2,2" />
-    					<line x1="5" y1="50" x2="95" y2="50" stroke="#222222" strokeWidth="0.5" strokeDasharray="2,2" />
-    			</div>
-    			<motion.div
-    				className="absolute inset-0"
-    				style={{
-    					transform: `scale(${Math.min(meterL, meterR) * 2 + 0.2})`,
-    					opacity: meterL > 0 && meterR > 0 ? 0.7 : 0.2
-    				}}
-    			>
-    				<div className="absolute inset-0">
-    					<circle cx="50" cy="50" r="40" fill="none" stroke="url(#gradient)" strokeWidth="2" />
-    					<defs>
-    						<linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-    							<stop offset="0%" style={{ stopColor: '#00E5FF' }} />
-    							<stop offset="100%" style={{ stopColor: '#FF6B35' }} />
-    						</linearGradient>
-    					</defs>
-    					<circle cx="50" cy="50" r="3" fill="#00FFaa" />
-    				</div>
-    			</motion.div>
+     			<div className="absolute inset-0 pointer-events-none">
+     				<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="absolute inset-0">
+     					<circle cx="50" cy="50" r="45" fill="none" stroke="#222222" strokeWidth="1" />
+     					<line x1="50" y1="5" x2="50" y2="95" stroke="#222222" strokeWidth="0.5" strokeDasharray="2,2" />
+     					<line x1="5" y1="50" x2="95" y2="50" stroke="#222222" strokeWidth="0.5" strokeDasharray="2,2" />
+     					<circle cx="50" cy="50" r="40" fill="none" stroke="url(#gradient)" strokeWidth="2" />
+     					<defs>
+     						<linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+     							<stop offset="0%" style={{ stopColor: '#00E5FF' }} />
+     							<stop offset="100%" style={{ stopColor: '#FF6B35' }} />
+     						</linearGradient>
+     					</defs>
+     					<circle cx="50" cy="50" r="3" fill="#00FFaa" />
+     				</svg>
+     			</div>
     			<motion.div
     				className="absolute inset-0"
     				style={{
@@ -346,6 +337,61 @@ export default function App() {
   const [lufs, setLufs]     = useState(-60)
   const [peak, setPeak]     = useState(-60)
 
+  // ── Analyzer / Spectrum ────────────────────────────────────────────
+  const [spectrum, setSpectrum] = useState([])
+  const [correlation, setCorrelation] = useState(0)
+
+  // ── MIDI Learn ─────────────────────────────────────────────────────
+  const [midiLearnWidget, setMidiLearnWidget] = useState(null)
+  const [midiMappings, setMidiMappings] = useState([])
+  const [showMapPanel, setShowMapPanel] = useState(false)
+
+  // ── AI Action Log + Undo/Redo ──────────────────────────────────────
+  const [actionLog, setActionLog] = useState([])
+  const [actionHistory, setActionHistory] = useState([])
+  const [actionRedoStack, setActionRedoStack] = useState([])
+  const actionHistoryRef = useRef([])
+  const actionRedoRef = useRef([])
+
+  const pushAction = useCallback((action) => {
+    setActionLog(prev => [action, ...prev].slice(0, 100))
+    actionHistoryRef.current = [...actionHistoryRef.current, { ...action }]
+    actionRedoRef.current = []
+    setActionHistory(actionHistoryRef.current)
+    setActionRedoStack([])
+  }, [])
+
+  const undoLastAction = useCallback(() => {
+    const history = actionHistoryRef.current
+    if (history.length === 0) return
+    const last = history[history.length - 1]
+    const prevVal = last.previousValue !== undefined ? last.previousValue : 0
+    if (whycremisi.isConnected()) {
+      whycremisi.sendMessage('widget.valueChange', { widgetId: last.widgetId, value: prevVal })
+    }
+    actionRedoRef.current = [...actionRedoRef.current, { ...last }]
+    actionHistoryRef.current = history.slice(0, -1)
+    setActionHistory(actionHistoryRef.current)
+    setActionRedoStack(actionRedoRef.current)
+  }, [])
+
+  const redoLastAction = useCallback(() => {
+    const redoStack = actionRedoRef.current
+    if (redoStack.length === 0) return
+    const next = redoStack[redoStack.length - 1]
+    if (whycremisi.isConnected()) {
+      whycremisi.sendMessage('widget.valueChange', { widgetId: next.widgetId, value: next.value })
+    }
+    actionHistoryRef.current = [...actionHistoryRef.current, { ...next }]
+    actionRedoRef.current = redoStack.slice(0, -1)
+    setActionHistory(actionHistoryRef.current)
+    setActionRedoStack(actionRedoRef.current)
+  }, [])
+
+  // ── Plugin Chain ──────────────────────────────────────────────────
+  const [pluginChain, setPluginChain] = useState([])
+  const [showChainPanel, setShowChainPanel] = useState(false)
+
   // ── plugin stats (from prepareToPlay via WebSocket) ───────────────
   const [pluginStats, setPluginStats] = useState({ sampleRate: null, bufferSize: null, latencyMs: null })
 
@@ -361,7 +407,8 @@ export default function App() {
     { id: 'comp',      icon: 'settings_input_component',    label: 'COMP' },
     { id: 'limit',     icon: 'linear_scale',                label: 'LIMIT' },
     { id: 'eq',        icon: 'graphic_eq',                  label: 'EQ' },
-    { id: 'meters',    icon: 'analytics',                   label: 'METERS' }
+    { id: 'meters',    icon: 'analytics',                   label: 'METERS' },
+    { id: 'actions',   icon: 'history',                     label: 'ACTIONS' }
   ]
 
   // ── helpers ───────────────────────────────────────────────────────
@@ -493,6 +540,53 @@ export default function App() {
       sysMsg(`[${ts()}] [ERROR] ${payload.message || payload.code || 'Unknown error'}`)
     })
 
+    // MIDI Learn: aggiorna stato UI
+    const unsubLearnStatus = whycremisi.on('midi.learn.status', (payload) => {
+      if (payload.status === 'listening') {
+        setMidiLearnWidget(payload.widgetId)
+      } else if (payload.status === 'cancelled') {
+        setMidiLearnWidget(null)
+      }
+    })
+
+    const unsubLearnComplete = whycremisi.on('midi.learn.complete', (payload) => {
+      setMidiLearnWidget(null)
+      setMidiMappings(prev => {
+        const filtered = prev.filter(m => m.widgetId !== payload.widgetId)
+        return [...filtered, { widgetId: payload.widgetId, cc: payload.cc, channel: payload.channel }]
+      })
+      sysMsg(`[${ts()}] MIDI LEARN: ${payload.widgetId} → CC#${payload.cc} Ch.${payload.channel}`)
+    })
+
+    // Plugin Chain response
+    const unsubChain = whycremisi.on('chain.response', (payload) => {
+      if (payload.plugins) setPluginChain(payload.plugins)
+    })
+
+    // Request chain on connect
+    if (whycremisi.isConnected()) {
+      whycremisi.getPluginChain().then(setPluginChain).catch(() => {})
+    }
+
+    // Analyzer data (spectrum, correlation, loudness)
+    const unsubAnalyzer = whycremisi.on('daw.analyzer', (payload) => {
+      if (payload.spectrum) setSpectrum(payload.spectrum)
+      if (payload.correlation !== undefined) setCorrelation(payload.correlation)
+    })
+
+    // AI Action log
+    const unsubActionLog = whycremisi.on('ai.action.log', (payload) => {
+      if (payload.widgetId) {
+        pushAction({
+          widgetId: payload.widgetId,
+          value: payload.value,
+          previousValue: payload.previousValue,
+          description: payload.description || '',
+          timestamp: Date.now()
+        })
+      }
+    })
+
     // connect
     whycremisi.connect().catch(() => {
       sysMsg(`[${ts()}] PLUGIN NOT RUNNING — OFFLINE MODE`)
@@ -504,6 +598,7 @@ export default function App() {
       intervalsRef.current = []
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
+      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubActionLog()
       whycremisi.disconnect()
     }
   }, [addMsg, sysMsg])
@@ -1110,8 +1205,112 @@ export default function App() {
               <div className="w-1.5 h-1.5 rounded-full bg-[#DC143C] led-red-active" />
               <span className="text-xs font-bold text-[#DC143C] tracking-widest uppercase">Mastering Rack</span>
             </div>
-            <span className="text-xs font-mono text-[#888888]">STEREO MASTER</span>
+            <div className="flex items-center gap-2">
+              <motion.button
+                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showMapPanel ? 'bg-[#00E5FF] text-black border-[#00E5FF]' : 'text-[#888] border-[#333] hover:border-[#00E5FF] hover:text-[#00E5FF]'}`}
+                onClick={() => setShowMapPanel(p => !p)}
+                whileTap={{ scale: 0.95 }}
+              >MAP</motion.button>
+              <motion.button
+                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showChainPanel ? 'bg-[#FF6B35] text-black border-[#FF6B35]' : 'text-[#888] border-[#333] hover:border-[#FF6B35] hover:text-[#FF6B35]'}`}
+                onClick={() => setShowChainPanel(p => !p)}
+                whileTap={{ scale: 0.95 }}
+              >CHAIN</motion.button>
+              <span className="text-xs font-mono text-[#888888]">STEREO MASTER</span>
+            </div>
           </div>
+
+          {/* Plugin Chain Panel */}
+          {showChainPanel && (
+            <div className="bg-[#0d0d0d] border-b border-[#222] px-3 py-2 space-y-1 max-h-40 overflow-y-auto">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-[#FF6B35]">Plugin Chain</span>
+                <span className="text-[9px] text-[#666]">{pluginChain.length} plugins</span>
+              </div>
+              {pluginChain.length === 0 ? (
+                <div className="text-[9px] text-[#555] italic">No plugins configured. Add your DAW plugins here so the AI knows what's in your chain.</div>
+              ) : (
+                pluginChain.map((p, i) => (
+                  <div key={p.id || i} className="flex justify-between items-center text-[10px] font-mono">
+                    <span className="text-[#aaa]">{i+1}. {p.name}</span>
+                    <span className="text-[#888] text-[8px]">{p.manufacturer} {p.format}</span>
+                    <motion.button
+                      className="text-[#DC143C] hover:text-[#ff6b6b] text-[9px]"
+                      onClick={() => {
+                        const updated = pluginChain.filter(x => x.id !== p.id)
+                        setPluginChain(updated)
+                        if (whycremisi.isConnected()) whycremisi.setPluginChain(updated)
+                      }}
+                      whileTap={{ scale: 0.9 }}
+                    >REMOVE</motion.button>
+                  </div>
+                ))
+              )}
+              {/* Add plugin form */}
+              <div className="flex gap-1 pt-1 border-t border-[#222]">
+                <input
+                  className="flex-1 bg-[#0e0e0e] border border-[#333] text-[10px] text-[#e5e2e1] px-1 py-0.5 outline-none font-mono"
+                  placeholder="Plugin name..."
+                  id="chainPluginName"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const name = e.target.value.trim()
+                      if (!name) return
+                      const id = 'plugin_' + Date.now()
+                      const updated = [...pluginChain, { id, name, manufacturer: '', format: 'VST3', slot: pluginChain.length, enabled: true }]
+                      setPluginChain(updated)
+                      if (whycremisi.isConnected()) whycremisi.setPluginChain(updated)
+                      e.target.value = ''
+                    }
+                  }}
+                />
+                <motion.button
+                  className="text-[9px] bg-[#FF6B35] text-black font-bold px-2 py-0.5 rounded-sm"
+                  onClick={() => {
+                    const input = document.getElementById('chainPluginName')
+                    const name = input?.value?.trim()
+                    if (!name) return
+                    const id = 'plugin_' + Date.now()
+                    const updated = [...pluginChain, { id, name, manufacturer: '', format: 'VST3', slot: pluginChain.length, enabled: true }]
+                    setPluginChain(updated)
+                    if (whycremisi.isConnected()) whycremisi.setPluginChain(updated)
+                    if (input) input.value = ''
+                  }}
+                  whileTap={{ scale: 0.9 }}
+                >ADD</motion.button>
+              </div>
+            </div>
+          )}
+
+          {/* Parameter Mapping Panel */}
+          {showMapPanel && (
+            <div className="bg-[#0d0d0d] border-b border-[#222] px-3 py-2 space-y-1 max-h-40 overflow-y-auto">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-[#00E5FF]">Parameter Mapping</span>
+                <span className="text-[9px] text-[#666]">{midiMappings.length} bindings</span>
+              </div>
+              {midiMappings.length === 0 ? (
+                <div className="text-[9px] text-[#555] italic">No MIDI mappings. Click LEARN on a widget and move a hardware controller.</div>
+              ) : (
+                midiMappings.map(m => (
+                  <div key={m.widgetId} className="flex justify-between items-center text-[10px] font-mono">
+                    <span className="text-[#aaa]">{m.widgetId}</span>
+                    <span className="text-[#FF6B35]">CC#{m.cc} Ch.{m.channel}</span>
+                    <motion.button
+                      className="text-[#DC143C] hover:text-[#ff6b6b] text-[9px]"
+                      onClick={() => {
+                        setMidiMappings(prev => prev.filter(x => x.widgetId !== m.widgetId))
+                        if (whycremisi.isConnected()) {
+                          whycremisi.sendMessage('config.set', { key: `midi.unmap.${m.widgetId}`, value: '' })
+                        }
+                      }}
+                      whileTap={{ scale: 0.9 }}
+                    >REMOVE</motion.button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
 
           <div className="flex-1 flex p-3 gap-4 overflow-hidden">
             {/* Gain fader */}
@@ -1126,8 +1325,9 @@ export default function App() {
                   throttleRef.current = now
                   const rect = e.currentTarget.getBoundingClientRect()
                   const pct = 1 - (e.clientY - rect.top) / rect.height
-                  setGainDb(Math.round((pct * 72 - 60) * 10) / 10)
-                  if (whycremisi.isConnected()) whycremisi.sendDAWCommand('setGain', { valueDb: gainDb })
+                  const valDb = Math.round((pct * 72 - 60) * 10) / 10
+                  setGainDb(valDb)
+                  if (whycremisi.isConnected()) whycremisi.sendDAWCommand('setGain', { valueDb: valDb })
                 }}
               >
                 {[10,25,50,75].map(p => (
@@ -1143,6 +1343,18 @@ export default function App() {
               <span className="text-xs font-mono text-[#FFB000]">-INF</span>
               <span className="text-xs font-bold text-[#e5e2e1] mt-1">{gainDb > 0 ? `+${gainDb}` : gainDb}dB</span>
               <span className="text-xs font-mono text-[#888888]">GAIN</span>
+              {/* MIDI Learn button */}
+              <motion.button
+                className={`w-full mt-1 py-0.5 text-[9px] font-bold uppercase tracking-wider border rounded-sm ${midiLearnWidget === 'masterGain' ? 'bg-[#FF6B35] text-black border-[#FF6B35] pulse-glow' : 'text-[#888] border-[#333] hover:border-[#FF6B35] hover:text-[#FF6B35]'}`}
+                onClick={() => {
+                  if (midiLearnWidget === 'masterGain') {
+                    whycremisi.midiLearnStop()
+                  } else {
+                    whycremisi.midiLearnStart('masterGain')
+                  }
+                }}
+                whileTap={{ scale: 0.95 }}
+              >{midiLearnWidget === 'masterGain' ? 'LEARNING...' : 'LEARN'}</motion.button>
             </div>
 
             {/* Controls cluster */}
@@ -1299,6 +1511,39 @@ export default function App() {
                 <span className={`text-xs font-mono font-bold ${v === '—' ? 'text-[#666]' : 'text-[#e5e2e1]'}`}>{v}</span>
               </div>
             ))}
+          </div>
+
+          {/* ── AI ACTION LOG + UNDO/REDO ────────────────────────── */}
+          <div className="w-44 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-1 overflow-hidden">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-[#00FFaa]">Actions</span>
+              <div className="flex gap-1">
+                <motion.button
+                  className={`text-[10px] px-1.5 py-0.5 border rounded-sm ${actionHistory.length > 0 ? 'text-[#e5e2e1] border-[#555] hover:border-[#00FFaa]' : 'text-[#444] border-[#222]'}`}
+                  onClick={undoLastAction}
+                  disabled={actionHistory.length === 0}
+                  whileTap={{ scale: 0.9 }}
+                >↩</motion.button>
+                <motion.button
+                  className={`text-[10px] px-1.5 py-0.5 border rounded-sm ${actionRedoStack.length > 0 ? 'text-[#e5e2e1] border-[#555] hover:border-[#00FFaa]' : 'text-[#444] border-[#222]'}`}
+                  onClick={redoLastAction}
+                  disabled={actionRedoStack.length === 0}
+                  whileTap={{ scale: 0.9 }}
+                >↪</motion.button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto max-h-20 space-y-0.5">
+              {actionLog.length === 0 ? (
+                <div className="text-[8px] text-[#555] italic">No AI actions yet</div>
+              ) : (
+                actionLog.slice(0, 5).map((a, i) => (
+                  <div key={a.timestamp + '-' + i} className="text-[8px] font-mono flex justify-between">
+                    <span className="text-[#aaa] truncate mr-1">{a.description || a.widgetId}</span>
+                    <span className="text-[#FFB000] flex-shrink-0">{a.value?.toFixed(2)}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {/* ── MINI SESSION FEED ────────────────────────────────── */}

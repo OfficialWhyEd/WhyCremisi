@@ -383,7 +383,20 @@ void SessionManager::logAiResponse(const juce::String& response, int durationMs,
     ev["success"]     = success;
     ev["duration_ms"] = durationMs;
     ev["chars"]       = response.length();
-    ev["response"]    = response.toStdString();          // full response stored
+    ev["response"]    = response.toStdString();
+    appendEvent(ev);
+}
+
+void SessionManager::logAiAction(const juce::String& widgetId, float value,
+                                  float previousValue, const juce::String& description)
+{
+    if (!sessionActive.load()) return;
+
+    auto ev = makeEventBase("ai_action");
+    ev["widget_id"]    = widgetId.toStdString();
+    ev["value"]        = value;
+    ev["previous"]     = previousValue;
+    ev["description"]  = description.toStdString();
     appendEvent(ev);
 }
 
