@@ -150,74 +150,148 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
     </div>
   ))
 
-  if (boxType === 'advisory') {
-    const [dismissed, setDismissed] = React.useState(false)
-    const [executed, setExecuted] = React.useState(false)
-    if (dismissed) return null
-    return (
-      <motion.div
-        initial={{ opacity:0, y:10, scale:0.98, filter:'blur(4px)' }}
-        animate={{ opacity:1, y:0, scale:1, filter:'blur(0)' }}
-        transition={{ delay:0.35, duration:0.6, ease:[0.22,1,0.36,1] }}
-        className="mt-2 animate-advisory-in group relative"
-      >
-        <div className="absolute -top-3 -right-1 opacity-5 pointer-events-none select-none">
-          <pre className="text-xs leading-tight text-white font-mono">0x45 0x21 0x88{'\n'}[TRANS_LOCK]{'\n'}0xFF 0x00 0x12</pre>
-        </div>
-        <div className="advisory-card advisory-breathe bg-[#121212] border border-[#DC143C]/40 p-4 relative font-mono transition-all duration-500 hover:bg-[#161616]">
-          <div className="absolute top-2 right-3 flex items-end gap-[2px] h-5 opacity-40">
-            {[40,70,55,90,65].map((h,i) => <div key={i} className="w-[2px] bg-[#DC143C]" style={{ height:`${h}%` }} />)}
-          </div>
-          <div className="flex justify-between items-start mb-3 border-b border-[#222] pb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-5 bg-[#DC143C] relative overflow-hidden flex-shrink-0">
-                <motion.div className="absolute inset-0 bg-white/20" animate={{ y:['0%','100%','0%'] }} transition={{ repeat:Infinity, duration:2 }} />
-              </div>
-              <div>
-                <span className="text-[#DC143C] text-xs font-bold tracking-tighter uppercase block">AI_MASTERING_ADVISORY</span>
-                <span className="text-xs text-[#888888] tracking-widest">NODE: CREMISI_X9</span>
-              </div>
-            </div>
-            <div className="flex flex-col items-end">
-              <span className="text-xs text-white/40 font-bold uppercase tracking-widest">Priority: <span className="text-[#DC143C]">High</span></span>
-              <span className="text-xs text-[#888888] font-mono mt-0.5">ID: #B87-FF01</span>
-            </div>
-          </div>
-          <div className="text-sm leading-relaxed text-[#FFB000] mb-3">
-            <p className="text-xs leading-relaxed">
-              Detected harmonic crowding in{' '}
-              <span className="text-white font-bold border-b border-[#DC143C]/40 px-0.5">200Hz–400Hz</span>.{' '}
-              Suggesting dynamic dip of{' '}
-              <span className="bg-[#DC143C] text-white px-1 font-bold">-2.4dB</span>.{' '}
-              Transient preservation at{' '}
-              <span className="text-white underline decoration-dotted">84%</span>.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 mb-3 text-xs font-mono text-[#666] opacity-60">
-            <span>HEX: 0xDC143C</span><span>·</span><span>VAL: -2.4dB_COR</span><span>·</span><span>SIG: 0.982</span><span>·</span><span>LAT: 0.2ms</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <motion.button
-              className={`relative px-4 py-1.5 text-xs font-bold uppercase tracking-widest transition-all ${executed ? 'bg-[#00FFaa] text-black border border-[#00FFaa]' : 'bg-[#DC143C] text-white hover:bg-white hover:text-[#DC143C] hover:shadow-[0_0_20px_rgba(220,20,60,0.5)]'}`}
-              whileHover={{ scale:1.02 }} whileTap={{ scale:0.95 }}
-              onClick={() => { setExecuted(true); onDawCmd('applyEQ', { freq:'200-400Hz', gain:-2.4 }) }}
-            >
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[12px]">bolt</span>
-                {executed ? 'APPLIED ✓' : 'EXECUTE SUGGESTED CHAIN'}
-              </span>
-            </motion.button>
-            <motion.button
-              className="border border-[#4d4d4d] text-[#888888] px-4 py-1.5 text-xs font-bold uppercase tracking-widest hover:border-[#FFB000] hover:text-[#FFB000] hover:shadow-[0_0_15px_rgba(255,176,0,0.2)] transition-all"
-              whileHover={{ scale:1.02 }} whileTap={{ scale:0.95 }}
-            >ANALYZE FURTHER</motion.button>
-            <button className="text-[#888888] hover:text-white text-xs font-bold uppercase self-center transition-colors hover:underline decoration-[#DC143C]"
-              onClick={() => setDismissed(true)}>DISMISS</button>
-          </div>
-        </div>
-      </motion.div>
-    )
-  }
+    if (boxType === 'advisory') {
+    	const [dismissed, setDismissed] = React.useState(false)
+    	const [executed, setExecuted] = React.useState(false)
+    	if (dismissed) return null
+    	return (
+    		<motion.div
+    			initial={{ opacity:0, y:10, scale:0.98, filter:'blur(4px)' }}
+    			animate={{ opacity:1, y:0, scale:1, filter:'blur(0)' }}
+    			transition={{ delay:0.35, duration:0.6, ease:[0.22,1,0.36,1] }}
+    			className="mt-2 animate-advisory-in group relative"
+    		>
+    			<div className="absolute -top-3 -right-1 opacity-5 pointer-events-none select-none">
+    				<pre className="text-xs leading-tight text-white font-mono">0x45 0x21 0x88{'\n'}[TRANS_LOCK]{'\n'}0xFF 0x00 0x12</pre>
+    			</div>
+    			<div className="advisory-card advisory-breathe bg-[#121212] border border-[#DC143C]/40 p-4 relative font-mono transition-all duration-500 hover:bg-[#161616]">
+    				<div className="absolute top-2 right-3 flex items-end gap-[2px] h-5 opacity-40">
+    					{[40,70,55,90,65].map((h,i) => <div key={i} className="w-[2px] bg-[#DC143C]" style={{ height:`${h}%` }} />)}
+    				</div>
+    				<div className="flex justify-between items-start mb-3 border-b border-[#222] pb-2">
+    					<div className="flex items-center gap-2">
+    						<div className="w-1 h-5 bg-[#DC143C] relative overflow-hidden flex-shrink-0">
+    							<motion.div className="absolute inset-0 bg-white/20" animate={{ y:['0%','100%','0%'] }} transition={{ repeat:Infinity, duration:2 }} />
+    						</div>
+    						<div>
+    							<span className="text-[#DC143C] text-xs font-bold tracking-tighter uppercase block">AI_MASTERING_ADVISORY</span>
+    							<span className="text-xs text-[#888888] tracking-widest">NODE: CREMISI_X9</span>
+    						</div>
+    					</div>
+    					<div className="flex flex-col items-end">
+    						<span className="text-xs text-white/40 font-bold uppercase tracking-widest">Priority: <span className="text-[#DC143C]">High</span></span>
+    						<span className="text-xs text-[#888888] font-mono mt-0.5">ID: #B87-FF01</span>
+    					</div>
+    				</div>
+    				<div className="text-sm leading-relaxed text-[#FFB000] mb-3">
+    					<p className="text-xs leading-relaxed">
+    						Detected harmonic crowding in{' '}
+    						<span className="text-white font-bold border-b border-[#DC143C]/40 px-0.5">200Hz–400Hz</span>.{' '}
+    						Suggesting dynamic dip of{' '}
+    						<span className="bg-[#DC143C] text-white px-1 font-bold">-2.4dB</span>.{' '}
+    						Transient preservation at{' '}
+    						<span className="text-white underline decoration-dotted">84%</span>.
+    					</p>
+    				</div>
+    				<div className="flex items-center gap-2 mb-3 text-xs font-mono text-[#666] opacity-60">
+    					<span>HEX: 0xDC143C</span><span>·</span><span>VAL: -2.4dB_COR</span><span>·</span><span>SIG: 0.982</span><span>·</span><span>LAT: 0.2ms</span>
+    				</div>
+    				<div className="flex flex-wrap gap-2">
+    					<motion.button
+    						className={`relative px-4 py-1.5 text-xs font-bold uppercase tracking-widest transition-all ${executed ? 'bg-[#00FFaa] text-black border border-[#00FFaa]' : 'bg-[#DC143C] text-white hover:bg-white hover:text-[#DC143C] hover:shadow-[0_0_20px_rgba(220,20,60,0.5)]'}`}
+    						whileHover={{ scale:1.02 }} whileTap={{ scale:0.95 }}
+    						onClick={() => { setExecuted(true); onDawCmd('applyEQ', { freq:'200-400Hz', gain:-2.4 }) }}
+    					>
+    						<span className="flex items-center gap-1.5">
+    							<span className="material-symbols-outlined text-[12px]">bolt</span>
+    							{executed ? 'APPLIED ✓' : 'EXECUTE SUGGESTED CHAIN'}
+    						</span>
+    					</motion.button>
+    					<motion.button
+    						className="border border-[#4d4d4d] text-[#888888] px-4 py-1.5 text-xs font-bold uppercase tracking-widest hover:border-[#FFB000] hover:text-[#FFB000] hover:shadow-[0_0_15px_rgba(255,176,0,0.2)] transition-all"
+    					>
+    						ANALYZE FURTHER
+    					</motion.button>
+    					<button className="text-[#888888] hover:text-white text-xs font-bold uppercase self-center transition-colors hover:underline decoration-[#DC143C]"
+    						onClick={() => setDismissed(true)}>DISMISS</button>
+    				</div>
+    			</div>
+    		</motion.div>
+    	)
+    }
+
+    if (boxType === 'vectorscope') {
+    	return wrap('Vector Scope', '#00FFaa', 'waveform', (
+    		<div className="relative w-full h-[300px]">
+    			<div className="absolute inset-0 bg-[#1a1a1a]/50">
+    				<div className="absolute inset-0 border-2 border-[#00FFaa]/20" />
+    			</div>
+    			<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+    				<div className="text-center text-xs font-mono">
+    					<div className="space-x-2">
+    						<span className="w-1 h-1 rounded-full bg-[#FF6B35]">L</span>
+    						<span>−180°</span>
+    					</div>
+    					<div className="space-x-2">
+    						<span className="w-1 h-1 rounded-full bg-[#00E5FF]">R</span>
+    						<span>0°</span>
+    					</div>
+    					<div className="space-x-2">
+    						<span className="w-1 h-1 rounded-full bg-[#FFB000]">L</span>
+    						<span>+180°</span>
+    					</div>
+    				</div>
+    			</div>
+    			<svg className="absolute inset-0" width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+    				<div className="absolute inset-0">
+    					<circle cx="50" cy="50" r="45" fill="none" stroke="#222222" strokeWidth="1" />
+    					<line x1="50" y1="5" x2="50" y2="95" stroke="#222222" strokeWidth="0.5" strokeDasharray="2,2" />
+    					<line x1="5" y1="50" x2="95" y2="50" stroke="#222222" strokeWidth="0.5" strokeDasharray="2,2" />
+    			</div>
+    			<motion.div
+    				className="absolute inset-0"
+    				style={{
+    					transform: `scale(${Math.min(meterL, meterR) * 2 + 0.2})`,
+    					opacity: meterL > 0 && meterR > 0 ? 0.7 : 0.2
+    				}}
+    			>
+    				<div className="absolute inset-0">
+    					<circle cx="50" cy="50" r="40" fill="none" stroke="url(#gradient)" strokeWidth="2" />
+    					<defs>
+    						<linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+    							<stop offset="0%" style={{ stopColor: '#00E5FF' }} />
+    							<stop offset="100%" style={{ stopColor: '#FF6B35' }} />
+    						</linearGradient>
+    					</defs>
+    					<circle cx="50" cy="50" r="3" fill="#00FFaa" />
+    				</div>
+    			</motion.div>
+    			<motion.div
+    				className="absolute inset-0"
+    				style={{
+    					left: `${50 + (meterL - 0.5) * 40}%`,
+    					top: `${50 - (meterR - 0.5) * 40}%`,
+    					width: '4px',
+    					height: '4px',
+    					backgroundColor: '#00FFaa',
+    					borderRadius: '50%',
+    					boxShadow: '0 0 4px #00FFaa'
+    				}}
+    			/>
+    			<motion.div
+    				className="absolute inset-0"
+    				style={{
+    					left: `${50 + meterL * 80 - 40}%`,
+    					top: `${50 - meterR * 80 + 40}%`,
+    					width: '2px',
+    					height: '2px',
+    					backgroundColor: 'rgba(0,255,170,0.5)',
+    					borderRadius: '50%'
+    				}}
+    			/>
+    		</div>
+    	))
+    }
 
   // default: metrics
   return wrap('Mix Analysis', '#FFB000', 'analytics', (
@@ -507,19 +581,20 @@ export default function App() {
     setMessages(prev => prev.filter(m => m.type !== 'advisory'))
   }, [])
 
-  // ── detect boxchat type from prompt + response ────────────────────
-  const detectBoxType = (prompt = '', response = '') => {
-    const t = (prompt + ' ' + response).toLowerCase()
-    if (/stereo|width|side|balance|phase|mono|correlation/.test(t)) return 'stereo'
-    if (/lufs|loud|loud|peak|rms|dynamic|crest|limiter|ceiling/.test(t)) return 'loudness'
-    if (/eq|frequen|bass|sub|mid|high|treble|presence|air|100hz|200hz|1khz|4khz/.test(t)) return 'eq'
-    if (/volume|gain|fader|db|level/.test(t)) return 'slider'
-    if (/pan|panning|position|center|left|right/.test(t)) return 'knob'
-    if (/play|stop|record|transport|bpm|tempo/.test(t)) return 'transport'
-    if (/compres|ratio|attack|release|threshold|knee/.test(t)) return 'compressor'
-    if (/chain|apply|execute|suggest|recommend|action|advisory|do it|should|could|try|consider/.test(t)) return 'advisory'
-    return 'metrics'
-  }
+    // ── detect boxchat type from prompt + response ────────────────────
+    const detectBoxType = (prompt = '', response = '') => {
+    	const t = (prompt + ' ' + response).toLowerCase()
+    	if (/vector|scope|vectorscope|xy|phase\s*meter/.test(t)) return 'vectorscope'
+    	if (/stereo|width|side|balance|phase|mono|correlation/.test(t)) return 'stereo'
+    	if (/lufs|loud|loud|peak|rms|dynamic|crest|limiter|ceiling/.test(t)) return 'loudness'
+    	if (/eq|frequen|bass|sub|mid|high|treble|presence|air|100hz|200hz|1khz|4khz/.test(t)) return 'eq'
+    	if (/volume|gain|fader|db|level/.test(t)) return 'slider'
+    	if (/pan|panning|position|center|left|right/.test(t)) return 'knob'
+    	if (/play|stop|record|transport|bpm|tempo/.test(t)) return 'transport'
+    	if (/compres|ratio|attack|release|threshold|knee/.test(t)) return 'compressor'
+    	if (/chain|apply|execute|suggest|recommend|action|advisory|do it|should|could|try|consider/.test(t)) return 'advisory'
+    	return 'metrics'
+    }
 
   // ── gain slider pct ───────────────────────────────────────────────
   const gainPct = Math.max(0, Math.min(100, ((gainDb + 60) / 72) * 100))
@@ -1036,7 +1111,7 @@ export default function App() {
                   const rect = e.currentTarget.getBoundingClientRect()
                   const pct = 1 - (e.clientY - rect.top) / rect.height
                   setGainDb(Math.round((pct * 72 - 60) * 10) / 10)
-                  if (whycremisi.isConnected()) whycremisi.sendDAWCommand('setGain', { value: pct })
+                  if (whycremisi.isConnected()) whycremisi.sendDAWCommand('setGain', { valueDb: gainDb })
                 }}
               >
                 {[10,25,50,75].map(p => (
