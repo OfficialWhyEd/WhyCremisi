@@ -301,7 +301,7 @@ class WhyCremisiBridge {
     const {
       provider = 'ollama',
       model = 'llama3.2',
-      stream = false,
+      stream = true,
       context = {}
     } = options;
 
@@ -563,139 +563,6 @@ class WhyCremisiBridge {
 
 // ========================
 // React Hook
-// ========================
-
-export function useWhyCremisi() {
-  const { useState, useEffect, useCallback, useRef } = require('react');
-
-  const [transport, setTransport] = useState({
-    isPlaying: false,
-    isRecording: false,
-    bpm: 120.0,
-    positionSeconds: 0.0,
-    timeSignature: { numerator: 4, denominator: 4 }
-  });
-
-  const [tracks, setTracks] = useState([]);
-  const [widgets, setWidgets] = useState([]);
-  const [aiStatus, setAiStatus] = useState('idle');
-  const [connectionState, setConnectionState] = useState(ConnectionState.DISCONNECTED);
-
-  const bridgeRef = useRef(whycremisi);
-
-  // Auto-connect on mount
-  useEffect(() => {
-    const bridge = bridgeRef.current;
-
-    // Listen for connection state changes
-    const unsubState = bridge.onAny((msg) => {
-      // Check if it's a connection-related message
-      if (msg.type === 'plugin.init') {
-        setConnectionState(ConnectionState.CONNECTED);
-      }
-    });
-
-    // Connect
-    bridge.connect().then(() => {
-      setConnectionState(ConnectionState.CONNECTED);
-    }).catch(() => {
-      setConnectionState(ConnectionState.ERROR);
-    });
-
-    // Register listeners
-    const unsubTransport = bridge.on('daw.transport', (payload) => {
-      setTransport(payload);
-    });
-
-    const unsubTrack = bridge.on('daw.track', (payload) => {
-      setTracks(prev => {
-        const index = prev.findIndex(t => t.trackId === payload.trackId);
-        if (index >= 0) {
-          const updated = [...prev];
-          updated[index] = payload;
-          return updated;
-        }
-        return [...prev, payload];
-      });
-    });
-
-    const unsubMeter = bridge.on('daw.meter', (payload) => {
-      // Could update track meter display
-      setTracks(prev => prev.map(t =>
-        t.trackId === payload.trackId ? { ...t, meter: payload } : t
-      ));
-    });
-
-    const unsubWidget = bridge.on('ui.widget.create', (payload) => {
-      setWidgets(prev => [...prev, payload]);
-    });
-
-    const unsubWidgetUpdate = bridge.on('ui.widget.update', (payload) => {
-      setWidgets(prev => prev.map(w =>
-        w.widgetId === payload.widgetId ? { ...w, ...payload } : w
-      ));
-    });
-
-    const unsubWidgetRemove = bridge.on('ui.widget.remove', (payload) => {
-      setWidgets(prev => prev.filter(w => w.widgetId !== payload.widgetId));
-    });
-
-    const unsubAI = bridge.on('ai.response', () => {
-      setAiStatus('complete');
-    });
-
-    const unsubAIStream = bridge.on('ai.stream', () => {
-      setAiStatus('streaming');
-    });
-
-    const unsubError = bridge.on('plugin.error', (payload) => {
-      console.error('[WhyCremisi] Plugin error:', payload);
-    });
-
-    // Cleanup
-    return () => {
-      unsubState();
-      unsubTransport();
-      unsubTrack();
-      unsubMeter();
-      unsubWidget();
-      unsubWidgetUpdate();
-      unsubWidgetRemove();
-      unsubAI();
-      unsubAIStream();
-      unsubError();
-      bridge.disconnect();
-    };
-  }, []);
-
-  const sendCommand = useCallback((command, params = {}) => {
-    return bridgeRef.current.sendDAWCommand(command, params);
-  }, []);
-
-  const askAI = useCallback((prompt, options = {}) => {
-    setAiStatus('thinking');
-    return bridgeRef.current.sendAIPrompt(prompt, options);
-  }, []);
-
-  return {
-    transport,
-    tracks,
-    widgets,
-    aiStatus,
-    connectionState,
-    sendCommand,
-    askAI,
-    createWidget: bridgeRef.current.createWidget.bind(bridgeRef.current),
-    updateWidget: bridgeRef.current.updateWidget.bind(bridgeRef.current),
-    removeWidget: bridgeRef.current.removeWidget.bind(bridgeRef.current),
-    sendOSC: bridgeRef.current.sendOSC.bind(bridgeRef.current),
-    requestDAWInfo: bridgeRef.current.requestDAWInfo.bind(bridgeRef.current),
-    connect: () => bridgeRef.current.connect(),
-    disconnect: () => bridgeRef.current.disconnect(),
-    bridge: bridgeRef.current
-  };
-}
-
 // ========================
 // Export singleton
 // ========================

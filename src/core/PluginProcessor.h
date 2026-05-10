@@ -18,6 +18,7 @@ class SessionManager;
 
 //==============================================================================
 class WhyCremisiProcessor : public juce::AudioProcessor
+                           , private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     //==============================================================================
@@ -85,6 +86,9 @@ public:
     bool isOscBridgeRunning() const;
     int getOscBridgeWsPort() const;
 
+    // Parameter change listener
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
+
 private:
     //==============================================================================
     // Parameters
@@ -114,7 +118,6 @@ private:
     juce::String dawIp = "127.0.0.1";
     int dawOscPort = 9001;
     int wsPort = 8080;
-    juce::CriticalSection dawIpLock; // Protects dawIp
     
     // Session Manager
     std::unique_ptr<SessionManager> sessionManager;

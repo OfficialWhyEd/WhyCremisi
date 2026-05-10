@@ -144,6 +144,8 @@ void WebSocketServer::stop()
             }
         }
 
+        // Clean up disconnected clients every iteration
+        cleanupClients();
     }
 
     DBG("[WebSocketServer] Accept loop ended");
@@ -186,7 +188,7 @@ void WebSocketServer::stop()
     while (client->connected.load() && running.load())
     {
         // Read data from client
-        char buffer[8192];
+        char buffer[65536];
         int bytesRead = client->socket->read(buffer, sizeof(buffer), false);
 
         if (bytesRead > 0)
@@ -284,6 +286,9 @@ void WebSocketServer::stop()
     // Notify disconnection
     if (connectionCallback)
         connectionCallback(client->id, false);
+
+    // Remove this client from the vector (sets thread in destructor, safe since thread is about to end)
+    cleanupClients();
 }
 
 //==============================================================================
@@ -304,7 +309,7 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
     auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
 
     // Read HTTP upgrade request with polling
-    char buffer[4096];
+    char buffer[8192];
     int totalRead = 0;
 
 #ifndef NDEBUG

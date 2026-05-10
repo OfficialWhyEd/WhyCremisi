@@ -313,7 +313,9 @@ export default function App() {
   })
   const [config, setConfig] = useState(() => {
     const saved = localStorage.getItem('whycremisi_config')
-    return saved ? JSON.parse(saved) : { provider: 'ollama', apiKey: '' }
+    if (!saved) return { provider: 'ollama', apiKey: '' }
+    try { return JSON.parse(saved) }
+    catch { return { provider: 'ollama', apiKey: '' } }
   })
 
   // ── connection & bot ──────────────────────────────────────────────
@@ -328,6 +330,9 @@ export default function App() {
   const [inputVal, setInputVal] = useState('')
   const streamingIdRef = useRef(null)
   const lastPromptRef  = useRef('')
+  const mounted = useRef(true)
+  const intervalsRef = useRef([])
+  const throttleRef = useRef(0)
 
   // ── transport / DAW state ─────────────────────────────────────────
   const [transport, setTransport] = useState({ isPlaying: false, isRecording: false, bpm: 120.0, position: 0 })
@@ -377,7 +382,7 @@ export default function App() {
       if (s === ConnectionState.CONNECTED) {
         sysMsg(`[${ts()}] WEBSOCKET CONNECTED TO PLUGIN`)
         setBotState('success')
-        setTimeout(() => setBotState('idle'), 2000)
+        setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
       }
       if (s === ConnectionState.DISCONNECTED || s === ConnectionState.ERROR) {
         sysMsg(`[${ts()}] CONNECTION LOST — RECONNECTING...`)
@@ -393,7 +398,7 @@ export default function App() {
     // ── AI response (complete) ──
     const unsubAI = whycremisi.on('ai.response', (payload) => {
       setBotState('success')
-      setTimeout(() => setBotState('idle'), 2000)
+      setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
       const sid = streamingIdRef.current
       streamingIdRef.current = null
       if (payload?.content) {
@@ -437,7 +442,7 @@ export default function App() {
         ))
         streamingIdRef.current = null
         setBotState('success')
-        setTimeout(() => setBotState('idle'), 2000)
+        setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
       }
     })
 
@@ -484,7 +489,7 @@ export default function App() {
     // ── plugin errors ──
     const unsubErr = whycremisi.on('plugin.error', (payload) => {
       setBotState('error')
-      setTimeout(() => setBotState('idle'), 3000)
+      setTimeout(() => { if (mounted.current) setBotState('idle') }, 3000)
       sysMsg(`[${ts()}] [ERROR] ${payload.message || payload.code || 'Unknown error'}`)
     })
 
@@ -494,6 +499,9 @@ export default function App() {
     })
 
     return () => {
+      mounted.current = false
+      intervalsRef.current.forEach(clearInterval)
+      intervalsRef.current = []
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
       whycremisi.disconnect()
@@ -521,6 +529,7 @@ export default function App() {
     } else {
       // offline fallback — simulate response
       setTimeout(() => {
+        if (!mounted.current) return
         const offlineId = Date.now()
         streamingIdRef.current = offlineId
         setMessages(prev => [...prev, { id: offlineId, type: 'bot', text: '', time: ts(), streaming: true }])
@@ -528,6 +537,7 @@ export default function App() {
         const reply = '[OFFLINE] Plugin not connected. Connect WhyCremisi VST to enable real AI responses.'
         let i = 0
         const ticker = setInterval(() => {
+          if (!mounted.current) { clearInterval(ticker); return }
           i++
           setMessages(prev => prev.map(m => m.id === offlineId ? { ...m, text: reply.slice(0, i) } : m))
           if (i >= reply.length) {
@@ -537,6 +547,7 @@ export default function App() {
             setBotState('idle')
           }
         }, 18)
+        intervalsRef.current.push(ticker)
       }, 600)
     }
   }
@@ -564,6 +575,7 @@ export default function App() {
       const reply = 'Executing suggested chain.\nDynamic dip of -2.4dB applied at 300Hz.\nTransient preservation locked at 84%.\nSpectral clarity increased.\n\n[ CHAIN APPLIED ]'
       let i = 0
       const t = setInterval(() => {
+        if (!mounted.current) { clearInterval(t); return }
         i++
         setMessages(prev => prev.map(m => m.id === id ? { ...m, text: reply.slice(0, i) } : m))
         if (i >= reply.length) {
@@ -571,9 +583,10 @@ export default function App() {
           setMessages(prev => prev.map(m => m.id === id ? { ...m, streaming: false, telemetry: true } : m))
           streamingIdRef.current = null
           setBotState('success')
-          setTimeout(() => setBotState('idle'), 1500)
+          setTimeout(() => { if (mounted.current) setBotState('idle') }, 1500)
         }
       }, 16)
+      intervalsRef.current.push(t)
     }
   }, [botState])
 
@@ -586,7 +599,7 @@ export default function App() {
     	const t = (prompt + ' ' + response).toLowerCase()
     	if (/vector|scope|vectorscope|xy|phase\s*meter/.test(t)) return 'vectorscope'
     	if (/stereo|width|side|balance|phase|mono|correlation/.test(t)) return 'stereo'
-    	if (/lufs|loud|loud|peak|rms|dynamic|crest|limiter|ceiling/.test(t)) return 'loudness'
+    	if (/lufs|loud|peak|rms|dynamic|crest|limiter|ceiling/.test(t)) return 'loudness'
     	if (/eq|frequen|bass|sub|mid|high|treble|presence|air|100hz|200hz|1khz|4khz/.test(t)) return 'eq'
     	if (/volume|gain|fader|db|level/.test(t)) return 'slider'
     	if (/pan|panning|position|center|left|right/.test(t)) return 'knob'
@@ -1108,6 +1121,9 @@ export default function App() {
                 className="flex-1 w-8 bg-[#0e0e0e] border border-[#222222] relative flex flex-col justify-end p-1 cursor-ns-resize"
                 onMouseMove={(e) => {
                   if (e.buttons !== 1) return
+                  const now = Date.now()
+                  if (now - throttleRef.current < 50) return
+                  throttleRef.current = now
                   const rect = e.currentTarget.getBoundingClientRect()
                   const pct = 1 - (e.clientY - rect.top) / rect.height
                   setGainDb(Math.round((pct * 72 - 60) * 10) / 10)
@@ -1163,6 +1179,9 @@ export default function App() {
                 <svg className="w-20 h-20 rotate-[-90deg] cursor-pointer" viewBox="0 0 100 100"
                   onMouseMove={(e) => {
                     if (e.buttons !== 1) return
+                    const now = Date.now()
+                    if (now - throttleRef.current < 50) return
+                    throttleRef.current = now
                     const rect = e.currentTarget.getBoundingClientRect()
                     const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2
                     const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI

@@ -135,6 +135,7 @@ private:
     bool currentIsRecording = false;
     float currentBpm = 120.0f;
     float currentPosition = 0.0f;
+    juce::uint32 lastTimerTimeMs = 0;
 
     // OSC Handler (receives from DAW)
     std::unique_ptr<OscHandler> oscHandler;

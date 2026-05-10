@@ -44,10 +44,6 @@ WhyCremisiProcessor::WhyCremisiProcessor()
         params.push_back(std::make_unique<juce::AudioParameterInt>(
             "oscPort", "OSC Port", 1024, 65535, 9000));
         
-        // DAW IP (where to send OSC messages)
-        params.push_back(std::make_unique<juce::AudioParameterString>(
-            "dawIp", "DAW IP Address", "127.0.0.1"));
-        
         // DAW OSC Send Port (where to send OSC messages to DAW)
         params.push_back(std::make_unique<juce::AudioParameterInt>(
             "dawOscPort", "DAW OSC Port", 1024, 65535, 9001));
@@ -66,7 +62,6 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     aiProvider = parameters.getRawParameterValue("aiProvider");
     aiModelIndex = parameters.getRawParameterValue("aiModelIndex");
     oscPortParam = parameters.getRawParameterValue("oscPort");
-    dawIpParam = parameters.getRawParameterValue("dawIp");
     dawOscPortParam = parameters.getRawParameterValue("dawOscPort");
     wsPortParam = parameters.getRawParameterValue("wsPort");
     
@@ -80,7 +75,7 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     
     // Initialize parameters from values
     oscPort = static_cast<int>(oscPortParam->load());
-    dawIp = dawIpParam ? dawIpParam->toString() : "127.0.0.1";
+    dawIp = parameters.state.getProperty("dawIp", "127.0.0.1").toString();
     dawOscPort = static_cast<int>(dawOscPortParam->load());
     wsPort = static_cast<int>(wsPortParam->load());
     
@@ -98,10 +93,14 @@ WhyCremisiProcessor::WhyCremisiProcessor()
         if (!ok)
             DBG("[WhyCremisi] OscBridge error: " + oscBridge->getLastError());
     }
+
+    // Listen for parameter changes to propagate to bridge dynamically
+    parameters.addParameterListener("dawOscPort", this);
 }
 
 WhyCremisiProcessor::~WhyCremisiProcessor()
 {
+    parameters.removeParameterListener("dawOscPort", this);
     if (oscBridge)
         oscBridge->stop();
     if (sessionManager)
@@ -232,11 +231,11 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         float dbR = rmsR > 0.0001f ? juce::Decibels::gainToDecibels(rmsR) : -60.0f;
 
         const float attack  = 0.98f;
-        const float release = 0.02f;
+        const float release = 0.98f;
         float prevL = meterLevelL.load();
         float prevR = meterLevelR.load();
-        meterLevelL.store(dbL > prevL ? dbL * release + prevL * attack : prevL * attack + dbL * release);
-        meterLevelR.store(dbR > prevR ? dbR * release + prevR * attack : prevR * attack + dbR * release);
+        meterLevelL.store(dbL > prevL ? dbL * attack + prevL * (1.0f - attack) : dbL * (1.0f - release) + prevL * release);
+        meterLevelR.store(dbR > prevR ? dbR * attack + prevR * (1.0f - attack) : dbR * (1.0f - release) + prevR * release);
 
         // Push meter levels into bridge (timer broadcasts at 30fps)
         if (oscBridge)
@@ -261,6 +260,7 @@ void WhyCremisiProcessor::changeProgramName(int index, const juce::String& newNa
 void WhyCremisiProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
+    state.setProperty("dawIp", dawIp, nullptr);
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -270,7 +270,11 @@ void WhyCremisiProcessor::setStateInformation(const void* data, int sizeInBytes)
     std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
     if (xmlState.get() != nullptr && xmlState->hasTagName(parameters.state.getType()))
     {
-        parameters.replaceState(juce::ValueTree::fromXml(*xmlState));
+        auto restored = juce::ValueTree::fromXml(*xmlState);
+        parameters.replaceState(restored);
+        dawIp = restored.getProperty("dawIp", "127.0.0.1").toString();
+        if (oscBridge)
+            oscBridge->setDawTarget(dawIp, dawOscPort);
     }
 }
 
@@ -364,15 +368,12 @@ void WhyCremisiProcessor::sendAiPrompt(const juce::String& prompt)
 void WhyCremisiProcessor::setOscPort(int port)
 {
     oscPort = port;
-    // OscBridge manages its own OscHandler internally
-    // Restart if running
     if (oscBridge && oscBridge->isRunning())
     {
         oscBridge->stop();
-        // Recreate with new port
-        oscBridge = std::make_unique<OscBridge>(oscPort, 8080);
+        oscBridge = std::make_unique<OscBridge>(oscPort, wsPort);
         oscBridge->setAiEngine(aiEngine.get());
-    oscBridge->setDawTarget("127.0.0.1", 9001);
+        oscBridge->setDawTarget(dawIp, dawOscPort);
         oscBridge->start();
     }
 }
@@ -385,6 +386,16 @@ bool WhyCremisiProcessor::isOscBridgeRunning() const
 int WhyCremisiProcessor::getOscBridgeWsPort() const
 {
     return oscBridge ? oscBridge->getWebSocketPort() : 0;
+}
+
+void WhyCremisiProcessor::parameterChanged(const juce::String& parameterID, float /*newValue*/)
+{
+    if (parameterID == "dawOscPort")
+    {
+        dawOscPort = static_cast<int>(dawOscPortParam->load());
+        if (oscBridge)
+            oscBridge->setDawTarget(dawIp, dawOscPort);
+    }
 }
 
 //==============================================================================

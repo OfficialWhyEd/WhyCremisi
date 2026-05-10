@@ -99,14 +99,17 @@ void OscBridge::timerCallback()
     if (!wsServer || !wsServer->isRunning() || wsServer->getConnectedClientsCount() == 0)
         return;
 
-    // Advance position while playing (1 tick = 33ms)
+    // Advance position using real elapsed time to prevent drift
+    auto now = juce::Time::getMillisecondCounter();
     if (currentIsPlaying)
     {
-        currentPosition += 0.033f;
+        if (lastTimerTimeMs != 0)
+            currentPosition += (now - lastTimerTimeMs) / 1000.0f;
         // Broadcast transport every ~1s (every 30 ticks)
         if (++meterTickCounter % 30 == 0)
             broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
+    lastTimerTimeMs = now;
 
     // Always broadcast meter at ~30fps
     broadcastMeter(-1, lastMeterL.load(), lastMeterR.load(),
@@ -207,45 +210,30 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
     else
     {
         // REAPER-specific track parameter handling
+        auto extractTrackId = [&](const juce::String& suffix) -> int {
+            juce::String idStr = address.fromFirstOccurrenceOf("/track/", false, true);
+            idStr = idStr.upToLastOccurrenceOf(suffix, false, true);
+            return idStr.getIntValue();
+        };
+
+        int trackId = 0;
+        bool handled = true;
+
         if (address.startsWith("/track/") && address.endsWith("/volume"))
-        {
-            // Extract track ID from address like "/track/1/volume"
-            juce::String trackIdStr = address.substringFromFirstOccurrenceOf("/track/", false, true);
-            trackIdStr = trackIdStr.upToLastOccurrenceOf("/volume", false, true);
-            int trackId = trackIdStr.getIntValue();
-            
-            // Store or process volume value (0.0 - 1.0 linear)
-            // For now, just forward to UI as before but we could store it internally
-            forwardOscToUI(address, value);
-        }
+            trackId = extractTrackId("/volume");
         else if (address.startsWith("/track/") && address.endsWith("/pan"))
-        {
-            // Extract track ID from address like "/track/1/pan"
-            juce::String trackIdStr = address.substringFromFirstOccurrenceOf("/track/", false, true);
-            trackIdStr = trackIdStr.upToLastOccurrenceOf("/pan", false, true);
-            int trackId = trackIdStr.getIntValue();
-            
-            // Store or process pan value (-1.0 to 1.0)
-            forwardOscToUI(address, value);
-        }
+            trackId = extractTrackId("/pan");
         else if (address.startsWith("/track/") && address.endsWith("/mute"))
-        {
-            // Extract track ID from address like "/track/1/mute"
-            juce::String trackIdStr = address.substringFromFirstOccurrenceOf("/track/", false, true);
-            trackIdStr = trackIdStr.upToLastOccurrenceOf("/mute", false, true);
-            int trackId = trackIdStr.getIntValue();
-            
-            // Store or process mute value (0.0 or 1.0)
-            forwardOscToUI(address, value);
-        }
+            trackId = extractTrackId("/mute");
         else if (address.startsWith("/track/") && address.endsWith("/solo"))
+            trackId = extractTrackId("/solo");
+        else
+            handled = false;
+
+        if (handled)
         {
-            // Extract track ID from address like "/track/1/solo"
-            juce::String trackIdStr = address.substringFromFirstOccurrenceOf("/track/", false, true);
-            trackIdStr = trackIdStr.upToLastOccurrenceOf("/solo", false, true);
-            int trackId = trackIdStr.getIntValue();
-            
-            // Store or process solo value (0.0 or 1.0)
+            if (trackId < 1)
+                log("[OSC] Warning: invalid track ID in address: " + address);
             forwardOscToUI(address, value);
         }
         else

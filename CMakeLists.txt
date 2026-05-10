@@ -111,13 +111,12 @@ target_include_directories(WhyCremisiVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bridge
-    ${CURL_INCLUDE_DIRS}
 )
 
 # ==============================================================================
-# Unit Tests (if enabled)
+# Unit Tests
 # ==============================================================================
-
+option(BUILD_UNIT_TESTS "Build C++ unit tests" OFF)
 if(BUILD_UNIT_TESTS)
     # Unit test for PluginProcessor
     juce_add_unit_test(PluginProcessorTest
