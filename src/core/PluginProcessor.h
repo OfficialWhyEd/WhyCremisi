@@ -97,6 +97,8 @@ private:
     std::atomic<float>* aiProvider = nullptr;
     std::atomic<float>* aiModelIndex = nullptr;
     std::atomic<float>* oscPortParam = nullptr;
+    std::atomic<float>* dawOscPortParam = nullptr;
+    std::atomic<float>* wsPortParam = nullptr;
     
     // AI Engine
     std::unique_ptr<AiEngine> aiEngine;
@@ -109,7 +111,11 @@ private:
     // OscBridge (OSC + WebSocket for React UI)
     std::unique_ptr<OscBridge> oscBridge;
     int oscPort = 9000;
-
+    juce::String dawIp = "127.0.0.1";
+    int dawOscPort = 9001;
+    int wsPort = 8080;
+    juce::CriticalSection dawIpLock; // Protects dawIp
+    
     // Session Manager
     std::unique_ptr<SessionManager> sessionManager;
 

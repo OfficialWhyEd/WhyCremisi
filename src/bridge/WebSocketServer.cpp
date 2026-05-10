@@ -97,14 +97,16 @@ void WebSocketServer::stop()
     DBG("[WebSocketServer] Stopped");
 }
 
-//==============================================================================
-void WebSocketServer::acceptLoop()
-{
+    //==============================================================================
+    void WebSocketServer::acceptLoop()
     {
-        juce::File logFile("/tmp/whycremisi-debug.log");
-        juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
-        logFile.appendText("[" + timestamp + "] WebSocketServer accept loop started\n");
-    }
+#ifndef NDEBUG
+        {
+            juce::File logFile("/tmp/whycremisi-debug.log");
+            juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
+            logFile.appendText("[" + timestamp + "] WebSocketServer accept loop started\n");
+        }
+#endif
 
 
     while (running.load())
@@ -147,31 +149,38 @@ void WebSocketServer::acceptLoop()
     DBG("[WebSocketServer] Accept loop ended");
 }
 
-//==============================================================================
-void WebSocketServer::clientLoop(ClientInfo* client)
-{
-    juce::File logFile("/tmp/whycremisi-debug.log");
-    auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
-
-    logFile.appendText("[" + ts() + "] [WS] Client " + juce::String(client->id) + " thread started\n");
-
-    // First: perform WebSocket handshake
-    if (!performHandshake(client))
+    //==============================================================================
+    void WebSocketServer::clientLoop(ClientInfo* client)
     {
-        logFile.appendText("[" + ts() + "] [WS] Handshake FAILED for client " + juce::String(client->id) + "\n");
-        client->connected.store(false);
-        client->socket->close();
+#ifndef NDEBUG
+        juce::File logFile("/tmp/whycremisi-debug.log");
+        auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
+
+        logFile.appendText("[" + ts() + "] [WS] Client " + juce::String(client->id) + " thread started\n");
+#endif
+
+        // First: perform WebSocket handshake
+        if (!performHandshake(client))
+        {
+#ifndef NDEBUG
+            logFile.appendText("[" + ts() + "] [WS] Handshake FAILED for client " + juce::String(client->id) + "\n");
+#endif
+            client->connected.store(false);
+            client->socket->close();
+            if (connectionCallback)
+                connectionCallback(client->id, false);
+
+            return;
+        }
+
+        client->handshakeComplete = true;
+#ifndef NDEBUG
+        logFile.appendText("[" + ts() + "] [WS] Handshake OK for client " + juce::String(client->id) + "\n");
+#endif
+
+        // Notify connection
         if (connectionCallback)
-            connectionCallback(client->id, false);
-        return;
-    }
-
-    client->handshakeComplete = true;
-    logFile.appendText("[" + ts() + "] [WS] Handshake OK for client " + juce::String(client->id) + "\n");
-
-    // Notify connection
-    if (connectionCallback)
-        connectionCallback(client->id, true);
+            connectionCallback(client->id, true);
 
     // Now read messages
     while (client->connected.load() && running.load())
@@ -282,19 +291,25 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
 {
     if (!client || !client->socket)
     {
+#ifndef NDEBUG
         juce::File logFile("/tmp/whycremisi-debug.log");
         logFile.appendText("[WS-HS] No client or socket\n");
+#endif
         return false;
     }
 
+#ifndef NDEBUG
     juce::File logFile("/tmp/whycremisi-debug.log");
+#endif
     auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
 
     // Read HTTP upgrade request with polling
     char buffer[4096];
     int totalRead = 0;
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Waiting for handshake data...\n");
+#endif
 
     int maxWaitMs = 3000;
     auto startTime = juce::Time::getMillisecondCounter();
@@ -319,27 +334,35 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
         }
         else
         {
+#ifndef NDEBUG
             logFile.appendText("[" + ts() + "] [WS-HS] Read error: " + juce::String(bytesRead) + "\n");
+#endif
             break;
         }
     }
 
     if (totalRead <= 0)
     {
+#ifndef NDEBUG
         logFile.appendText("[" + ts() + "] [WS-HS] No data received\n");
+#endif
         return false;
     }
 
     buffer[totalRead] = '\0';
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Received " + juce::String(totalRead) + " bytes\n");
     logFile.appendText("[" + ts() + "] [WS-HS] Request: " + juce::String(buffer, totalRead).substring(0, 300) + "\n");
+#endif
 
     juce::String request(buffer, totalRead);
 
     if (!request.startsWith("GET"))
     {
+#ifndef NDEBUG
         logFile.appendText("[" + ts() + "] [WS-HS] Not a GET request\n");
+#endif
         return false;
     }
 
@@ -358,16 +381,22 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
 
     if (key.isEmpty())
     {
+#ifndef NDEBUG
         logFile.appendText("[" + ts() + "] [WS-HS] No Sec-WebSocket-Key found\n");
+#endif
         return false;
     }
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Client key: " + key + "\n");
+#endif
 
     // Compute accept key
     juce::String acceptKey = computeWebSocketAcceptKey(key);
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Accept key: " + acceptKey + "\n");
+#endif
 
     // Send HTTP 101 response
     juce::String response =
@@ -378,15 +407,21 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
         "\r\n";
 
     int sent = client->socket->write(response.toRawUTF8(), response.getNumBytesAsUTF8());
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Response sent: " + juce::String(sent) + " bytes\n");
+#endif
 
     if (sent <= 0)
     {
+#ifndef NDEBUG
         logFile.appendText("[" + ts() + "] [WS-HS] Failed to send response\n");
+#endif
         return false;
     }
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Handshake SUCCESS\n");
+#endif
     return true;
 }
 

@@ -206,7 +206,52 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
     // ── Track data → forward to UI ──────────────────────────────────────────
     else
     {
-        forwardOscToUI(address, value);
+        // REAPER-specific track parameter handling
+        if (address.startsWith("/track/") && address.endsWith("/volume"))
+        {
+            // Extract track ID from address like "/track/1/volume"
+            juce::String trackIdStr = address.substringFromFirstOccurrenceOf("/track/", false, true);
+            trackIdStr = trackIdStr.upToLastOccurrenceOf("/volume", false, true);
+            int trackId = trackIdStr.getIntValue();
+            
+            // Store or process volume value (0.0 - 1.0 linear)
+            // For now, just forward to UI as before but we could store it internally
+            forwardOscToUI(address, value);
+        }
+        else if (address.startsWith("/track/") && address.endsWith("/pan"))
+        {
+            // Extract track ID from address like "/track/1/pan"
+            juce::String trackIdStr = address.substringFromFirstOccurrenceOf("/track/", false, true);
+            trackIdStr = trackIdStr.upToLastOccurrenceOf("/pan", false, true);
+            int trackId = trackIdStr.getIntValue();
+            
+            // Store or process pan value (-1.0 to 1.0)
+            forwardOscToUI(address, value);
+        }
+        else if (address.startsWith("/track/") && address.endsWith("/mute"))
+        {
+            // Extract track ID from address like "/track/1/mute"
+            juce::String trackIdStr = address.substringFromFirstOccurrenceOf("/track/", false, true);
+            trackIdStr = trackIdStr.upToLastOccurrenceOf("/mute", false, true);
+            int trackId = trackIdStr.getIntValue();
+            
+            // Store or process mute value (0.0 or 1.0)
+            forwardOscToUI(address, value);
+        }
+        else if (address.startsWith("/track/") && address.endsWith("/solo"))
+        {
+            // Extract track ID from address like "/track/1/solo"
+            juce::String trackIdStr = address.substringFromFirstOccurrenceOf("/track/", false, true);
+            trackIdStr = trackIdStr.upToLastOccurrenceOf("/solo", false, true);
+            int trackId = trackIdStr.getIntValue();
+            
+            // Store or process solo value (0.0 or 1.0)
+            forwardOscToUI(address, value);
+        }
+        else
+        {
+            forwardOscToUI(address, value);
+        }
     }
 }
 
@@ -1143,7 +1188,9 @@ juce::String OscBridge::generateUUID()
 void OscBridge::log(const juce::String& msg)
 {
     DBG("[OscBridge] " + msg);
+#ifndef NDEBUG
     juce::File logFile("/tmp/whycremisi-debug.log");
     juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
     logFile.appendText("[" + timestamp + "] " + msg + "\n");
+#endif
 }

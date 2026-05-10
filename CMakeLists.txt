@@ -29,14 +29,8 @@ message(STATUS "JUCE_ROOT: ${JUCE_ROOT}")
 add_subdirectory(${JUCE_ROOT} JUCE)
 
 # ==============================================================================
-# cURL - Required for AI HTTP requests
+# cURL - Not required (AI uses JUCE native HTTP)
 # ==============================================================================
-# cURL is used for HTTP POST to Ollama, Gemini, OpenAI, etc.
-# Linux: sudo apt install libcurl4-openssl-dev
-# Windows: vcpkg install curl (or use prebuilt binaries)
-# macOS: brew install curl (or use system framework)
-find_package(CURL REQUIRED)
-message(STATUS "CURL found: ${CURL_LIBRARIES}")
 
 # ==============================================================================
 # OpenSSL - Required for WebSocket SHA1 handshake (RFC 6455)

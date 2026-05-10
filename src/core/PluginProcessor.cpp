@@ -40,9 +40,21 @@ WhyCremisiProcessor::WhyCremisiProcessor()
         params.push_back(std::make_unique<juce::AudioParameterFloat>(
             "aiModelIndex", "AI Model Index", 0.0f, 100.0f, 0.0f));
         
-        // OSC Port
+        // OSC Receive Port (plugin listens for OSC from DAW on this port)
         params.push_back(std::make_unique<juce::AudioParameterInt>(
             "oscPort", "OSC Port", 1024, 65535, 9000));
+        
+        // DAW IP (where to send OSC messages)
+        params.push_back(std::make_unique<juce::AudioParameterString>(
+            "dawIp", "DAW IP Address", "127.0.0.1"));
+        
+        // DAW OSC Send Port (where to send OSC messages to DAW)
+        params.push_back(std::make_unique<juce::AudioParameterInt>(
+            "dawOscPort", "DAW OSC Port", 1024, 65535, 9001));
+        
+        // WebSocket Port (for communication with React UI)
+        params.push_back(std::make_unique<juce::AudioParameterInt>(
+            "wsPort", "WebSocket Port", 1024, 65535, 8080));
         
         return { params.begin(), params.end() };
     }())
@@ -54,21 +66,30 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     aiProvider = parameters.getRawParameterValue("aiProvider");
     aiModelIndex = parameters.getRawParameterValue("aiModelIndex");
     oscPortParam = parameters.getRawParameterValue("oscPort");
+    dawIpParam = parameters.getRawParameterValue("dawIp");
+    dawOscPortParam = parameters.getRawParameterValue("dawOscPort");
+    wsPortParam = parameters.getRawParameterValue("wsPort");
     
     // Initialize AI Engine
     aiEngine = std::make_unique<AiEngine>();
     updateAiEngineConfig();
-
+    
     // Initialize Session Manager
     sessionManager = std::make_unique<SessionManager>();
     sessionManager->startSession("Unknown DAW");
-
-    // Initialize OscBridge (OSC receive 9000 + WebSocket 8080)
-    oscBridge = std::make_unique<OscBridge>(oscPort, 8080);
+    
+    // Initialize parameters from values
+    oscPort = static_cast<int>(oscPortParam->load());
+    dawIp = dawIpParam ? dawIpParam->toString() : "127.0.0.1";
+    dawOscPort = static_cast<int>(dawOscPortParam->load());
+    wsPort = static_cast<int>(wsPortParam->load());
+    
+    // Initialize OscBridge (OSC receive port from parameter + WebSocket port from parameter)
+    oscBridge = std::make_unique<OscBridge>(oscPort, wsPort);
     oscBridge->setAiEngine(aiEngine.get());
     oscBridge->setSessionManager(sessionManager.get());
-    oscBridge->setDawTarget("127.0.0.1", 9001);  // 9001 = DAW OSC receive port
-
+    oscBridge->setDawTarget(dawIp, dawOscPort);  // DAW IP and OSC port from parameters
+    
     // Start bridge immediately so it's available before prepareToPlay
     // (critical for Standalone mode where prepareToPlay needs an audio device)
     {
@@ -94,10 +115,12 @@ void WhyCremisiProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     currentBufferSize = samplesPerBlock;
     
     auto logToFile = [](const juce::String& msg) {
+        DBG(msg);
+#ifndef NDEBUG
         juce::File logFile("/tmp/whycremisi-debug.log");
         juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
         logFile.appendText("[" + timestamp + "] " + msg + "\n");
-        DBG(msg);
+#endif
     };
     
     logToFile("[WhyCremisi] prepareToPlay called");
@@ -154,9 +177,13 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     for (int i = totalIn; i < totalOut; ++i)
         buffer.clear(i, 0, numSamples);
 
-    // Apply master gain from parameter
+    // Apply master gain from parameters
     if (gainParam1 != nullptr)
         buffer.applyGain(juce::Decibels::decibelsToGain(gainParam1->load()));
+    
+    // Apply second gain parameter
+    if (gainParam2 != nullptr)
+        buffer.applyGain(juce::Decibels::decibelsToGain(gainParam2->load()));
 
     // ── Universal transport via getPlayHead() ───────────────────────
     // Works in every DAW that implements VST3: Ableton, Logic, REAPER,
