@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BotFace } from './BotFace'
+import { whycremisi } from '../whycremisi-bridge'
 
 export function SetupScreen({ onComplete, initialConfig = {} }) {
   const [provider, setProvider] = useState(initialConfig.provider || 'ollama')
@@ -18,20 +19,48 @@ export function SetupScreen({ onComplete, initialConfig = {} }) {
   const handleTestConnection = async () => {
     setStatus('testing')
     setErrorMsg('')
-    
-    // Simulate connection test for now
-    // In real use, this will call whycremisi.testConnection(provider, apiKey)
-    setTimeout(() => {
-      if (provider === 'ollama' || apiKey.length > 10) {
-        setStatus('success')
-        setTimeout(() => {
-          onComplete({ provider, apiKey })
-        }, 1200)
-      } else {
-        setStatus('error')
-        setErrorMsg('Invalid API Key or Provider unreachable.')
+
+    // Invia prima la config al plugin
+    if (whycremisi.isConnected()) {
+      whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: provider } })
+      if (apiKey) {
+        whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: apiKey, provider } })
       }
-    }, 1500)
+    }
+
+    // Se il plugin è connesso, usa il vero test via WS; altrimenti fallback locale
+    if (whycremisi.isConnected()) {
+      const timeout = setTimeout(() => {
+        setStatus('error')
+        setErrorMsg('Timeout — plugin non risponde al test di connessione.')
+      }, 8000)
+
+      const unsub = whycremisi.on('config.response', (payload) => {
+        if (payload?.key !== 'ai.testConnection') return
+        clearTimeout(timeout)
+        unsub()
+        if (payload.connected) {
+          setStatus('success')
+          setTimeout(() => onComplete({ provider, apiKey }), 1200)
+        } else {
+          setStatus('error')
+          setErrorMsg(payload.error || 'Connessione fallita.')
+        }
+      })
+
+      whycremisi.send({ type: 'config.set', payload: { key: 'ai.testConnection' } })
+    } else {
+      // Plugin non connesso: test locale (lunghezza key)
+      setTimeout(() => {
+        if (provider === 'ollama' || apiKey.length > 10) {
+          setStatus('success')
+          setTimeout(() => onComplete({ provider, apiKey }), 1200)
+        } else {
+          setStatus('error')
+          setErrorMsg('Plugin non connesso. Avvia il Standalone e riprova.')
+        }
+      }, 1000)
+    }
   }
 
   return (

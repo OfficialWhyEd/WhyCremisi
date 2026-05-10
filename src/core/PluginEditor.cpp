@@ -30,7 +30,7 @@ void WhyCremisiBrowser::pageFinishedLoading(const juce::String& url)
 WhyCremisiProcessorEditor::WhyCremisiProcessorEditor(WhyCremisiProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
-    setSize(900, 700);
+    setSize(1100, 820);
     setupWebView();
     DBG("[WhyCremisi] Editor avviato con WebView integrata");
 }

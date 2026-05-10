@@ -104,7 +104,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
       animate={{ ...bobAnim, ...glitchAnim }}
       transition={bobTrans}
     >
-      {/* State-change pulse ring */}
       <AnimatePresence mode="sync">
         <motion.div
           key={`ring-${pulseKey}`}
@@ -116,7 +115,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
         />
       </AnimatePresence>
 
-      {/* Success burst ring */}
       <AnimatePresence>
         {burstActive && (
           <motion.div
@@ -130,7 +128,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
         )}
       </AnimatePresence>
 
-      {/* Main SVG face */}
       <motion.svg
         viewBox="0 0 100 100"
         className="w-full h-full"
@@ -144,13 +141,11 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           state === 'thinking' ? { repeat:Infinity, duration:2.2, ease:'easeInOut' } : {}
         }
       >
-        {/* Outer breathing corona */}
         <motion.circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="0.4"
           animate={{ opacity: [glowOp*0.3, glowOp*0.65, glowOp*0.3] }}
           transition={{ repeat:Infinity, duration:3.2, ease:'easeInOut' }}
         />
 
-        {/* Loading scan line */}
         {state === 'loading' && (
           <motion.rect x="8" width="84" height="1" fill="currentColor" fillOpacity="0.3"
             animate={{ y: [15, 82, 15] }}
@@ -158,14 +153,12 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           />
         )}
 
-        {/* Eyes and mouth */}
         <motion.g stroke="currentColor" strokeWidth="4.2" strokeLinecap="round" fill="none">
           <motion.path d={paths.l} animate={{ d: eyeL }} transition={eyeTrans} />
           <motion.path d={paths.r} animate={{ d: eyeR }} transition={eyeTrans} />
           <motion.path d={paths.m} animate={{ d: mouthAnimate }} transition={mouthTrans} />
         </motion.g>
 
-        {/* Pupils */}
         <motion.circle r="2.8" fill="currentColor"
           animate={{ cx: pupils.lx + pupilOffset.x, cy: pupils.ly + pupilOffset.y, opacity: state==='loading'?0:0.9 }}
           transition={{ duration:1.4, ease:'easeInOut' }}
@@ -175,7 +168,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           transition={{ duration:1.4, ease:'easeInOut' }}
         />
 
-        {/* Thinking dots */}
         {state === 'thinking' && [0,1,2].map(i => (
           <motion.circle key={i} cx={43+i*7} cy="82" r="2.2" fill="currentColor"
             animate={{ opacity:[0.2,1,0.2], scale:[0.7,1.3,0.7] }}
@@ -183,7 +175,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           />
         ))}
 
-        {/* Advisory raised right eyebrow */}
         {state === 'advisory' && (
           <motion.line x1="57" y1="29" x2="73" y2="26"
             stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
@@ -191,7 +182,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           />
         )}
 
-        {/* Sad teardrops */}
         {state === 'sad' && (
           <>
             <motion.circle cx="31" r="2" fill="currentColor" fillOpacity="0.5"

@@ -766,6 +766,22 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload)
             // Note: Port change requires restart
         }
     }
+    else
+    {
+        // Generic key: store in-memory and echo back an "ok" so the sender
+        // can track rapid config changes (e.g. stress tests, custom keys).
+        log("[CONFIG] Generic key: " + configKey);
+
+        nlohmann::json response;
+        response["type"] = "config.response";
+        response["id"] = nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["key"] = configKey.toStdString();
+        response["payload"]["status"] = "ok";
+        if (payload.contains("value"))
+            response["payload"]["value"] = payload["value"];
+        wsServer->broadcast(response);
+    }
 }
 
 //==============================================================================
