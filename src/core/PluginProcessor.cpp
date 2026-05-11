@@ -447,6 +447,30 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
             oscBridge->broadcastMeter(-1, meterLevelL.load(), meterLevelR.load(),
                                           meterLevelL.load(), meterLevelR.load());
         }
+
+        // Periodic personality context broadcast to keep React UI in sync
+        if (++personalityBroadcastCounter >= PERSONALITY_BROADCAST_EVERY && oscBridge && oscBridge->isRunning())
+        {
+            personalityBroadcastCounter = 0;
+            if (personalityCore)
+            {
+                nlohmann::json msg;
+                msg["type"] = "personality.context";
+                msg["payload"]["style"] = personalityCore->getPreferredStyle().toStdString();
+                msg["payload"]["confidence"] = juce::jmin(1.0f, personalityCore->getTotalActions() / 100.0f);
+                msg["payload"]["experienceLevel"] = personalityCore->getTotalActions() / 10;
+                msg["payload"]["sessionCount"] = personalityCore->getSessionCount();
+                msg["payload"]["totalActions"] = personalityCore->getTotalActions();
+                msg["payload"]["userName"] = personalityCore->getUserName().toStdString();
+                auto recent = personalityCore->getRecentActions(3);
+                nlohmann::json ra = nlohmann::json::array();
+                for (const auto& a : recent)
+                    ra.push_back(a.toStdString());
+                msg["payload"]["recentActions"] = ra;
+                msg["payload"]["description"] = personalityCore->buildPersonalityContext().toStdString();
+                oscBridge->broadcastJson(msg);
+            }
+        }
     }
 }
 

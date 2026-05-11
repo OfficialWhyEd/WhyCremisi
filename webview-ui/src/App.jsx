@@ -7,7 +7,7 @@ import { SetupScreen } from './components/SetupScreen'
 import './index.css'
 
 // ── BoxChat — various box types shown inside chat after AI response ──
-function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd, personality, onAnalyzeFurther }) {
+function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd, personality, onAnalyzeFurther, suggestion }) {
   const [localGain, setLocalGain] = useState(gainDb)
   const [localDrive, setLocalDrive] = useState(driveVal)
   useEffect(() => { setLocalGain(gainDb) }, [gainDb])
@@ -194,6 +194,7 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
       const [executed, setExecuted] = React.useState(false)
       if (dismissed) return null
 
+      const s = suggestion || { freqLow: 200, freqHigh: 400, gainDb: -2.4, label: '200Hz–400Hz', description: 'harmonic crowding', transientPres: 84, confidence: 0.982 }
       const advColor = personality?.style === 'aggressive' ? '#DC143C' :
         personality?.style === 'cautious' ? '#FFB000' :
         personality?.style === 'analytical' ? '#00E5FF' : '#DC143C'
@@ -203,10 +204,9 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
       const actionLabel = personality?.style === 'aggressive' ? 'FORCE APPLY CHAIN' :
         personality?.style === 'cautious' ? 'REVIEW & APPLY' :
         personality?.style === 'analytical' ? 'SIMULATE CHAIN' : 'EXECUTE SUGGESTED CHAIN'
-      const confidenceTag = personality?.confidence
-        ? `CONF: ${(personality.confidence * 100).toFixed(0)}%`
-        : 'SIG: 0.982'
+      const confidenceTag = `CONF: ${(s.confidence * 100).toFixed(0)}%`
       const styleName = personality?.style?.toUpperCase() || 'DEFAULT'
+      const freqLabel = `${s.freqLow}Hz–${s.freqHigh}Hz`
 
       return (
         <motion.div
@@ -236,7 +236,7 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
                     AI_MASTERING_ADVISORY_{styleName}
                   </span>
                   <span className="text-xs text-[#888888] tracking-widest">
-                    NODE: CREMISI_X9 · STYLE: {styleName}
+                    NODE: CREMISI_X9 · STYLE: {styleName} · {freqLabel}
                   </span>
                 </div>
               </div>
@@ -249,27 +249,25 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
             </div>
             <div className="text-sm leading-relaxed text-[#FFB000] mb-3">
               <p className="text-xs leading-relaxed">
-                {personality?.style === 'aggressive' ? 'Aggressive harmonic masking detected' :
-                 personality?.style === 'cautious' ? 'Potential harmonic crowding observed' :
-                 personality?.style === 'analytical' ? 'Analysis indicates harmonic crowding' :
-                 'Detected harmonic crowding'} in{' '}
-                <span className="text-white font-bold px-0.5" style={{ borderBottom: '1px solid ' + advColor + '66' }}>200Hz–400Hz</span>.{' '}
+                {personality?.style === 'aggressive' ? 'Aggressive ' : personality?.style === 'cautious' ? 'Potential ' : 'Detected '}
+                {s.description} in{' '}
+                <span className="text-white font-bold px-0.5" style={{ borderBottom: '1px solid ' + advColor + '66' }}>{freqLabel}</span>.{' '}
                 {personality?.style === 'aggressive' ? 'Applying surgical dip of' :
                  personality?.style === 'cautious' ? 'Consider gentle dip of' :
                  personality?.style === 'analytical' ? 'Recommended dynamic dip of' :
                  'Suggesting dynamic dip of'}{' '}
-                <span className="text-white px-1 font-bold" style={{ backgroundColor: advColor }}>-2.4dB</span>.{' '}
+                <span className="text-white px-1 font-bold" style={{ backgroundColor: advColor }}>{s.gainDb}dB</span>.{' '}
                 Transient preservation at{' '}
-                <span className="text-white underline decoration-dotted">84%</span>.
+                <span className="text-white underline decoration-dotted">{s.transientPres}%</span>.
               </p>
             </div>
             <div className="flex items-center gap-2 mb-3 text-xs font-mono text-[#666] opacity-60">
-              <span>HEX: {advColor}</span><span>·</span><span>VAL: -2.4dB_COR</span><span>·</span><span>{confidenceTag}</span><span>·</span><span>LAT: 0.2ms</span>
+              <span>HEX: {advColor}</span><span>·</span><span>VAL: {s.gainDb}dB_COR</span><span>·</span><span>{confidenceTag}</span><span>·</span><span>LAT: 0.2ms</span>
             </div>
             <div className="flex flex-wrap gap-2">
               <motion.button
                 whileHover={{ scale:1.02 }} whileTap={{ scale:0.95 }}
-                onClick={() => { setExecuted(true); onDawCmd('applyEQ', { freq:'200-400Hz', gain:-2.4 }) }}
+                onClick={() => { setExecuted(true); onDawCmd('applyEQ', { freq: freqLabel, gain: s.gainDb }) }}
                 style={executed ? { backgroundColor: '#00FFaa', color: '#000', border: '1px solid #00FFaa' } : { backgroundColor: advColor, color: '#fff' }}
                 className="relative px-4 py-1.5 text-xs font-bold uppercase tracking-widest transition-all"
               >
@@ -501,6 +499,13 @@ export default function App() {
         sysMsg(`[${ts()}] WEBSOCKET CONNECTED TO PLUGIN`)
         setBotState('success')
         setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
+        // Auto-send stored API key on connect so plugin has it
+        const cfg = (() => { try { return JSON.parse(localStorage.getItem('whycremisi_config')) } catch { return null } })()
+        if (cfg?.apiKey && cfg?.provider) {
+          whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: cfg.apiKey, provider: cfg.provider } })
+          whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: cfg.provider } })
+          whycremisi.send({ type: 'config.set', payload: { key: 'ai.model', value: cfg.model || 'llama3.2' } })
+        }
       }
       if (s === ConnectionState.DISCONNECTED || s === ConnectionState.ERROR) {
         sysMsg(`[${ts()}] CONNECTION LOST — RECONNECTING...`)
@@ -833,6 +838,54 @@ export default function App() {
     	return 'metrics'
     }
 
+  // ── Dynamic suggestion engine from analyzer data + personality ──
+  const currentSuggestion = useMemo(() => {
+    const hasData = spectrum.length > 0 && correlation !== 0
+    if (!hasData) return {
+      freqLow: 200, freqHigh: 400, gainDb: -2.4,
+      label: '200Hz–400Hz', description: 'harmonic crowding',
+      transientPres: 84, confidence: 0.98
+    }
+
+    const avgMag = spectrum.reduce((a, b) => a + b, 0) / spectrum.length
+    const lowEnd = spectrum.slice(0, Math.floor(spectrum.length * 0.1)).reduce((a, b) => a + b, 0) / Math.max(1, Math.floor(spectrum.length * 0.1))
+    const lowMid = spectrum.slice(Math.floor(spectrum.length * 0.1), Math.floor(spectrum.length * 0.25)).reduce((a, b) => a + b, 0) / Math.max(1, Math.floor(spectrum.length * 0.15))
+    const highEnd = spectrum.slice(Math.floor(spectrum.length * 0.7)).reduce((a, b) => a + b, 0) / Math.max(1, spectrum.length - Math.floor(spectrum.length * 0.7))
+    const corrVal = Math.abs(correlation)
+
+    const personalityFactor = personality?.style === 'aggressive' ? 1.4 :
+      personality?.style === 'cautious' ? 0.6 :
+      personality?.style === 'analytical' ? 1.0 : 1.0
+
+    let freqLow = 150, freqHigh = 350, gainDb = -2.0, transientPres = 80
+    let label = '150Hz–350Hz', description = 'low-mid energy'
+
+    if (lowEnd > avgMag * 1.3 && corrVal < 0.6) {
+      freqLow = 60; freqHigh = 120; gainDb = -(2.5 + (lowEnd - avgMag) * personalityFactor)
+      label = '60Hz–120Hz'; description = 'sub-bass buildup'
+    } else if (lowMid > avgMag * 1.2 && corrVal < 0.7) {
+      freqLow = 180; freqHigh = 400; gainDb = -(2.0 + (lowMid - avgMag) * personalityFactor)
+      label = '180Hz–400Hz'; description = 'low-mid crowding'
+    } else if (highEnd > avgMag * 1.15) {
+      freqLow = 5000; freqHigh = 12000; gainDb = -(1.5 + (highEnd - avgMag) * personalityFactor * 0.5)
+      label = '5kHz–12kHz'; description = 'high-frequency buildup'
+    }
+
+    if (corrVal < 0.3) {
+      transientPres = Math.round(75 + (1 - corrVal) * 20)
+      description += ', phase issues detected'
+    } else if (corrVal < 0.6) {
+      transientPres = Math.round(80 + (1 - corrVal) * 10)
+      description += ', moderate correlation'
+    } else {
+      transientPres = Math.round(85 + corrVal * 5)
+    }
+
+    const confidence = Math.min(0.99, Math.max(0.3, avgMag * 1.5 + corrVal * 0.3))
+
+    return { freqLow, freqHigh, gainDb: Math.round(gainDb * 10) / 10, label, description, transientPres, confidence: Math.round(confidence * 1000) / 1000 }
+  }, [spectrum, correlation, personality?.style])
+
   // ── gain slider pct ───────────────────────────────────────────────
   const gainPct = Math.max(0, Math.min(100, ((gainDb + 60) / 72) * 100))
 
@@ -857,6 +910,7 @@ export default function App() {
               localStorage.setItem('whycremisi_setup_done', 'true')
               localStorage.setItem('whycremisi_config', JSON.stringify(newConfig))
               
+              // Always send API key + config to plugin (critical for AI to work)
               if (whycremisi.isConnected()) {
                 whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: newConfig.provider } })
                 whycremisi.send({ type: 'config.set', payload: { key: 'ai.model', value: newConfig.model } })
@@ -868,6 +922,7 @@ export default function App() {
             onSkip={() => {
               setSetupComplete(true)
               localStorage.setItem('whycremisi_setup_done', 'true')
+              sysMsg(`[${ts()}] SETUP SKIPPED — AI features require API key configuration`)
             }}
           />
         )}
@@ -950,7 +1005,8 @@ export default function App() {
 
           {/* Action icons */}
           <div className="flex gap-1.5">
-            <span className="material-symbols-outlined text-base text-[#888888] hover:text-[#FFB000] cursor-pointer transition-colors">settings</span>
+            <span className="material-symbols-outlined text-base text-[#888888] hover:text-[#FFB000] cursor-pointer transition-colors"
+              onClick={() => { setSetupComplete(false); localStorage.removeItem('whycremisi_setup_done') }}>settings</span>
             <span className="material-symbols-outlined text-base text-[#888888] hover:text-[#DC143C] cursor-pointer transition-colors"
               onClick={() => whycremisi.disconnect()}>power_settings_new</span>
           </div>
@@ -1297,7 +1353,7 @@ export default function App() {
                             />
                           )}
                         </p>
-                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} />}
+                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} suggestion={currentSuggestion} />}
                       </div>
                     </motion.div>
                   )

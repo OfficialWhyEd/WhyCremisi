@@ -158,7 +158,9 @@ private:
     std::atomic<float> meterLevelL { -60.0f };
     std::atomic<float> meterLevelR { -60.0f };
     int meterBroadcastCounter { 0 };
-    static constexpr int METER_BROADCAST_EVERY = 512; // blocks
+    static constexpr int METER_BROADCAST_EVERY = 512;
+    int personalityBroadcastCounter { 0 };
+    static constexpr int PERSONALITY_BROADCAST_EVERY = 2048;
 
     // Last known transport state (change detection in processBlock)
     bool  lastIsPlaying   { false };
