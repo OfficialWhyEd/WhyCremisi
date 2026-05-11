@@ -7,7 +7,11 @@ import { SetupScreen } from './components/SetupScreen'
 import './index.css'
 
 // ── BoxChat — various box types shown inside chat after AI response ──
-function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, onDawCmd }) {
+function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd, personality }) {
+  const [localGain, setLocalGain] = useState(gainDb)
+  const [localDrive, setLocalDrive] = useState(driveVal)
+  useEffect(() => { setLocalGain(gainDb) }, [gainDb])
+  useEffect(() => { setLocalDrive(driveVal) }, [driveVal])
   const lPct = Math.round(meterL * 100)
   const rPct = Math.round(meterR * 100)
   const MetricBar = ({ label, val, color, pct }) => (
@@ -57,23 +61,41 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
     </div>
   ))
 
-  if (boxType === 'eq') return wrap('Frequency Analysis', '#FFB000', 'graphic_eq', (
-    <div className="grid grid-cols-3 gap-1.5">
-      <MetricBar label="Sub (20-80Hz)" val={`${Math.round((meterL*0.25+0.18)*100)}%`} color="#9B59B6" pct={Math.round((meterL*0.25+0.18)*100)} />
-      <MetricBar label="Low (80-300Hz)" val={`${Math.round((meterL*0.4+0.3)*100)}%`} color="#DC143C" pct={Math.round((meterL*0.4+0.3)*100)} />
-      <MetricBar label="Low-Mid (300Hz-1k)" val={`${Math.round((meterR*0.35+0.38)*100)}%`} color="#FFB000" pct={Math.round((meterR*0.35+0.38)*100)} />
-      <MetricBar label="Presence (1k-5k)" val={`${Math.round((meterR*0.3+0.42)*100)}%`} color="#00FFaa" pct={Math.round((meterR*0.3+0.42)*100)} />
-      <MetricBar label="High (5k-15k)" val={`${Math.round(((meterL+meterR)*0.2+0.25)*100)}%`} color="#00E5FF" pct={Math.round(((meterL+meterR)*0.2+0.25)*100)} />
-      <MetricBar label="Air (15k+)" val={`${Math.round(((meterL+meterR)*0.15+0.2)*100)}%`} color="#E8D5B7" pct={Math.round(((meterL+meterR)*0.15+0.2)*100)} />
-    </div>
-  ))
+  if (boxType === 'eq') {
+    const bins = (spectrum && spectrum.length > 0) ? spectrum : []
+    const avgBands = (start, end) => {
+      if (bins.length === 0) return 0
+      const s = Math.floor(bins.length * start)
+      const e = Math.floor(bins.length * end)
+      if (e <= s) return 0
+      let sum = 0
+      for (let i = s; i < e; i++) sum += bins[i]
+      return sum / (e - s)
+    }
+    const sub = avgBands(0, 0.05)
+    const low = avgBands(0.05, 0.15)
+    const lowMid = avgBands(0.15, 0.35)
+    const presence = avgBands(0.35, 0.65)
+    const high = avgBands(0.65, 0.85)
+    const air = avgBands(0.85, 1)
+    return wrap('Frequency Analysis', '#FFB000', 'graphic_eq', (
+      <div className="grid grid-cols-3 gap-1.5">
+        <MetricBar label="Sub (20-80Hz)" val={`${(sub * 100).toFixed(0)}%`} color="#9B59B6" pct={sub * 100} />
+        <MetricBar label="Low (80-300Hz)" val={`${(low * 100).toFixed(0)}%`} color="#DC143C" pct={low * 100} />
+        <MetricBar label="Low-Mid (300Hz-1k)" val={`${(lowMid * 100).toFixed(0)}%`} color="#FFB000" pct={lowMid * 100} />
+        <MetricBar label="Presence (1k-5k)" val={`${(presence * 100).toFixed(0)}%`} color="#00FFaa" pct={presence * 100} />
+        <MetricBar label="High (5k-15k)" val={`${(high * 100).toFixed(0)}%`} color="#00E5FF" pct={high * 100} />
+        <MetricBar label="Air (15k+)" val={`${(air * 100).toFixed(0)}%`} color="#E8D5B7" pct={air * 100} />
+      </div>
+    ))
+  }
 
   if (boxType === 'slider') return wrap('Volume / Gain Control', '#FFB000', 'tune', (
     <div className="space-y-2">
       {[
-        { label: 'Master Gain', val: gainDb, min: -60, max: 12, color: '#DC143C', cmd: 'setGain', key: 'valueDb' },
-        { label: 'Drive', val: driveVal, min: 0, max: 100, color: '#FFB000', cmd: 'setDrive', key: 'value' },
-      ].map(({ label, val, min, max, color, cmd, key }) => {
+        { label: 'Master Gain', val: localGain, setVal: setLocalGain, min: -60, max: 12, color: '#DC143C', cmd: 'setGain', key: 'valueDb' },
+        { label: 'Drive', val: localDrive, setVal: setLocalDrive, min: 0, max: 100, color: '#FFB000', cmd: 'setDrive', key: 'value' },
+      ].map(({ label, val, setVal, min, max, color, cmd, key }) => {
         const pct = ((val - min) / (max - min)) * 100
         return (
           <div key={label} className="space-y-1">
@@ -81,7 +103,24 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
               <span className="text-[#aaa]">{label}</span>
               <span style={{ color }}>{val.toFixed(1)}</span>
             </div>
-            <div className="h-2 bg-[#1a1a1a] w-full relative cursor-pointer rounded-sm overflow-hidden">
+            <div className="h-2 bg-[#1a1a1a] w-full relative cursor-pointer rounded-sm overflow-hidden"
+              onMouseDown={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+                const newVal = min + pct * (max - min)
+                setVal(newVal)
+                onDawCmd(cmd, { [key]: newVal })
+                const onMove = (ev) => {
+                  const p = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width))
+                  const v = min + p * (max - min)
+                  setVal(v)
+                  onDawCmd(cmd, { [key]: v })
+                }
+                const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+                document.addEventListener('mousemove', onMove)
+                document.addEventListener('mouseup', onUp)
+              }}
+            >
               <motion.div className="h-full absolute left-0 top-0" style={{ backgroundColor: color, width: `${pct}%`, boxShadow: `0 0 6px ${color}50` }} />
             </div>
           </div>
@@ -141,147 +180,165 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
 
   if (boxType === 'compressor') return wrap('Compressor Settings', '#9B59B6', 'compress', (
     <div className="grid grid-cols-2 gap-1.5">
-      <MetricBar label="Threshold" val="-18 dB" color="#9B59B6" pct={60} />
-      <MetricBar label="Ratio" val="4:1" color="#DC143C" pct={40} />
-      <MetricBar label="Attack" val="5 ms" color="#FFB000" pct={25} />
-      <MetricBar label="Release" val="80 ms" color="#00E5FF" pct={50} />
-      <MetricBar label="Gain Reduction" val={`${(-(meterL+meterR)*6).toFixed(1)} dB`} color="#00FFaa" pct={Math.round((meterL+meterR)*50)} />
-      <MetricBar label="Output Gain" val={`${gainDb.toFixed(1)} dB`} color="#FFB000" pct={Math.max(0,Math.min(100,((gainDb+60)/72)*100))} />
+      <MetricBar label="Threshold" val={`${(correlation * 12 - 24).toFixed(0)} dB`} color="#9B59B6" pct={Math.min(100, Math.max(0, (correlation + 1) * 50))} />
+      <MetricBar label="Ratio" val={`${(2 + (1 - correlation) * 4).toFixed(1)}:1`} color="#DC143C" pct={(1 - correlation) * 50} />
+      <MetricBar label="Attack" val={`${(10 - correlation * 6).toFixed(0)} ms`} color="#FFB000" pct={(1 - correlation) * 40} />
+      <MetricBar label="Release" val={`${(100 - correlation * 60).toFixed(0)} ms`} color="#00E5FF" pct={(1 - correlation) * 40} />
+      <MetricBar label="Gain Reduction" val={`${Math.max(0, (1 - correlation) * 6).toFixed(1)} dB`} color="#00FFaa" pct={Math.min(100, (1 - correlation) * 50)} />
+      <MetricBar label="Output Gain" val={`${(correlation * 6 - 3).toFixed(1)} dB`} color="#FFB000" pct={Math.max(0, Math.min(100, ((correlation * 6 - 3 + 60) / 72) * 100))} />
     </div>
   ))
 
     if (boxType === 'advisory') {
-    	const [dismissed, setDismissed] = React.useState(false)
-    	const [executed, setExecuted] = React.useState(false)
-    	if (dismissed) return null
-    	return (
-    		<motion.div
-    			initial={{ opacity:0, y:10, scale:0.98, filter:'blur(4px)' }}
-    			animate={{ opacity:1, y:0, scale:1, filter:'blur(0)' }}
-    			transition={{ delay:0.35, duration:0.6, ease:[0.22,1,0.36,1] }}
-    			className="mt-2 animate-advisory-in group relative"
-    		>
-    			<div className="absolute -top-3 -right-1 opacity-5 pointer-events-none select-none">
-    				<pre className="text-xs leading-tight text-white font-mono">0x45 0x21 0x88{'\n'}[TRANS_LOCK]{'\n'}0xFF 0x00 0x12</pre>
-    			</div>
-    			<div className="advisory-card advisory-breathe bg-[#121212] border border-[#DC143C]/40 p-4 relative font-mono transition-all duration-500 hover:bg-[#161616]">
-    				<div className="absolute top-2 right-3 flex items-end gap-[2px] h-5 opacity-40">
-    					{[40,70,55,90,65].map((h,i) => <div key={i} className="w-[2px] bg-[#DC143C]" style={{ height:`${h}%` }} />)}
-    				</div>
-    				<div className="flex justify-between items-start mb-3 border-b border-[#222] pb-2">
-    					<div className="flex items-center gap-2">
-    						<div className="w-1 h-5 bg-[#DC143C] relative overflow-hidden flex-shrink-0">
-    							<motion.div className="absolute inset-0 bg-white/20" animate={{ y:['0%','100%','0%'] }} transition={{ repeat:Infinity, duration:2 }} />
-    						</div>
-    						<div>
-    							<span className="text-[#DC143C] text-xs font-bold tracking-tighter uppercase block">AI_MASTERING_ADVISORY</span>
-    							<span className="text-xs text-[#888888] tracking-widest">NODE: CREMISI_X9</span>
-    						</div>
-    					</div>
-    					<div className="flex flex-col items-end">
-    						<span className="text-xs text-white/40 font-bold uppercase tracking-widest">Priority: <span className="text-[#DC143C]">High</span></span>
-    						<span className="text-xs text-[#888888] font-mono mt-0.5">ID: #B87-FF01</span>
-    					</div>
-    				</div>
-    				<div className="text-sm leading-relaxed text-[#FFB000] mb-3">
-    					<p className="text-xs leading-relaxed">
-    						Detected harmonic crowding in{' '}
-    						<span className="text-white font-bold border-b border-[#DC143C]/40 px-0.5">200Hz–400Hz</span>.{' '}
-    						Suggesting dynamic dip of{' '}
-    						<span className="bg-[#DC143C] text-white px-1 font-bold">-2.4dB</span>.{' '}
-    						Transient preservation at{' '}
-    						<span className="text-white underline decoration-dotted">84%</span>.
-    					</p>
-    				</div>
-    				<div className="flex items-center gap-2 mb-3 text-xs font-mono text-[#666] opacity-60">
-    					<span>HEX: 0xDC143C</span><span>·</span><span>VAL: -2.4dB_COR</span><span>·</span><span>SIG: 0.982</span><span>·</span><span>LAT: 0.2ms</span>
-    				</div>
-    				<div className="flex flex-wrap gap-2">
-    					<motion.button
-    						className={`relative px-4 py-1.5 text-xs font-bold uppercase tracking-widest transition-all ${executed ? 'bg-[#00FFaa] text-black border border-[#00FFaa]' : 'bg-[#DC143C] text-white hover:bg-white hover:text-[#DC143C] hover:shadow-[0_0_20px_rgba(220,20,60,0.5)]'}`}
-    						whileHover={{ scale:1.02 }} whileTap={{ scale:0.95 }}
-    						onClick={() => { setExecuted(true); onDawCmd('applyEQ', { freq:'200-400Hz', gain:-2.4 }) }}
-    					>
-    						<span className="flex items-center gap-1.5">
-    							<span className="material-symbols-outlined text-[12px]">bolt</span>
-    							{executed ? 'APPLIED ✓' : 'EXECUTE SUGGESTED CHAIN'}
-    						</span>
-    					</motion.button>
-    					<motion.button
-    						className="border border-[#4d4d4d] text-[#888888] px-4 py-1.5 text-xs font-bold uppercase tracking-widest hover:border-[#FFB000] hover:text-[#FFB000] hover:shadow-[0_0_15px_rgba(255,176,0,0.2)] transition-all"
-    					>
-    						ANALYZE FURTHER
-    					</motion.button>
-    					<button className="text-[#888888] hover:text-white text-xs font-bold uppercase self-center transition-colors hover:underline decoration-[#DC143C]"
-    						onClick={() => setDismissed(true)}>DISMISS</button>
-    				</div>
-    			</div>
-    		</motion.div>
-    	)
+      const [dismissed, setDismissed] = React.useState(false)
+      const [executed, setExecuted] = React.useState(false)
+      if (dismissed) return null
+
+      const advColor = personality?.style === 'aggressive' ? '#DC143C' :
+        personality?.style === 'cautious' ? '#FFB000' :
+        personality?.style === 'analytical' ? '#00E5FF' : '#DC143C'
+      const priorityLabel = personality?.style === 'aggressive' ? 'Critical' :
+        personality?.style === 'cautious' ? 'Advisory' :
+        personality?.style === 'analytical' ? 'Info' : 'High'
+      const actionLabel = personality?.style === 'aggressive' ? 'FORCE APPLY CHAIN' :
+        personality?.style === 'cautious' ? 'REVIEW & APPLY' :
+        personality?.style === 'analytical' ? 'SIMULATE CHAIN' : 'EXECUTE SUGGESTED CHAIN'
+      const confidenceTag = personality?.confidence
+        ? `CONF: ${(personality.confidence * 100).toFixed(0)}%`
+        : 'SIG: 0.982'
+      const styleName = personality?.style?.toUpperCase() || 'DEFAULT'
+
+      return (
+        <motion.div
+          initial={{ opacity:0, y:10, scale:0.98, filter:'blur(4px)' }}
+          animate={{ opacity:1, y:0, scale:1, filter:'blur(0)' }}
+          transition={{ delay:0.35, duration:0.6, ease:[0.22,1,0.36,1] }}
+          className="mt-2 animate-advisory-in group relative"
+        >
+          <div className="absolute -top-3 -right-1 opacity-5 pointer-events-none select-none">
+            <pre className="text-xs leading-tight text-white font-mono">0x45 0x21 0x88{'\n'}[TRANS_LOCK]{'\n'}0xFF 0x00 0x12</pre>
+          </div>
+          <div className="advisory-card advisory-breathe bg-[#121212] p-4 relative font-mono transition-all duration-500 hover:bg-[#161616]"
+            style={{ borderColor: advColor + '66' }}
+          >
+            <div className="absolute top-2 right-3 flex items-end gap-[2px] h-5 opacity-40">
+              {[40,70,55,90,65].map((h,i) => (
+                <div key={i} className="w-[2px]" style={{ height: h + '%', backgroundColor: advColor }} />
+              ))}
+            </div>
+            <div className="flex justify-between items-start mb-3 border-b border-[#222] pb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-5 relative overflow-hidden flex-shrink-0" style={{ backgroundColor: advColor }}>
+                  <motion.div className="absolute inset-0 bg-white/20" animate={{ y:['0%','100%','0%'] }} transition={{ repeat:Infinity, duration:2 }} />
+                </div>
+                <div>
+                  <span className="text-xs font-bold tracking-tighter uppercase block" style={{ color: advColor }}>
+                    AI_MASTERING_ADVISORY_{styleName}
+                  </span>
+                  <span className="text-xs text-[#888888] tracking-widest">
+                    NODE: CREMISI_X9 · STYLE: {styleName}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col items-end">
+                <span className="text-xs text-white/40 font-bold uppercase tracking-widest">Priority: <span style={{ color: advColor }}>{priorityLabel}</span></span>
+                {personality?.experienceLevel && (
+                  <span className="text-xs text-[#888888] font-mono mt-0.5">EXP LVL: {personality.experienceLevel}</span>
+                )}
+              </div>
+            </div>
+            <div className="text-sm leading-relaxed text-[#FFB000] mb-3">
+              <p className="text-xs leading-relaxed">
+                {personality?.style === 'aggressive' ? 'Aggressive harmonic masking detected' :
+                 personality?.style === 'cautious' ? 'Potential harmonic crowding observed' :
+                 personality?.style === 'analytical' ? 'Analysis indicates harmonic crowding' :
+                 'Detected harmonic crowding'} in{' '}
+                <span className="text-white font-bold px-0.5" style={{ borderBottom: '1px solid ' + advColor + '66' }}>200Hz–400Hz</span>.{' '}
+                {personality?.style === 'aggressive' ? 'Applying surgical dip of' :
+                 personality?.style === 'cautious' ? 'Consider gentle dip of' :
+                 personality?.style === 'analytical' ? 'Recommended dynamic dip of' :
+                 'Suggesting dynamic dip of'}{' '}
+                <span className="text-white px-1 font-bold" style={{ backgroundColor: advColor }}>-2.4dB</span>.{' '}
+                Transient preservation at{' '}
+                <span className="text-white underline decoration-dotted">84%</span>.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mb-3 text-xs font-mono text-[#666] opacity-60">
+              <span>HEX: {advColor}</span><span>·</span><span>VAL: -2.4dB_COR</span><span>·</span><span>{confidenceTag}</span><span>·</span><span>LAT: 0.2ms</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <motion.button
+                whileHover={{ scale:1.02 }} whileTap={{ scale:0.95 }}
+                onClick={() => { setExecuted(true); onDawCmd('applyEQ', { freq:'200-400Hz', gain:-2.4 }) }}
+                style={executed ? { backgroundColor: '#00FFaa', color: '#000', border: '1px solid #00FFaa' } : { backgroundColor: advColor, color: '#fff' }}
+                className="relative px-4 py-1.5 text-xs font-bold uppercase tracking-widest transition-all"
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[12px]">bolt</span>
+                  {executed ? 'APPLIED ✓' : actionLabel}
+                </span>
+              </motion.button>
+              <motion.button
+                className="border border-[#4d4d4d] text-[#888888] px-4 py-1.5 text-xs font-bold uppercase tracking-widest hover:border-[#FFB000] hover:text-[#FFB000] hover:shadow-[0_0_15px_rgba(255,176,0,0.2)] transition-all"
+              >
+                ANALYZE FURTHER
+              </motion.button>
+              <button className="text-[#888888] hover:text-white text-xs font-bold uppercase self-center transition-colors hover:underline"
+                style={{ textDecorationColor: advColor }}
+                onClick={() => setDismissed(true)}>DISMISS</button>
+            </div>
+          </div>
+        </motion.div>
+      )
     }
 
     if (boxType === 'vectorscope') {
-    	return wrap('Vector Scope', '#00FFaa', 'waveform', (
-    		<div className="relative w-full h-[300px]">
-    			<div className="absolute inset-0 bg-[#1a1a1a]/50">
-    				<div className="absolute inset-0 border-2 border-[#00FFaa]/20" />
-    			</div>
-    			<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-    				<div className="text-center text-xs font-mono">
-    					<div className="space-x-2">
-    						<span className="w-1 h-1 rounded-full bg-[#FF6B35]">L</span>
-    						<span>−180°</span>
-    					</div>
-    					<div className="space-x-2">
-    						<span className="w-1 h-1 rounded-full bg-[#00E5FF]">R</span>
-    						<span>0°</span>
-    					</div>
-    					<div className="space-x-2">
-    						<span className="w-1 h-1 rounded-full bg-[#FFB000]">L</span>
-    						<span>+180°</span>
-    					</div>
-    				</div>
-    			</div>
-     			<div className="absolute inset-0 pointer-events-none">
-     				<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" className="absolute inset-0">
-     					<circle cx="50" cy="50" r="45" fill="none" stroke="#222222" strokeWidth="1" />
-     					<line x1="50" y1="5" x2="50" y2="95" stroke="#222222" strokeWidth="0.5" strokeDasharray="2,2" />
-     					<line x1="5" y1="50" x2="95" y2="50" stroke="#222222" strokeWidth="0.5" strokeDasharray="2,2" />
-     					<circle cx="50" cy="50" r="40" fill="none" stroke="url(#gradient)" strokeWidth="2" />
-     					<defs>
-     						<linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-     							<stop offset="0%" style={{ stopColor: '#00E5FF' }} />
-     							<stop offset="100%" style={{ stopColor: '#FF6B35' }} />
-     						</linearGradient>
-     					</defs>
-     					<circle cx="50" cy="50" r="3" fill="#00FFaa" />
-     				</svg>
-     			</div>
-    			<motion.div
-    				className="absolute inset-0"
-    				style={{
-    					left: `${50 + (meterL - 0.5) * 40}%`,
-    					top: `${50 - (meterR - 0.5) * 40}%`,
-    					width: '4px',
-    					height: '4px',
-    					backgroundColor: '#00FFaa',
-    					borderRadius: '50%',
-    					boxShadow: '0 0 4px #00FFaa'
-    				}}
-    			/>
-    			<motion.div
-    				className="absolute inset-0"
-    				style={{
-    					left: `${50 + meterL * 80 - 40}%`,
-    					top: `${50 - meterR * 80 + 40}%`,
-    					width: '2px',
-    					height: '2px',
-    					backgroundColor: 'rgba(0,255,170,0.5)',
-    					borderRadius: '50%'
-    				}}
-    			/>
-    		</div>
-    	))
+      const corrColor = correlation > 0.7 ? '#00FFaa' : correlation > 0.3 ? '#FFB000' : '#DC143C'
+      const scopeX = 50 + Math.min(45, Math.max(-45, correlation * 45))
+      const scopeY = 50 - Math.min(45, Math.max(-45, (spectrum?.[0] || 0) * 45))
+      const spectrumBars = (spectrum || []).slice(0, 64)
+      return wrap('Vector Scope', corrColor, 'waveform', (
+        <div className="relative w-full h-[300px]">
+          <div className="absolute inset-0 bg-[#0a0a0a] border border-[#222]">
+            {/* Spectrum analyzer bars */}
+            <div className="absolute bottom-0 left-0 right-0 h-1/2 flex items-end gap-[1px]">
+              {spectrumBars.map((mag, i) => (
+                <motion.div
+                  key={i}
+                  className="flex-1"
+                  style={{
+                    backgroundColor: `hsl(${140 + (1 - mag) * 60}, 80%, ${30 + mag * 40}%)`,
+                    height: `${Math.min(100, mag * 100)}%`,
+                    opacity: 0.7
+                  }}
+                  animate={{ height: `${Math.min(100, mag * 100)}%` }}
+                  transition={{ duration: 0.1 }}
+                />
+              ))}
+              {spectrumBars.length === 0 && Array.from({ length: 64 }, (_, i) => (
+                <div key={i} className="flex-1 bg-[#111]" style={{ height: `${10 + Math.sin(i * 0.3 + Date.now() * 0.001) * 5}%` }} />
+              ))}
+            </div>
+          </div>
+          {/* Phase scope overlay */}
+          <div className="absolute inset-0 pointer-events-none">
+            <svg width="100%" height="100%" viewBox="0 0 100 100" className="absolute inset-0">
+              <circle cx="50" cy="50" r="45" fill="none" stroke="#222" strokeWidth="0.5" />
+              <line x1="50" y1="5" x2="50" y2="95" stroke="#222" strokeWidth="0.5" strokeDasharray="2,2" />
+              <line x1="5" y1="50" x2="95" y2="50" stroke="#222" strokeWidth="0.5" strokeDasharray="2,2" />
+              <circle cx="50" cy="50" r="40" fill="none" stroke={corrColor} strokeWidth="1" opacity={0.3} />
+              <circle cx={scopeX} cy={scopeY} r="3" fill={corrColor} filter="url(#glow)" />
+              <defs>
+                <radialGradient id="glow"><stop offset="0%" stopColor={corrColor} stopOpacity={1} /><stop offset="100%" stopColor={corrColor} stopOpacity={0} /></radialGradient>
+              </defs>
+            </svg>
+          </div>
+          <div className="absolute top-1 right-1 text-[8px] font-mono text-right leading-tight opacity-60">
+            <div style={{ color: corrColor }}>CORR: {correlation.toFixed(3)}</div>
+            <div className="text-[#888]">BINS: {spectrum?.length || 0}</div>
+          </div>
+        </div>
+      ))
     }
 
   // default: metrics
@@ -304,9 +361,9 @@ export default function App() {
   })
   const [config, setConfig] = useState(() => {
     const saved = localStorage.getItem('whycremisi_config')
-    if (!saved) return { provider: 'ollama', apiKey: '' }
+    if (!saved) return { provider: 'ollama', model: 'llama3.2', apiKey: '' }
     try { return JSON.parse(saved) }
-    catch { return { provider: 'ollama', apiKey: '' } }
+    catch { return { provider: 'ollama', model: 'llama3.2', apiKey: '' } }
   })
 
   // ── connection & bot ──────────────────────────────────────────────
@@ -345,6 +402,18 @@ export default function App() {
   const [midiLearnWidget, setMidiLearnWidget] = useState(null)
   const [midiMappings, setMidiMappings] = useState([])
   const [showMapPanel, setShowMapPanel] = useState(false)
+
+  // ── Personality (from PersonalityCore via plugin) ──────────────────
+  const [personality, setPersonality] = useState({
+    style: 'neutral',
+    confidence: 0.5,
+    experienceLevel: 1,
+    userName: '',
+    sessionCount: 0,
+    totalActions: 0,
+    recentActions: [],
+    description: ''
+  })
 
   // ── AI Action Log + Undo/Redo ──────────────────────────────────────
   const [actionLog, setActionLog] = useState([])
@@ -587,6 +656,27 @@ export default function App() {
       }
     })
 
+    // ── Personality events from PersonalityCore ──
+    const unsubPersAction = whycremisi.on('personality.action', (payload) => {
+      sysMsg(`[${ts()}] PERSONALITY: ${payload.detail || 'action recorded'}`)
+    })
+
+    const unsubPersContext = whycremisi.on('personality.context', (payload) => {
+      if (payload) {
+        setPersonality(prev => ({
+          ...prev,
+          style: payload.style || prev.style,
+          confidence: payload.confidence ?? prev.confidence,
+          experienceLevel: payload.experienceLevel ?? prev.experienceLevel,
+          userName: payload.userName || prev.userName,
+          sessionCount: payload.sessionCount ?? prev.sessionCount,
+          totalActions: payload.totalActions ?? prev.totalActions,
+          recentActions: payload.recentActions || prev.recentActions,
+          description: payload.description || prev.description
+        }))
+      }
+    })
+
     // connect
     whycremisi.connect().catch(() => {
       sysMsg(`[${ts()}] PLUGIN NOT RUNNING — OFFLINE MODE`)
@@ -598,7 +688,7 @@ export default function App() {
       intervalsRef.current = []
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
-      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubActionLog()
+      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer();       unsubActionLog(); unsubPersAction(); unsubPersContext()
       whycremisi.disconnect()
     }
   }, [addMsg, sysMsg])
@@ -728,14 +818,18 @@ export default function App() {
               localStorage.setItem('whycremisi_setup_done', 'true')
               localStorage.setItem('whycremisi_config', JSON.stringify(newConfig))
               
-              // Se connesso, invia config al plugin nel formato atteso da OscBridge
               if (whycremisi.isConnected()) {
                 whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: newConfig.provider } })
+                whycremisi.send({ type: 'config.set', payload: { key: 'ai.model', value: newConfig.model } })
                 if (newConfig.apiKey) {
                   whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: newConfig.apiKey, provider: newConfig.provider } })
                 }
               }
-            }} 
+            }}
+            onSkip={() => {
+              setSetupComplete(true)
+              localStorage.setItem('whycremisi_setup_done', 'true')
+            }}
           />
         )}
       </AnimatePresence>
@@ -1014,6 +1108,11 @@ export default function App() {
             <div className="flex items-center gap-3 text-xs font-mono text-[#888888]">
               <span>v4.2.0</span>
               {dawConnected && <span className="text-[#00FFaa]">● DAW SYNC</span>}
+              {personality?.style && personality.style !== 'neutral' && (
+                <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-px border"
+                  style={{ color: personality.style === 'aggressive' ? '#DC143C' : personality.style === 'cautious' ? '#FFB000' : personality.style === 'analytical' ? '#00E5FF' : '#888', borderColor: 'currentColor' }}
+                >{personality.style}</span>
+              )}
             </div>
           </div>
 
@@ -1027,7 +1126,7 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex flex-col items-center justify-center h-full gap-4 pt-12"
               >
-                <BotFace state={botState} className="w-16 h-16" />
+                <BotFace state={botState} className="w-16 h-16" personality={personality} />
                 <div className="text-center space-y-1">
                   <p className="text-sm text-[#888888] font-mono uppercase tracking-widest">Pronto ad ascoltare</p>
                   <p className="text-xs text-[#666] font-mono">Scrivi qualcosa nel campo CMD qui sotto</p>
@@ -1129,7 +1228,7 @@ export default function App() {
                       className="flex gap-2 min-w-0"
                     >
                       <div className="flex-shrink-0 mt-0.5 w-8">
-                        {isLatest && <BotFace state={botState} className="w-8 h-8" />}
+                        {isLatest && <BotFace state={botState} className="w-8 h-8" personality={personality} />}
                       </div>
                       <div className={`flex-1 min-w-0 p-3 relative overflow-hidden transition-colors duration-300 ${
                         isLatest && msg.streaming
@@ -1159,7 +1258,7 @@ export default function App() {
                             />
                           )}
                         </p>
-                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} onDawCmd={dawCmd} />}
+                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} />}
                       </div>
                     </motion.div>
                   )
@@ -1497,6 +1596,31 @@ export default function App() {
             </div>
           </div>
 
+          {/* ── REAL-TIME SPECTRUM ANALYZER ─────────────────────────── */}
+          <div className="w-56 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-3 py-2 gap-1">
+            <div className="flex justify-between items-center mb-0.5">
+              <span className="text-[9px] font-mono text-[#00E5FF] uppercase tracking-widest font-bold">SPECTRUM</span>
+              <span className="text-[9px] font-mono text-[#888]">CORR: {correlation.toFixed(2)}</span>
+            </div>
+            <div className="h-8 flex items-end gap-[1px]">
+              {(spectrum.length > 0 ? spectrum.slice(0, 96) : Array.from({ length: 96 }, (_, i) => 0.1 + Math.sin(i * 0.2 + Date.now() * 0.0005) * 0.05)).map((mag, i) => (
+                <motion.div
+                  key={i}
+                  className="flex-1"
+                  style={{
+                    backgroundColor: `hsl(${140 + (1 - mag) * 80}, 80%, ${25 + mag * 40}%)`,
+                    opacity: 0.8,
+                  }}
+                  animate={{ height: `${Math.max(4, mag * 100)}%` }}
+                  transition={{ duration: 0.08 }}
+                />
+              ))}
+            </div>
+            <div className="flex justify-between text-[8px] font-mono text-[#555] mt-0.5">
+              <span>20Hz</span><span>200Hz</span><span>2kHz</span><span>20kHz</span>
+            </div>
+          </div>
+
           {/* ── PLUGIN STATS ──────────────────────────────────────── */}
           <div className="w-40 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-2">
             <div className="text-xs font-mono text-[#FFB000] uppercase tracking-widest mb-1">PLUGIN</div>
@@ -1504,7 +1628,7 @@ export default function App() {
               ['SR',  pluginStats.sampleRate ? `${(pluginStats.sampleRate / 1000).toFixed(1)}kHz` : '—'],
               ['BUF', pluginStats.bufferSize  ? `${pluginStats.bufferSize} smp`                   : '—'],
               ['LAT', pluginStats.latencyMs   ? `${pluginStats.latencyMs.toFixed(1)} ms`           : '—'],
-              ['CPU', 'host'],
+              ['CORR', correlation.toFixed(3)],
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between items-center">
                 <span className="text-xs font-mono text-[#888888]">{k}</span>

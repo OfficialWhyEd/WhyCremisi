@@ -31,6 +31,7 @@ private:
     float envelope = 0.0f;
     float currentGainReduction = 0.0f;
     int lookaheadSamples = 0;
+    int delaySize = 0;
     std::vector<std::vector<float>> delayBuffer;
     int writePos = 0;
 };

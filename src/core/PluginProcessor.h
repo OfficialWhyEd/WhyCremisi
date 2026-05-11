@@ -20,6 +20,8 @@ class MidiHandler;
 class ParameterMapper;
 class PluginChain;
 class DSPEngine;
+class PersonalityCore;
+class AgentWorkspace;
 
 //==============================================================================
 class WhyCremisiProcessor : public juce::AudioProcessor
@@ -143,6 +145,12 @@ private:
     
     // Session Manager
     std::unique_ptr<SessionManager> sessionManager;
+
+    // Personality Core (memory + AI personality)
+    std::unique_ptr<PersonalityCore> personalityCore;
+
+    // Agent Workspace (OpenClaw templates: identity, soul, user, memory, heartbeat, tools, agents rules)
+    std::unique_ptr<AgentWorkspace> agentWorkspace;
 
     // Meter state (computed in processBlock, broadcast periodically)
     std::atomic<float> meterLevelL { -60.0f };

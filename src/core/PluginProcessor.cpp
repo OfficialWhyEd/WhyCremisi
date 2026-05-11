@@ -14,6 +14,9 @@
 #include "ParameterMapper.h"
 #include "PluginChain.h"
 #include "DSPEngine.h"
+#include "PersonalityCore.h"
+#include "AgentWorkspace.h"
+#include <nlohmann/json.hpp>
 
 //==============================================================================
 WhyCremisiProcessor::WhyCremisiProcessor()
@@ -89,6 +92,32 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     dawOscPort = static_cast<int>(dawOscPortParam->load());
     wsPort = static_cast<int>(wsPortParam->load());
 
+    // Initialize Personality Core (memory + AI personality)
+    personalityCore = std::make_unique<PersonalityCore>();
+    personalityCore->startSession();
+    personalityCore->onPersonalityEvent = [this](const juce::String& type, const juce::String& detail) {
+        if (oscBridge)
+        {
+            nlohmann::json msg;
+            msg["type"] = ("personality." + type).toStdString();
+            msg["payload"]["detail"] = detail.toStdString();
+            oscBridge->broadcastJson(msg);
+        }
+    };
+
+    // Initialize AgentWorkspace (OpenClaw templates: identity, soul, user, memory, etc.)
+    agentWorkspace = std::make_unique<AgentWorkspace>();
+    agentWorkspace->linkPersonalityCore(personalityCore.get());
+    agentWorkspace->onWorkspaceEvent = [this](const juce::String& type, const juce::String& detail) {
+        if (oscBridge)
+        {
+            nlohmann::json msg;
+            msg["type"] = ("workspace." + type).toStdString();
+            msg["payload"]["detail"] = detail.toStdString();
+            oscBridge->broadcastJson(msg);
+        }
+    };
+
     // Initialize MIDI + Parameter Mapping
     midiHandler = std::make_unique<MidiHandler>();
     paramMapper = std::make_unique<ParameterMapper>();
@@ -110,18 +139,29 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     oscBridge->setPluginChain(pluginChain.get());
     paramMapper->setOscBridge(oscBridge.get());
 
-    // Route widget changes from UI → ParameterMapper → MIDI/OSC
+    // Route widget changes from UI → ParameterMapper → MIDI/OSC + Personality
     oscBridge->widgetChangeCallback = [this](const juce::String& widgetId, float value) {
         if (paramMapper)
+        {
+            float prev = paramMapper->getValue(widgetId);
             paramMapper->setValue(widgetId, value);
+            if (personalityCore)
+                personalityCore->recordAction(widgetId, value, prev);
+        }
     };
 
-    // Set up AI engine widget context + action execution
+    // Set up AI engine widget context + action execution + personality
     if (aiEngine)
     {
         aiEngine->setActionCallback([this](const AiEngine::AiAction& action) {
             if (paramMapper)
+            {
+                float prev = paramMapper->getValue(action.widgetId);
                 paramMapper->setValue(action.widgetId, action.value);
+                if (personalityCore)
+                    personalityCore->recordAction(action.widgetId, action.value, prev,
+                                                  action.description);
+            }
         });
 
         // Provide initial widget list to AI engine
@@ -151,6 +191,14 @@ WhyCremisiProcessor::WhyCremisiProcessor()
             juce::String chainDesc = pluginChain->toDescriptiveString();
             aiEngine->setContext(chainDesc, {});
         }
+
+        // Personality context (stored separately from plugin chain / transport)
+        if (personalityCore)
+            aiEngine->setPersonalityContext(personalityCore->buildPersonalityContext());
+
+        // AgentWorkspace context (OpenClaw templates: identity, soul, user, memory, rules, tools, heartbeat)
+        if (agentWorkspace)
+            aiEngine->setAgentWorkspaceContext(agentWorkspace->buildFullContext());
     }
 
     // MIDI Learn complete: notify UI via broadcast
@@ -281,13 +329,8 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     for (int i = totalIn; i < totalOut; ++i)
         buffer.clear(i, 0, numSamples);
 
-    // Apply all 8 gain parameters
-    for (auto* g : { gainParam1, gainParam2, gainParam3, gainParam4,
-                     gainParam5, gainParam6, gainParam7, gainParam8 })
-    {
-        if (g != nullptr)
-            buffer.applyGain(juce::Decibels::decibelsToGain(g->load()));
-    }
+    if (gainParam1 != nullptr)
+        buffer.applyGain(juce::Decibels::decibelsToGain(gainParam1->load()));
 
     // ── DSP Processing ──────────────────────────────────────────────
     if (dspEngine)
@@ -330,13 +373,13 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     // FL Studio, Cubase, Studio One, Bitwig, Pro Tools, GarageBand...
     if (auto* ph = getPlayHead())
     {
-        juce::AudioPlayHead::CurrentPositionInfo pos;
-        if (ph->getCurrentPosition(pos))
+        auto opt = ph->getPosition();
+        if (opt)
         {
-            bool  playing   = pos.isPlaying;
-            bool  recording = pos.isRecording;
-            float bpm       = static_cast<float>(pos.bpm > 0.0 ? pos.bpm : 120.0);
-            float posSec    = static_cast<float>(pos.timeInSeconds);
+            bool  playing   = opt->getIsPlaying();
+            bool  recording = opt->getIsRecording();
+            float bpm       = static_cast<float>(opt->getBpm().orFallback(120.0));
+            float posSec    = static_cast<float>(opt->getTimeInSeconds().orFallback(0.0));
 
             // Only broadcast + log when something actually changed
             bool changed = (playing   != lastIsPlaying)   ||
@@ -406,6 +449,10 @@ void WhyCremisiProcessor::getStateInformation(juce::MemoryBlock& destData)
         state.appendChild(midiHandler->save(), nullptr);
     if (pluginChain)
         state.appendChild(pluginChain->save(), nullptr);
+    if (personalityCore)
+        state.appendChild(personalityCore->save(), nullptr);
+    if (agentWorkspace)
+        state.appendChild(agentWorkspace->save(), nullptr);
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -430,8 +477,29 @@ void WhyCremisiProcessor::setStateInformation(const void* data, int sizeInBytes)
             if (chainTree.isValid())
                 pluginChain->load(chainTree);
         }
+        if (personalityCore)
+        {
+            auto personalityTree = restored.getChildWithName("personalityCore");
+            if (personalityTree.isValid())
+                personalityCore->load(personalityTree);
+        }
+        if (agentWorkspace)
+        {
+            auto wsTree = restored.getChildWithName("agentWorkspace");
+            if (wsTree.isValid())
+                agentWorkspace->load(wsTree);
+        }
         if (oscBridge)
             oscBridge->setDawTarget(dawIp, dawOscPort);
+
+        // Refresh AI engine context after loading personality + workspace
+        if (aiEngine)
+        {
+            if (personalityCore)
+                aiEngine->setPersonalityContext(personalityCore->buildPersonalityContext());
+            if (agentWorkspace)
+                aiEngine->setAgentWorkspaceContext(agentWorkspace->buildFullContext());
+        }
     }
 }
 
@@ -531,6 +599,10 @@ void WhyCremisiProcessor::setOscPort(int port)
         oscBridge = std::make_unique<OscBridge>(oscPort, wsPort);
         oscBridge->setAiEngine(aiEngine.get());
         oscBridge->setDawTarget(dawIp, dawOscPort);
+        oscBridge->setSessionManager(sessionManager.get());
+        oscBridge->setMidiHandler(midiHandler.get());
+        oscBridge->setParameterMapper(paramMapper.get());
+        oscBridge->setPluginChain(pluginChain.get());
         oscBridge->start();
     }
 }

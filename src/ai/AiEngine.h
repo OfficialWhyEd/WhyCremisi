@@ -76,7 +76,10 @@ public:
 
     void setWidgetList(const std::vector<WidgetInfo>& widgets);
     void setContext(const juce::String& meterData, const juce::String& transportData);
+    void setPersonalityContext(const juce::String& context);
+    void setAgentWorkspaceContext(const juce::String& context);
     juce::String buildSystemPrompt() const;
+    const juce::String& getPersonalityContext() const { return personalityContext; }
 
     using ActionCallback = std::function<void(const AiAction& action)>;
     void setActionCallback(ActionCallback cb) { actionCallback = cb; }
@@ -89,6 +92,8 @@ private:
     std::vector<WidgetInfo> widgets;
     juce::String lastMeterData;
     juce::String lastTransportData;
+    juce::String personalityContext;
+    juce::String agentWorkspaceContext;
     ActionCallback actionCallback;
 
     StructuredResponse parseStructuredResponse(const juce::String& raw) const;
@@ -100,8 +105,8 @@ private:
                                   const juce::String& extraHeaders = {});
     
     juce::String callOllama(const juce::String& prompt);
-    juce::String callGemini(const juce::String& prompt);
-    juce::String callAnthropic(const juce::String& prompt);
+    juce::String callGemini(const juce::String& prompt, const juce::String& systemPrompt = {});
+    juce::String callAnthropic(const juce::String& prompt, const juce::String& systemPrompt = {});
     juce::String callOpenAI(const juce::String& prompt);
     juce::String callOpenRouter(const juce::String& prompt);
     juce::String callGroq(const juce::String& prompt);

@@ -22,6 +22,16 @@ void AiEngine::setContext(const juce::String& meterData, const juce::String& tra
     lastTransportData = transportData;
 }
 
+void AiEngine::setPersonalityContext(const juce::String& context)
+{
+    personalityContext = context;
+}
+
+void AiEngine::setAgentWorkspaceContext(const juce::String& context)
+{
+    agentWorkspaceContext = context;
+}
+
 juce::String AiEngine::buildSystemPrompt() const
 {
     juce::String prompt;
@@ -46,6 +56,10 @@ juce::String AiEngine::buildSystemPrompt() const
         prompt += "\nPlugin chain:\n" + lastMeterData + "\n";
     if (lastTransportData.isNotEmpty())
         prompt += "\nTransport:\n" + lastTransportData + "\n";
+    if (agentWorkspaceContext.isNotEmpty())
+        prompt += "\n=== AGENT WORKSPACE ===\n" + agentWorkspaceContext + "\n";
+    if (personalityContext.isNotEmpty())
+        prompt += "\n=== PERSONALITY (session memory) ===\n" + personalityContext + "\n";
     prompt += "\nIMPORTANT: values must be in 0.0-1.0 normalized range.\n";
     prompt += "Only output valid JSON, no other text outside the JSON block.\n";
     return prompt;
@@ -68,8 +82,8 @@ AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& 
 
     switch (config.provider) {
         case Provider::Ollama: raw = callOllama(fullPrompt); break;
-        case Provider::Gemini: raw = callGemini(prompt); break;
-        case Provider::Anthropic: raw = callAnthropic(prompt); break;
+        case Provider::Gemini: raw = callGemini(prompt, systemPrompt); break;
+        case Provider::Anthropic: raw = callAnthropic(prompt, systemPrompt); break;
         case Provider::OpenAI: raw = callOpenAI(prompt); break;
         case Provider::OpenRouter: raw = callOpenRouter(prompt); break;
         case Provider::Groq: raw = callGroq(prompt); break;
@@ -287,13 +301,15 @@ juce::String AiEngine::callOllama(const juce::String& fullPrompt)
 
 // ── Gemini ─────────────────────────────────────────────────────
 
-juce::String AiEngine::callGemini(const juce::String& prompt)
+juce::String AiEngine::callGemini(const juce::String& prompt, const juce::String& systemPrompt)
 {
     if (config.apiKey.isEmpty()) { lastError = "Gemini API key not configured"; return "[ERROR] " + lastError; }
 
     juce::String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                        + config.model + ":generateContent?key=" + config.apiKey;
     nlohmann::json body;
+    if (systemPrompt.isNotEmpty())
+        body["system_instruction"]["parts"] = nlohmann::json::array({{{"text", systemPrompt.toStdString()}}});
     body["contents"] = nlohmann::json::array({{{"parts", nlohmann::json::array({{{"text", prompt.toStdString()}}})}}});
     body["generationConfig"]["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["generationConfig"]["maxOutputTokens"] = config.maxTokens;
@@ -310,13 +326,15 @@ juce::String AiEngine::callGemini(const juce::String& prompt)
 
 // ── Anthropic ──────────────────────────────────────────────────
 
-juce::String AiEngine::callAnthropic(const juce::String& prompt)
+juce::String AiEngine::callAnthropic(const juce::String& prompt, const juce::String& systemPrompt)
 {
     if (config.apiKey.isEmpty()) { lastError = "Anthropic API key not configured"; return "[ERROR] " + lastError; }
 
     nlohmann::json body;
     body["model"] = config.model.toStdString();
     body["max_tokens"] = (config.maxTokens > 0 ? config.maxTokens : 1024);
+    if (systemPrompt.isNotEmpty())
+        body["system"] = systemPrompt.toStdString();
     body["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", prompt.toStdString()}}});
     juce::String authHeaders = "x-api-key: " + config.apiKey + "\r\n" "anthropic-version: 2023-06-01\r\n";
 

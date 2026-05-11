@@ -33,7 +33,7 @@ const PUPILS = {
   advisory: { lx: 35, ly: 40, rx: 67, ry: 38 }
 }
 
-export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
+export function BotFace({ state = 'idle', className = 'w-16 h-16', personality = null }) {
   const prevState = useRef(state)
   const [pulseKey, setPulseKey] = useState(0)
   const [glitchActive, setGlitchActive] = useState(false)
@@ -195,6 +195,24 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           </>
         )}
       </motion.svg>
+
+      {/* ── Personality info badge ── */}
+      {personality && personality.style && personality.style !== 'neutral' && (
+        <motion.div
+          className="absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap px-1.5 py-[1px] text-[6px] font-bold uppercase tracking-widest"
+          style={{
+            backgroundColor: personality.style === 'aggressive' ? '#DC143C' :
+              personality.style === 'cautious' ? '#FFB000' :
+              personality.style === 'analytical' ? '#00E5FF' : '#888',
+            color: '#000'
+          }}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          {personality.style}
+        </motion.div>
+      )}
     </motion.div>
   )
 }

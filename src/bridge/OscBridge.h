@@ -204,6 +204,7 @@ private:
     std::atomic<float> lastCorrelation { 0.0f };
     std::atomic<float> lastLoudness { -96.0f };
     std::vector<float> lastSpectrum;
+    juce::CriticalSection spectrumLock;
 
     // Audio device info (set from prepareToPlay via broadcastPluginStats)
     double lastSampleRate { 44100.0 };

@@ -6,7 +6,7 @@ void Limiter::prepare(double sr, int blockSize)
     lookaheadSamples = static_cast<int>(lookaheadMs * sr / 1000.0f);
     if (lookaheadSamples < 1) lookaheadSamples = 1;
 
-    int delaySize = lookaheadSamples + blockSize;
+    delaySize = lookaheadSamples + blockSize;
     delayBuffer.clear();
     delayBuffer.resize(2, std::vector<float>(delaySize, 0.0f));
     writePos = 0;
@@ -44,8 +44,8 @@ void Limiter::process(juce::AudioBuffer<float>& buffer)
         {
             for (int d = 0; d < lookaheadSamples; ++d)
             {
-                int idx = (writePos - lookaheadSamples + 1 + d) % (lookaheadSamples + numSamples);
-                if (idx < 0) idx += (lookaheadSamples + numSamples);
+                int idx = (writePos - lookaheadSamples + 1 + d) % delaySize;
+                if (idx < 0) idx += delaySize;
                 peak = juce::jmax(peak, std::abs(delayBuffer[c][idx]));
             }
         }
@@ -64,12 +64,12 @@ void Limiter::process(juce::AudioBuffer<float>& buffer)
         currentGainReduction = juce::Decibels::gainToDecibels(gainReduction);
 
         // Read delayed sample and apply gain
-        int readPos = (writePos - lookaheadSamples + 1) % (lookaheadSamples + numSamples);
-        if (readPos < 0) readPos += (lookaheadSamples + numSamples);
+        int readPos = (writePos - lookaheadSamples + 1) % delaySize;
+        if (readPos < 0) readPos += delaySize;
 
         for (int c = 0; c < numChannels; ++c)
             buffer.setSample(c, s, delayBuffer[c][readPos] * gainReduction);
 
-        writePos = (writePos + 1) % (lookaheadSamples + numSamples);
+        writePos = (writePos + 1) % delaySize;
     }
 }

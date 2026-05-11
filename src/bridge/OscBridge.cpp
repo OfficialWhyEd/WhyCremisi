@@ -130,12 +130,14 @@ void OscBridge::timerCallback()
         ana["payload"]["correlation"] = corr;
         ana["payload"]["loudness"] = loud;
 
-        // Send first 256 bins of spectrum
-        nlohmann::json specArr = nlohmann::json::array();
-        int numBins = juce::jmin(256, (int)lastSpectrum.size());
-        for (int i = 0; i < numBins; ++i)
-            specArr.push_back(lastSpectrum[i]);
-        ana["payload"]["spectrum"] = specArr;
+        {
+            const juce::ScopedLock sl(spectrumLock);
+            nlohmann::json specArr = nlohmann::json::array();
+            int numBins = juce::jmin(256, (int)lastSpectrum.size());
+            for (int i = 0; i < numBins; ++i)
+                specArr.push_back(lastSpectrum[i]);
+            ana["payload"]["spectrum"] = specArr;
+        }
 
         wsServer->broadcast(ana);
     }
@@ -1036,6 +1038,7 @@ void OscBridge::updateAnalyzer(float correlation, float loudness, const std::vec
 {
     lastCorrelation.store(correlation);
     lastLoudness.store(loudness);
+    const juce::ScopedLock sl(spectrumLock);
     lastSpectrum = spectrum;
 }
 
