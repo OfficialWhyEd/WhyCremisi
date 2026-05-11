@@ -7,7 +7,7 @@ import { SetupScreen } from './components/SetupScreen'
 import './index.css'
 
 // ── BoxChat — various box types shown inside chat after AI response ──
-function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd, personality }) {
+function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd, personality, onAnalyzeFurther }) {
   const [localGain, setLocalGain] = useState(gainDb)
   const [localDrive, setLocalDrive] = useState(driveVal)
   useEffect(() => { setLocalGain(gainDb) }, [gainDb])
@@ -280,6 +280,8 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
               </motion.button>
               <motion.button
                 className="border border-[#4d4d4d] text-[#888888] px-4 py-1.5 text-xs font-bold uppercase tracking-widest hover:border-[#FFB000] hover:text-[#FFB000] hover:shadow-[0_0_15px_rgba(255,176,0,0.2)] transition-all"
+                whileTap={{ scale: 0.95 }}
+                onClick={() => onAnalyzeFurther && onAnalyzeFurther(personality?.style)}
               >
                 ANALYZE FURTHER
               </motion.button>
@@ -677,6 +679,30 @@ export default function App() {
       }
     })
 
+    // ── Workspace events from AgentWorkspace ──
+    const unsubWsStyle = whycremisi.on('workspace.style', (payload) => {
+      setPersonality(prev => ({
+        ...prev,
+        style: payload.style || payload.detail?.includes('analytical') ? 'analytical' :
+               payload.detail?.includes('direct') ? 'direct' :
+               payload.detail?.includes('consultative') ? 'consultative' :
+               payload.detail?.includes('creative') ? 'creative' : prev.style
+      }))
+      sysMsg(`[${ts()}] WORKSPACE STYLE: ${payload.detail || ''}`)
+    })
+
+    const unsubWsMemory = whycremisi.on('workspace.memory', (payload) => {
+      sysMsg(`[${ts()}] WORKSPACE MEMORY: ${payload.detail?.substring(0, 80) || ''}`)
+    })
+
+    const unsubWsBootstrap = whycremisi.on('workspace.bootstrap', (payload) => {
+      sysMsg(`[${ts()}] WORKSPACE: ${payload.detail || 'Bootstrap event'}`)
+    })
+
+    const unsubWsRefresh = whycremisi.on('workspace.refresh', (payload) => {
+      sysMsg(`[${ts()}] WORKSPACE REFRESHED: ${payload.detail || ''}`)
+    })
+
     // connect
     whycremisi.connect().catch(() => {
       sysMsg(`[${ts()}] PLUGIN NOT RUNNING — OFFLINE MODE`)
@@ -689,6 +715,7 @@ export default function App() {
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
       unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer();       unsubActionLog(); unsubPersAction(); unsubPersContext()
+      unsubWsStyle(); unsubWsMemory(); unsubWsBootstrap(); unsubWsRefresh()
       whycremisi.disconnect()
     }
   }, [addMsg, sysMsg])
@@ -772,6 +799,18 @@ export default function App() {
         }
       }, 16)
       intervalsRef.current.push(t)
+    }
+  }, [botState])
+
+  const analyzeFurther = useCallback((style) => {
+    if (botState !== 'idle') return
+    const prompt = style === 'aggressive' ? 'Analyze low-end buildup and suggest aggressive EQ cuts in 200-400Hz range'
+      : style === 'cautious' ? 'Examine the low-mid range carefully for potential harmonic crowding, suggest gentle corrections'
+      : style === 'analytical' ? 'Run detailed spectral analysis on 200-400Hz range, identify specific frequency clusters and recommend targeted EQ'
+      : 'Analyze the low end further and suggest mix improvements'
+    setBotState('thinking')
+    if (whycremisi.isConnected()) {
+      whycremisi.sendAIPrompt(prompt)
     }
   }, [botState])
 
@@ -1193,7 +1232,7 @@ export default function App() {
                         <motion.button
                           className="border border-[#4d4d4d] text-[#888888] px-4 py-1.5 text-xs font-bold uppercase hover:border-[#FFB000] hover:text-[#FFB000] transition-colors tracking-widest"
                           whileTap={{ scale: 0.95 }}
-                          onClick={() => { if(botState==='idle') { addMsg({type:'user',text:'Analyze the low end further',time:ts()}); setBotState('thinking') } }}
+                          onClick={() => analyzeFurther(personality?.style)}
                         >ANALYZE FURTHER</motion.button>
                         <button className="text-[#888888] hover:text-white text-xs font-bold uppercase self-center transition-colors"
                           onClick={dismissAdvisory}>DISMISS</button>
@@ -1258,7 +1297,7 @@ export default function App() {
                             />
                           )}
                         </p>
-                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} />}
+                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} />}
                       </div>
                     </motion.div>
                   )

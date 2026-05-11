@@ -139,7 +139,7 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     oscBridge->setPluginChain(pluginChain.get());
     paramMapper->setOscBridge(oscBridge.get());
 
-    // Route widget changes from UI → ParameterMapper → MIDI/OSC + Personality
+    // Route widget changes from UI → ParameterMapper → MIDI/OSC + Personality + Memory
     oscBridge->widgetChangeCallback = [this](const juce::String& widgetId, float value) {
         if (paramMapper)
         {
@@ -147,6 +147,13 @@ WhyCremisiProcessor::WhyCremisiProcessor()
             paramMapper->setValue(widgetId, value);
             if (personalityCore)
                 personalityCore->recordAction(widgetId, value, prev);
+            if (agentWorkspace)
+            {
+                agentWorkspace->addMemoryEntry(
+                    "User adjusted " + widgetId + " from " + juce::String(prev, 2)
+                    + " to " + juce::String(value, 2), "interaction");
+            }
+            refreshAiContext();
         }
     };
 
@@ -161,6 +168,14 @@ WhyCremisiProcessor::WhyCremisiProcessor()
                 if (personalityCore)
                     personalityCore->recordAction(action.widgetId, action.value, prev,
                                                   action.description);
+                if (agentWorkspace && action.description.isNotEmpty())
+                {
+                    agentWorkspace->addMemoryEntry(
+                        "AI " + action.description + " (" + action.widgetId
+                        + ": " + juce::String(prev, 2) + " → " + juce::String(action.value, 2) + ")",
+                        "ai_action");
+                }
+                refreshAiContext();
             }
         });
 
@@ -501,6 +516,27 @@ void WhyCremisiProcessor::setStateInformation(const void* data, int sizeInBytes)
                 aiEngine->setAgentWorkspaceContext(agentWorkspace->buildFullContext());
         }
     }
+}
+
+void WhyCremisiProcessor::refreshAiContext()
+{
+    if (!aiEngine) return;
+
+    if (personalityCore)
+    {
+        aiEngine->setPersonalityContext(personalityCore->buildPersonalityContext());
+    }
+
+    if (agentWorkspace)
+    {
+        if (personalityCore)
+            agentWorkspace->refreshFromPersonalityCore(*personalityCore);
+        aiEngine->setAgentWorkspaceContext(agentWorkspace->buildFullContext());
+    }
+
+    // Plugin chain context refresh
+    if (pluginChain)
+        aiEngine->setContext(pluginChain->toDescriptiveString(), {});
 }
 
 //==============================================================================

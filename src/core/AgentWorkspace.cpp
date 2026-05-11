@@ -277,6 +277,45 @@ juce::String AgentWorkspace::buildBootstrapContext() const
     return ctx;
 }
 
+void AgentWorkspace::deriveStyleFromPersonality(const PersonalityCore& pc)
+{
+    auto style = pc.getPreferredStyle();
+
+    if (style == "sculpting")
+        soul.style = AgentSoul::Analytical;
+    else if (style == "dynamic")
+        soul.style = AgentSoul::Direct;
+    else if (style == "leveling")
+        soul.style = AgentSoul::Consultative;
+    else
+        soul.style = AgentSoul::Warm;
+
+    int total = pc.getTotalActions();
+    if (total > 100)
+        soul.vibeDescription = "confident, experienced, decisive";
+    else if (total > 30)
+        soul.vibeDescription = "adaptable, learning, attentive";
+    else
+        soul.vibeDescription = "curious, methodical, precise";
+
+    if (onWorkspaceEvent)
+        onWorkspaceEvent("style", AgentSoul::styleToString(soul.style)
+                         + " | vibe: " + soul.vibeDescription);
+}
+
+void AgentWorkspace::refreshFromPersonalityCore(const PersonalityCore& pc)
+{
+    if (pc.getUserName().isNotEmpty() && user.name.isEmpty())
+        user.name = pc.getUserName();
+
+    deriveStyleFromPersonality(pc);
+
+    if (onWorkspaceEvent)
+        onWorkspaceEvent("refresh", "Workspace synced with personality: "
+                         + juce::String(pc.getTotalActions()) + " actions across "
+                         + juce::String(pc.getSessionCount()) + " sessions");
+}
+
 void AgentWorkspace::resetToDefaults()
 {
     identity = AgentIdentity();

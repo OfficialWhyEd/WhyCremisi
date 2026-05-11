@@ -79,6 +79,8 @@ public:
     juce::String buildToolsContext() const;
     juce::String buildBootstrapContext() const;
 
+    void deriveStyleFromPersonality(const PersonalityCore& pc);
+    void refreshFromPersonalityCore(const PersonalityCore& pc);
     void resetToDefaults();
 
     std::function<void(const juce::String& type, const juce::String& detail)> onWorkspaceEvent;

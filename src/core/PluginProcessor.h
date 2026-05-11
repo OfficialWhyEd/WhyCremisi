@@ -149,6 +149,8 @@ private:
     // Personality Core (memory + AI personality)
     std::unique_ptr<PersonalityCore> personalityCore;
 
+    void refreshAiContext();
+
     // Agent Workspace (OpenClaw templates: identity, soul, user, memory, heartbeat, tools, agents rules)
     std::unique_ptr<AgentWorkspace> agentWorkspace;
 
