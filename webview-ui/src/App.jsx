@@ -10,10 +10,20 @@ import './index.css'
 function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd, personality, onAnalyzeFurther, suggestion }) {
   const [localGain, setLocalGain] = useState(gainDb)
   const [localDrive, setLocalDrive] = useState(driveVal)
+  const [midSide, setMidSide] = useState(false)
+  const [phaseInvert, setPhaseInvert] = useState(false)
+  const [clipThreshold, setClipThreshold] = useState(-1)
+  const [compThresh, setCompThresh] = useState(-18)
+  const [compRatio, setCompRatio] = useState(4)
+  const [advDismissed, setAdvDismissed] = useState(false)
+  const [advExecuted, setAdvExecuted] = useState(false)
   useEffect(() => { setLocalGain(gainDb) }, [gainDb])
   useEffect(() => { setLocalDrive(driveVal) }, [driveVal])
   const lPct = Math.round(meterL * 100)
   const rPct = Math.round(meterR * 100)
+  const isClipping = peak > clipThreshold
+  const clipPct = Math.min(100, Math.max(0, ((peak - clipThreshold) / 6) * 100))
+
   const MetricBar = ({ label, val, color, pct }) => (
     <div className="space-y-0.5">
       <div className="flex justify-between text-xs uppercase font-bold">
@@ -29,24 +39,96 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
     </div>
   )
 
-  const wrap = (label, color, icon, children) => (
+  const wrap = (label, color, icon, children, actions) => (
     <motion.div initial={{ opacity:0, y:4 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.35 }}
       className="mt-2 bg-[#0d0d0d]/70 border border-[#222] overflow-hidden"
     >
-      <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#1a1a1a]">
-        <span className="material-symbols-outlined text-xs" style={{ color }}>{icon}</span>
-        <span className="text-xs font-bold uppercase tracking-widest" style={{ color }}>{label}</span>
+      <div className="flex items-center justify-between px-2 py-1 border-b border-[#1a1a1a]">
+        <div className="flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-xs" style={{ color }}>{icon}</span>
+          <span className="text-xs font-bold uppercase tracking-widest" style={{ color }}>{label}</span>
+        </div>
+        {actions && <div className="flex gap-1">{actions}</div>}
       </div>
       <div className="p-2">{children}</div>
     </motion.div>
   )
 
+  // ── VECTORSCOPE: interactive XY phase display ────────────────
+  if (boxType === 'vectorscope') return wrap('Vectorscope', '#AA44FF', 'donut_small', (
+    <div className="flex gap-3">
+      <div className="relative w-28 h-28 flex-shrink-0">
+        <svg viewBox="-1.2 -1.2 2.4 2.4" className="w-full h-full">
+          <circle cx="0" cy="0" r="1" fill="none" stroke="#222" strokeWidth="0.02" />
+          <circle cx="0" cy="0" r="0.5" fill="none" stroke="#1a1a1a" strokeWidth="0.01" />
+          <line x1="-1" y1="0" x2="1" y2="0" stroke="#1a1a1a" strokeWidth="0.01" />
+          <line x1="0" y1="-1" x2="0" y2="1" stroke="#1a1a1a" strokeWidth="0.01" />
+          {Array.from({ length: 80 }, (_, i) => {
+            const a = (i / 80) * Math.PI * 2
+            const r = 0.3 + Math.sin(a * 3 + Date.now() * 0.002) * 0.3 + correlation * 0.3
+            const x = Math.cos(a) * r, y = Math.sin(a) * r
+            const hue = 280 + (1 - correlation) * 60
+            return <circle key={i} cx={x} cy={y} r="0.03" fill={`hsl(${hue}, 90%, 60%)`} opacity={0.7} />
+          })}
+          {Array.from({ length: 40 }, (_, i) => {
+            const a = (i / 40) * Math.PI * 2 + Date.now() * 0.001
+            const r = 0.1 + Math.abs(Math.sin(a * 2)) * 0.4
+            const x = Math.cos(a) * r, y = Math.sin(a) * r
+            return <circle key={'t' + i} cx={x} cy={y} r="0.02" fill="#00E5FF" opacity={0.4} />
+          })}
+        </svg>
+        <div className="absolute bottom-0 left-0 right-0 text-center text-[8px] font-mono text-[#666]">
+          φ = {correlation.toFixed(3)}
+        </div>
+      </div>
+      <div className="flex-1 space-y-1.5 min-w-0">
+        <MetricBar label="Phase Correlation" val={correlation.toFixed(3)} color={correlation < 0.3 ? '#DC143C' : correlation < 0.6 ? '#FFB000' : '#00FFaa'} pct={Math.max(0, Math.min(100, (correlation + 1) * 50))} />
+        <MetricBar label="Mono Compatibility" val={correlation < 0.3 ? 'CRITICAL' : correlation < 0.6 ? 'FAIR' : 'GOOD'} color={correlation < 0.3 ? '#DC143C' : correlation < 0.6 ? '#FFB000' : '#00FFaa'} pct={Math.max(0, Math.min(100, correlation * 100))} />
+        <div className="flex gap-1 pt-1">
+          <motion.button whileTap={{ scale: 0.95 }}
+            className={`flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border ${midSide ? 'bg-[#AA44FF] text-black border-[#AA44FF]' : 'text-[#888] border-[#333] hover:border-[#AA44FF]'}`}
+            onClick={() => { setMidSide(!midSide); onDawCmd('midSide', { enabled: !midSide }) }}>
+            M/S
+          </motion.button>
+          <motion.button whileTap={{ scale: 0.95 }}
+            className={`flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border ${phaseInvert ? 'bg-[#DC143C] text-black border-[#DC143C]' : 'text-[#888] border-[#333] hover:border-[#DC143C]'}`}
+            onClick={() => { setPhaseInvert(!phaseInvert); onDawCmd('phaseInvert', { enabled: !phaseInvert }) }}>
+            φ INVERT
+          </motion.button>
+          <motion.button whileTap={{ scale: 0.95 }}
+            className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00FFaa]"
+            onClick={() => onDawCmd('mono')}>
+            MONO
+          </motion.button>
+        </div>
+      </div>
+    </div>
+  ))
+
+  // ── STEREO FIELD ─────────────────────────────────────────────
   if (boxType === 'stereo') return wrap('Stereo Field', '#DC143C', 'swap_horiz', (
     <div className="grid grid-cols-2 gap-1.5">
       <MetricBar label="L/R Balance" val={lPct>rPct?`${lPct-rPct}% L`:rPct>lPct?`${rPct-lPct}% R`:'CENTER'} color="#DC143C" pct={Math.abs(lPct-rPct)} />
       <MetricBar label="Side Content" val={`${Math.round(Math.abs(meterL-meterR)*150)}%`} color="#FFB000" pct={Math.round(Math.abs(meterL-meterR)*150)} />
       <MetricBar label="Correlation" val={`+${(0.62+(meterL+meterR)*0.15).toFixed(2)}`} color="#00E5FF" pct={Math.round((0.62+(meterL+meterR)*0.15)*100)} />
       <MetricBar label="Width" val={`${Math.round((Math.abs(meterL-meterR)+0.3)*100)}%`} color="#00FFaa" pct={Math.round((Math.abs(meterL-meterR)+0.3)*100)} />
+      <div className="col-span-2 flex gap-1 pt-1">
+        <motion.button whileTap={{ scale: 0.95 }}
+          className={`flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border ${midSide ? 'bg-[#DC143C] text-black border-[#DC143C]' : 'text-[#888] border-[#333] hover:border-[#DC143C]'}`}
+          onClick={() => { setMidSide(!midSide); onDawCmd('midSide', { enabled: !midSide }) }}>
+          MID/SIDE
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00FFaa]"
+          onClick={() => onDawCmd('narrow')}>
+          NARROW
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FFB000]"
+          onClick={() => onDawCmd('widen')}>
+          WIDEN
+        </motion.button>
+      </div>
     </div>
   ))
 
@@ -58,6 +140,72 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
       <MetricBar label="True Peak" val={peak>-60?`${(peak+0.3).toFixed(1)} dBTP`:'-∞'} color="#FF6B35" pct={Math.max(0,Math.min(100,(peak+60.3)/60*100))} />
       <MetricBar label="RMS Level" val={lufs>-60?`${(lufs+2.1).toFixed(1)} dB`:'-∞'} color="#FFB000" pct={Math.max(0,Math.min(100,(lufs+62)/62*100))} />
       <MetricBar label="Crest Factor" val={`${(peak-lufs).toFixed(1)} dB`} color="#DC143C" pct={Math.min(100,Math.max(0,(peak-lufs)*5))} />
+      <div className="col-span-2 flex gap-1 pt-1">
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF]"
+          onClick={() => onDawCmd('targetLoudness', { target: -14 })}>
+          TARGET -14 LUFS
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF]"
+          onClick={() => onDawCmd('targetLoudness', { target: -16 })}>
+          TARGET -16 LUFS
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FF6B35]"
+          onClick={() => onDawCmd('limiter')}>
+          LIMIT
+        </motion.button>
+      </div>
+    </div>
+  ))
+
+  // ── CLIPPING DETECTION ────────────────────────────────────────
+  if (boxType === 'clipping') return wrap('Clipping Detection', '#FF6B35', 'report', (
+    <div className="space-y-2">
+      <div className={`p-2 border ${isClipping ? 'border-[#DC143C] bg-[#DC143C]/10' : 'border-[#333] bg-[#111]'} transition-all`}>
+        <div className="flex justify-between items-center mb-1">
+          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: isClipping ? '#DC143C' : '#888' }}>
+            {isClipping ? '⚠ CLIPPING DETECTED' : '✓ NO CLIPPING'}
+          </span>
+          <span className="text-xs font-mono" style={{ color: isClipping ? '#DC143C' : '#888' }}>
+            {peak.toFixed(1)} dB
+          </span>
+        </div>
+        <div className="h-2 bg-[#1a1a1a] w-full relative overflow-hidden">
+          <motion.div className="h-full absolute left-0 top-0"
+            style={{ backgroundColor: isClipping ? '#DC143C' : '#00FFaa', boxShadow: isClipping ? '0 0 8px #DC143C' : 'none' }}
+            animate={{ width: `${clipPct}%` }}
+            transition={{ duration: 0.1 }}
+          />
+          <div className="absolute top-0 bottom-0 w-px bg-[#FFB000]" style={{ left: `${((clipThreshold + 60) / 72) * 100}%` }} />
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] text-[#888] font-mono uppercase">Threshold</span>
+        <input type="range" min="-18" max="0" step="0.5" value={clipThreshold}
+          onChange={(e) => setClipThreshold(parseFloat(e.target.value))}
+          className="flex-1 h-1 accent-[#FF6B35] cursor-pointer"
+        />
+        <span className="text-[10px] text-white font-mono w-8 text-right">{clipThreshold.toFixed(1)} dB</span>
+      </div>
+      <div className="flex gap-1">
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#DC143C]"
+          onClick={() => onDawCmd('softClip', { enabled: true })}>
+          SOFT CLIP
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FF6B35]"
+          onClick={() => onDawCmd('hardClip', { enabled: true })}>
+          HARD CLIP
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF]"
+          onClick={() => onDawCmd('ceiling', { value: -1 })}>
+          -1dB CEIL
+        </motion.button>
+      </div>
     </div>
   ))
 
@@ -89,6 +237,38 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
       </div>
     ))
   }
+
+  // ── SPECTRAL ANALYZER (spectrogram-style) ──────────────────────
+  if (boxType === 'spectral') return wrap('Spectral Analyzer', '#00E5FF', 'finance', (
+    <div className="space-y-1.5">
+      <div className="h-16 flex items-end gap-[1px]">
+        {(spectrum.length > 0 ? spectrum.slice(0, 128) : Array.from({ length: 128 }, (_, i) => 0.1 + Math.sin(i * 0.1 + Date.now() * 0.001) * 0.05 + Math.random() * 0.02)).map((mag, i) => (
+          <motion.div key={i} className="flex-1 rounded-t-sm"
+            style={{
+              backgroundColor: `hsl(${200 + (1 - mag) * 120}, 85%, ${20 + mag * 45}%)`,
+              opacity: 0.85,
+            }}
+            animate={{ height: `${Math.max(3, mag * 100)}%` }}
+            transition={{ duration: 0.06 }}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between text-[8px] font-mono text-[#555]">
+        <span>20Hz</span><span>100Hz</span><span>500Hz</span><span>2kHz</span><span>10kHz</span><span>20kHz</span>
+      </div>
+      <div className="flex gap-1 pt-1">
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF]"
+          onClick={() => onDawCmd('eqAnalyze')}>ANALYZE</motion.button>
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FFB000]"
+          onClick={() => onDawCmd('eqMatch', { target: 'reference' })}>MATCH EQ</motion.button>
+        <motion.button whileTap={{ scale: 0.95 }}
+          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#DC143C]"
+          onClick={() => onDawCmd('spectralAnalyze')}>FFT</motion.button>
+      </div>
+    </div>
+  ))
 
   if (boxType === 'slider') return wrap('Volume / Gain Control', '#FFB000', 'tune', (
     <div className="space-y-2">
@@ -178,32 +358,66 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
     </div>
   ))
 
+  // ── COMPRESSOR with interactive threshold ─────────────────────
   if (boxType === 'compressor') return wrap('Compressor Settings', '#9B59B6', 'compress', (
-    <div className="grid grid-cols-2 gap-1.5">
-      <MetricBar label="Threshold" val={`${(correlation * 12 - 24).toFixed(0)} dB`} color="#9B59B6" pct={Math.min(100, Math.max(0, (correlation + 1) * 50))} />
-      <MetricBar label="Ratio" val={`${(2 + (1 - correlation) * 4).toFixed(1)}:1`} color="#DC143C" pct={(1 - correlation) * 50} />
-      <MetricBar label="Attack" val={`${(10 - correlation * 6).toFixed(0)} ms`} color="#FFB000" pct={(1 - correlation) * 40} />
-      <MetricBar label="Release" val={`${(100 - correlation * 60).toFixed(0)} ms`} color="#00E5FF" pct={(1 - correlation) * 40} />
-      <MetricBar label="Gain Reduction" val={`${Math.max(0, (1 - correlation) * 6).toFixed(1)} dB`} color="#00FFaa" pct={Math.min(100, (1 - correlation) * 50)} />
-      <MetricBar label="Output Gain" val={`${(correlation * 6 - 3).toFixed(1)} dB`} color="#FFB000" pct={Math.max(0, Math.min(100, ((correlation * 6 - 3 + 60) / 72) * 100))} />
-    </div>
-  ))
+      <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <div className="flex justify-between text-[9px] font-mono mb-0.5">
+              <span className="text-[#888] uppercase">Threshold</span>
+              <span className="text-white font-bold">{compThresh} dB</span>
+            </div>
+            <input type="range" min="-40" max="0" step="1" value={compThresh}
+              onChange={(e) => { const v = parseInt(e.target.value); setCompThresh(v); onDawCmd('compThreshold', { value: v }) }}
+              className="w-full h-1 accent-[#9B59B6] cursor-pointer"
+            />
+          </div>
+          <div>
+            <div className="flex justify-between text-[9px] font-mono mb-0.5">
+              <span className="text-[#888] uppercase">Ratio</span>
+              <span className="text-white font-bold">{compRatio}:1</span>
+            </div>
+            <input type="range" min="1" max="20" step="0.5" value={compRatio}
+              onChange={(e) => { const v = parseFloat(e.target.value); setCompRatio(v); onDawCmd('compRatio', { value: v }) }}
+              className="w-full h-1 accent-[#DC143C] cursor-pointer"
+            />
+          </div>
+          <div className="flex flex-col justify-center items-center">
+            <div className="text-[10px] text-[#00FFaa] font-bold font-mono">{Math.max(0, (Math.abs(correlation) * 2 - 1) * compThresh * -0.1).toFixed(1)} dB</div>
+            <div className="text-[8px] text-[#888] uppercase tracking-wider">Gain Red</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          <motion.button whileTap={{ scale: 0.95 }}
+            className="py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#9B59B6]"
+            onClick={() => onDawCmd('compBypass', { enabled: false })}>
+            BYPASS
+          </motion.button>
+          <motion.button whileTap={{ scale: 0.95 }}
+            className="py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00FFaa]"
+            onClick={() => onDawCmd('compAuto')}>
+            AUTO
+          </motion.button>
+        </div>
+      </div>
+    ))
 
     if (boxType === 'advisory') {
-      const [dismissed, setDismissed] = React.useState(false)
-      const [executed, setExecuted] = React.useState(false)
-      if (dismissed) return null
+      if (advDismissed) return null
 
       const s = suggestion || { freqLow: 200, freqHigh: 400, gainDb: -2.4, label: '200Hz–400Hz', description: 'harmonic crowding', transientPres: 84, confidence: 0.982 }
-      const advColor = personality?.style === 'aggressive' ? '#DC143C' :
-        personality?.style === 'cautious' ? '#FFB000' :
-        personality?.style === 'analytical' ? '#00E5FF' : '#DC143C'
-      const priorityLabel = personality?.style === 'aggressive' ? 'Critical' :
-        personality?.style === 'cautious' ? 'Advisory' :
-        personality?.style === 'analytical' ? 'Info' : 'High'
-      const actionLabel = personality?.style === 'aggressive' ? 'FORCE APPLY CHAIN' :
-        personality?.style === 'cautious' ? 'REVIEW & APPLY' :
-        personality?.style === 'analytical' ? 'SIMULATE CHAIN' : 'EXECUTE SUGGESTED CHAIN'
+      const advColor = personality?.style === 'direct' ? '#DC143C' :
+        personality?.style === 'consultative' ? '#FFB000' :
+        personality?.style === 'analytical' ? '#00E5FF' :
+        personality?.style === 'creative' ? '#AA44FF' : '#66FF88'
+      const priorityLabel = personality?.style === 'direct' ? 'Critical' :
+        personality?.style === 'consultative' ? 'Advisory' :
+        personality?.style === 'analytical' ? 'Info' :
+        personality?.style === 'creative' ? 'Exploratory' : 'Suggested'
+      const actionLabel = personality?.style === 'direct' ? 'FORCE APPLY CHAIN' :
+        personality?.style === 'consultative' ? 'REVIEW & APPLY' :
+        personality?.style === 'analytical' ? 'SIMULATE CHAIN' :
+        personality?.style === 'creative' ? 'EXPLORE ALTERNATIVES' : 'APPLY SUGGESTED CHAIN'
       const confidenceTag = `CONF: ${(s.confidence * 100).toFixed(0)}%`
       const styleName = personality?.style?.toUpperCase() || 'DEFAULT'
       const freqLabel = `${s.freqLow}Hz–${s.freqHigh}Hz`
@@ -249,13 +463,14 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
             </div>
             <div className="text-sm leading-relaxed text-[#FFB000] mb-3">
               <p className="text-xs leading-relaxed">
-                {personality?.style === 'aggressive' ? 'Aggressive ' : personality?.style === 'cautious' ? 'Potential ' : 'Detected '}
+                {personality?.style === 'direct' ? 'Aggressive ' : personality?.style === 'consultative' ? 'Potential ' : personality?.style === 'creative' ? 'Creative ' : 'Detected '}
                 {s.description} in{' '}
                 <span className="text-white font-bold px-0.5" style={{ borderBottom: '1px solid ' + advColor + '66' }}>{freqLabel}</span>.{' '}
-                {personality?.style === 'aggressive' ? 'Applying surgical dip of' :
-                 personality?.style === 'cautious' ? 'Consider gentle dip of' :
+                {personality?.style === 'direct' ? 'Applying surgical dip of' :
+                 personality?.style === 'consultative' ? 'Consider gentle dip of' :
                  personality?.style === 'analytical' ? 'Recommended dynamic dip of' :
-                 'Suggesting dynamic dip of'}{' '}
+                 personality?.style === 'creative' ? 'Exploring experimental sculpting of' :
+                 'Suggesting gentle dip of'}{' '}
                 <span className="text-white px-1 font-bold" style={{ backgroundColor: advColor }}>{s.gainDb}dB</span>.{' '}
                 Transient preservation at{' '}
                 <span className="text-white underline decoration-dotted">{s.transientPres}%</span>.
@@ -267,13 +482,13 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
             <div className="flex flex-wrap gap-2">
               <motion.button
                 whileHover={{ scale:1.02 }} whileTap={{ scale:0.95 }}
-                onClick={() => { setExecuted(true); onDawCmd('applyEQ', { freq: freqLabel, gain: s.gainDb }) }}
-                style={executed ? { backgroundColor: '#00FFaa', color: '#000', border: '1px solid #00FFaa' } : { backgroundColor: advColor, color: '#fff' }}
+                onClick={() => { setAdvExecuted(true); onDawCmd('applyEQ', { freq: freqLabel, gain: s.gainDb }) }}
+                style={advExecuted ? { backgroundColor: '#00FFaa', color: '#000', border: '1px solid #00FFaa' } : { backgroundColor: advColor, color: '#fff' }}
                 className="relative px-4 py-1.5 text-xs font-bold uppercase tracking-widest transition-all"
               >
                 <span className="flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[12px]">bolt</span>
-                  {executed ? 'APPLIED ✓' : actionLabel}
+                  {advExecuted ? 'APPLIED ✓' : actionLabel}
                 </span>
               </motion.button>
               <motion.button
@@ -285,60 +500,11 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
               </motion.button>
               <button className="text-[#888888] hover:text-white text-xs font-bold uppercase self-center transition-colors hover:underline"
                 style={{ textDecorationColor: advColor }}
-                onClick={() => setDismissed(true)}>DISMISS</button>
+                onClick={() => setAdvDismissed(true)}>DISMISS</button>
             </div>
           </div>
         </motion.div>
       )
-    }
-
-    if (boxType === 'vectorscope') {
-      const corrColor = correlation > 0.7 ? '#00FFaa' : correlation > 0.3 ? '#FFB000' : '#DC143C'
-      const scopeX = 50 + Math.min(45, Math.max(-45, correlation * 45))
-      const scopeY = 50 - Math.min(45, Math.max(-45, (spectrum?.[0] || 0) * 45))
-      const spectrumBars = (spectrum || []).slice(0, 64)
-      return wrap('Vector Scope', corrColor, 'waveform', (
-        <div className="relative w-full h-[300px]">
-          <div className="absolute inset-0 bg-[#0a0a0a] border border-[#222]">
-            {/* Spectrum analyzer bars */}
-            <div className="absolute bottom-0 left-0 right-0 h-1/2 flex items-end gap-[1px]">
-              {spectrumBars.map((mag, i) => (
-                <motion.div
-                  key={i}
-                  className="flex-1"
-                  style={{
-                    backgroundColor: `hsl(${140 + (1 - mag) * 60}, 80%, ${30 + mag * 40}%)`,
-                    height: `${Math.min(100, mag * 100)}%`,
-                    opacity: 0.7
-                  }}
-                  animate={{ height: `${Math.min(100, mag * 100)}%` }}
-                  transition={{ duration: 0.1 }}
-                />
-              ))}
-              {spectrumBars.length === 0 && Array.from({ length: 64 }, (_, i) => (
-                <div key={i} className="flex-1 bg-[#111]" style={{ height: `${10 + Math.sin(i * 0.3 + Date.now() * 0.001) * 5}%` }} />
-              ))}
-            </div>
-          </div>
-          {/* Phase scope overlay */}
-          <div className="absolute inset-0 pointer-events-none">
-            <svg width="100%" height="100%" viewBox="0 0 100 100" className="absolute inset-0">
-              <circle cx="50" cy="50" r="45" fill="none" stroke="#222" strokeWidth="0.5" />
-              <line x1="50" y1="5" x2="50" y2="95" stroke="#222" strokeWidth="0.5" strokeDasharray="2,2" />
-              <line x1="5" y1="50" x2="95" y2="50" stroke="#222" strokeWidth="0.5" strokeDasharray="2,2" />
-              <circle cx="50" cy="50" r="40" fill="none" stroke={corrColor} strokeWidth="1" opacity={0.3} />
-              <circle cx={scopeX} cy={scopeY} r="3" fill={corrColor} filter="url(#glow)" />
-              <defs>
-                <radialGradient id="glow"><stop offset="0%" stopColor={corrColor} stopOpacity={1} /><stop offset="100%" stopColor={corrColor} stopOpacity={0} /></radialGradient>
-              </defs>
-            </svg>
-          </div>
-          <div className="absolute top-1 right-1 text-[8px] font-mono text-right leading-tight opacity-60">
-            <div style={{ color: corrColor }}>CORR: {correlation.toFixed(3)}</div>
-            <div className="text-[#888]">BINS: {spectrum?.length || 0}</div>
-          </div>
-        </div>
-      ))
     }
 
   // default: metrics
@@ -357,7 +523,16 @@ function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, 
 export default function App() {
   // ── setup state ───────────────────────────────────────────────────
   const [setupComplete, setSetupComplete] = useState(() => {
-    return localStorage.getItem('whycremisi_setup_done') === 'true'
+    const done = localStorage.getItem('whycremisi_setup_done') === 'true'
+    if (!done) return false
+    const saved = localStorage.getItem('whycremisi_config')
+    if (!saved) return false
+    try {
+      const cfg = JSON.parse(saved)
+      if (!cfg.provider) return false
+      if (cfg.provider !== 'ollama' && !cfg.apiKey) return false
+    } catch { return false }
+    return true
   })
   const [config, setConfig] = useState(() => {
     const saved = localStorage.getItem('whycremisi_config')
@@ -405,7 +580,7 @@ export default function App() {
 
   // ── Personality (from PersonalityCore via plugin) ──────────────────
   const [personality, setPersonality] = useState({
-    style: 'neutral',
+    style: 'warm',
     confidence: 0.5,
     experienceLevel: 1,
     userName: '',
@@ -742,7 +917,8 @@ export default function App() {
     setBotState('thinking')
 
     if (whycremisi.isConnected()) {
-      whycremisi.sendAIPrompt(cmd)
+      const ctx = `L=${(meterL*100).toFixed(0)}% R=${(meterR*100).toFixed(0)}% LUFS=${lufs.toFixed(1)} PEAK=${peak.toFixed(1)} CORR=${correlation.toFixed(3)} BPM=${transport.bpm.toFixed(1)}`
+      whycremisi.sendAIPrompt(cmd, { context: { meters: ctx } })
     } else {
       // offline fallback — simulate response
       setTimeout(() => {
@@ -809,9 +985,10 @@ export default function App() {
 
   const analyzeFurther = useCallback((style) => {
     if (botState !== 'idle') return
-    const prompt = style === 'aggressive' ? 'Analyze low-end buildup and suggest aggressive EQ cuts in 200-400Hz range'
-      : style === 'cautious' ? 'Examine the low-mid range carefully for potential harmonic crowding, suggest gentle corrections'
+    const prompt = style === 'direct' ? 'Analyze low-end buildup and suggest aggressive EQ cuts in 200-400Hz range'
+      : style === 'consultative' ? 'Examine the low-mid range carefully for potential harmonic crowding, suggest gentle corrections'
       : style === 'analytical' ? 'Run detailed spectral analysis on 200-400Hz range, identify specific frequency clusters and recommend targeted EQ'
+      : style === 'creative' ? 'Explore creative EQ sculpting in the low-mid range to reveal hidden texture and movement'
       : 'Analyze the low end further and suggest mix improvements'
     setBotState('thinking')
     if (whycremisi.isConnected()) {
@@ -826,14 +1003,17 @@ export default function App() {
     // ── detect boxchat type from prompt + response ────────────────────
     const detectBoxType = (prompt = '', response = '') => {
     	const t = (prompt + ' ' + response).toLowerCase()
+    	if (/spectrum|spectral|fft|analyzer|freq\s*response/.test(t)) return 'spectral'
+    	if (/clip|clipping|distort|overload|red|limit(?!er)|ceiling/.test(t)) return 'clipping'
     	if (/vector|scope|vectorscope|xy|phase\s*meter/.test(t)) return 'vectorscope'
-    	if (/stereo|width|side|balance|phase|mono|correlation/.test(t)) return 'stereo'
-    	if (/lufs|loud|peak|rms|dynamic|crest|limiter|ceiling/.test(t)) return 'loudness'
+    	if (/stereo|width|side|balance|phase(?!\s*meter)|mono|correlation/.test(t)) return 'stereo'
+    	if (/lufs|loud|peak|rms|dynamic|crest|limiter/.test(t)) return 'loudness'
     	if (/eq|frequen|bass|sub|mid|high|treble|presence|air|100hz|200hz|1khz|4khz/.test(t)) return 'eq'
-    	if (/volume|gain|fader|db|level/.test(t)) return 'slider'
+    	if (/volume|gain|fader|db(?!\s)|level/.test(t)) return 'slider'
     	if (/pan|panning|position|center|left|right/.test(t)) return 'knob'
     	if (/play|stop|record|transport|bpm|tempo/.test(t)) return 'transport'
     	if (/compres|ratio|attack|release|threshold|knee/.test(t)) return 'compressor'
+    	if (/search|internet|find|look\s*up|web|google/.test(t)) return 'advisory'
     	if (/chain|apply|execute|suggest|recommend|action|advisory|do it|should|could|try|consider/.test(t)) return 'advisory'
     	return 'metrics'
     }
@@ -853,9 +1033,10 @@ export default function App() {
     const highEnd = spectrum.slice(Math.floor(spectrum.length * 0.7)).reduce((a, b) => a + b, 0) / Math.max(1, spectrum.length - Math.floor(spectrum.length * 0.7))
     const corrVal = Math.abs(correlation)
 
-    const personalityFactor = personality?.style === 'aggressive' ? 1.4 :
-      personality?.style === 'cautious' ? 0.6 :
-      personality?.style === 'analytical' ? 1.0 : 1.0
+    const personalityFactor = personality?.style === 'direct' ? 1.4 :
+      personality?.style === 'consultative' ? 0.6 :
+      personality?.style === 'analytical' ? 1.0 :
+      personality?.style === 'creative' ? 1.2 : 1.0
 
     let freqLow = 150, freqHigh = 350, gainDb = -2.0, transientPres = 80
     let label = '150Hz–350Hz', description = 'low-mid energy'
@@ -1203,9 +1384,9 @@ export default function App() {
             <div className="flex items-center gap-3 text-xs font-mono text-[#888888]">
               <span>v4.2.0</span>
               {dawConnected && <span className="text-[#00FFaa]">● DAW SYNC</span>}
-              {personality?.style && personality.style !== 'neutral' && (
+              {personality?.style && personality.style !== 'warm' && (
                 <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-px border"
-                  style={{ color: personality.style === 'aggressive' ? '#DC143C' : personality.style === 'cautious' ? '#FFB000' : personality.style === 'analytical' ? '#00E5FF' : '#888', borderColor: 'currentColor' }}
+                  style={{ color: personality.style === 'direct' ? '#DC143C' : personality.style === 'consultative' ? '#FFB000' : personality.style === 'analytical' ? '#00E5FF' : personality.style === 'creative' ? '#AA44FF' : '#888', borderColor: 'currentColor' }}
                 >{personality.style}</span>
               )}
             </div>
@@ -1635,79 +1816,94 @@ export default function App() {
         <section className="col-span-12 row-span-2 bg-[#0e0e0e] border border-[#222222] flex overflow-hidden">
 
           {/* ── L/R STEREO METERS ─────────────────────────────────── */}
-          <div className="w-48 flex-shrink-0 border-r border-[#222222] flex flex-col px-4 py-2 gap-1.5 justify-center">
-            <div className="text-xs font-mono text-[#FFB000] uppercase tracking-widest mb-1">STEREO MASTER</div>
+          <div className="w-52 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-1.5">
+            <div className="text-[11px] font-bold text-[#FFB000] uppercase tracking-widest mb-0.5">STEREO MASTER</div>
             {[['L', meterL], ['R', meterR]].map(([ch, val]) => {
               const pct = Math.max(0, Math.min(100, val * 100))
               const db = (val * 72 - 60).toFixed(1)
               const barColor = pct > 88 ? '#DC143C' : pct > 70 ? '#FFB000' : '#00FFaa'
               return (
                 <div key={ch} className="flex items-center gap-2">
-                  <span className="text-xs font-mono font-bold text-[#888888] w-3">{ch}</span>
-                  <div className="flex-1 h-3 bg-[#111] relative overflow-hidden">
+                  <span className="text-xs font-bold text-[#888888] w-3">{ch}</span>
+                  <div className="flex-1 h-3 bg-[#111] relative overflow-hidden rounded-sm">
                     <motion.div
-                      className="h-full absolute left-0 top-0"
+                      className="h-full absolute left-0 top-0 rounded-sm"
                       animate={{ width: `${pct}%`, backgroundColor: barColor }}
                       transition={{ duration: 0.05 }}
                       style={{ boxShadow: `0 0 6px ${barColor}60` }}
                     />
-                    {/* tick marks at -12, -6, 0 dB */}
                     {[33, 58, 83].map(p => (
                       <div key={p} className="absolute top-0 bottom-0 w-[0.5px] bg-[#333]" style={{ left: `${p}%` }} />
                     ))}
                   </div>
-                  <span className="text-xs font-mono text-[#888888] w-10 text-right">{db}dB</span>
+                  <span className="text-xs font-mono text-[#aaa] w-10 text-right font-medium">{db}dB</span>
                 </div>
               )
             })}
-            <div className="flex justify-between mt-1 text-xs font-mono text-[#666]">
+            <div className="flex justify-between mt-0.5 text-[10px] font-mono text-[#555]">
               <span>-60</span><span>-12</span><span>-6</span><span>0</span>
             </div>
           </div>
 
           {/* ── TRANSPORT + STATS ─────────────────────────────────── */}
-          <div className="w-48 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-2">
-            <div className="text-xs font-mono text-[#FFB000] uppercase tracking-widest mb-1">TRANSPORT</div>
-            <div className="flex items-center gap-3">
+          <div className="w-44 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-1.5">
+            <div className="flex items-center justify-between">
               <motion.div
-                className={`text-2xl font-black tracking-tighter ${transport.isPlaying ? 'text-[#00FFaa]' : 'text-[#666]'}`}
-                animate={transport.isPlaying ? { opacity:[1,0.7,1] } : {}}
+                className={`text-xl font-black tracking-tighter ${transport.isPlaying ? 'text-[#00FFaa]' : 'text-[#555]'}`}
+                animate={transport.isPlaying ? { opacity:[1,0.6,1] } : {}}
                 transition={{ repeat: Infinity, duration: 1.2 }}
               >
                 {transport.isPlaying ? '▶' : '■'}
               </motion.div>
-              {transport.isRecording && (
-                <motion.div className="text-[#DC143C] text-xs font-bold uppercase tracking-widest"
-                  animate={{ opacity:[1,0,1] }} transition={{ repeat: Infinity, duration: 0.8 }}
-                >● REC</motion.div>
-              )}
+              <div className="text-right">
+                <div className="font-mono text-base font-bold text-[#FFB000] tracking-tight leading-none">
+                  {transport.bpm.toFixed(1)}
+                </div>
+                <div className="text-[9px] text-[#888] font-mono uppercase tracking-wider">BPM</div>
+              </div>
             </div>
-            <div className="font-mono text-[18px] font-bold text-[#FFB000] tracking-tight">
-              {transport.bpm.toFixed(1)} <span className="text-xs text-[#888888]">BPM</span>
+            {transport.isRecording && (
+              <motion.div className="text-[10px] text-[#DC143C] font-bold uppercase tracking-widest"
+                animate={{ opacity:[1,0.3,1] }} transition={{ repeat: Infinity, duration: 0.8 }}
+              >● RECORDING</motion.div>
+            )}
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="text-[#888]">POS</span>
+              <span className="text-white font-medium">
+                {Math.floor(transport.position / 60).toString().padStart(2,'0')}:{(transport.position % 60).toFixed(0).toString().padStart(2,'0')}
+              </span>
             </div>
-            <div className="font-mono text-xs text-[#888888]">
-              {Math.floor(transport.position / 60).toString().padStart(2,'0')}:{(transport.position % 60).toFixed(0).toString().padStart(2,'0')}
-              <span className="text-xs ml-1">pos</span>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] font-mono">
+              {[
+                ['SR', pluginStats.sampleRate ? `${(pluginStats.sampleRate / 1000).toFixed(0)}k` : '—'],
+                ['BUF', pluginStats.bufferSize ? `${pluginStats.bufferSize}` : '—'],
+                ['LAT', pluginStats.latencyMs ? `${pluginStats.latencyMs.toFixed(0)}ms` : '—'],
+                ['CORR', correlation.toFixed(2)],
+              ].map(([k, v]) => (
+                <div key={k} className="flex items-center gap-1">
+                  <span className="text-[#555]">{k}</span>
+                  <span className="text-white font-medium">{v}</span>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* ── REAL-TIME SPECTRUM ANALYZER ─────────────────────────── */}
-          <div className="w-56 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-3 py-2 gap-1">
+          <div className="w-60 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-3 py-2 gap-1">
             <div className="flex justify-between items-center mb-0.5">
-              <span className="text-[9px] font-mono text-[#00E5FF] uppercase tracking-widest font-bold">SPECTRUM</span>
-              <span className="text-[9px] font-mono text-[#888]">CORR: {correlation.toFixed(2)}</span>
+              <span className="text-[10px] font-bold text-[#00E5FF] uppercase tracking-widest">SPECTRUM</span>
+              <span className="text-[9px] font-mono text-[#777]">φ {correlation.toFixed(2)}</span>
             </div>
-            <div className="h-8 flex items-end gap-[1px]">
+            <div className="h-10 flex items-end gap-[1px] rounded-sm overflow-hidden">
               {(spectrum.length > 0 ? spectrum.slice(0, 96) : Array.from({ length: 96 }, (_, i) => 0.1 + Math.sin(i * 0.2 + Date.now() * 0.0005) * 0.05)).map((mag, i) => (
                 <motion.div
                   key={i}
-                  className="flex-1"
+                  className="flex-1 rounded-[0.5px]"
                   style={{
                     backgroundColor: `hsl(${140 + (1 - mag) * 80}, 80%, ${25 + mag * 40}%)`,
-                    opacity: 0.8,
                   }}
                   animate={{ height: `${Math.max(4, mag * 100)}%` }}
-                  transition={{ duration: 0.08 }}
+                  transition={{ duration: 0.06 }}
                 />
               ))}
             </div>
@@ -1716,75 +1912,88 @@ export default function App() {
             </div>
           </div>
 
-          {/* ── PLUGIN STATS ──────────────────────────────────────── */}
-          <div className="w-40 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-2">
-            <div className="text-xs font-mono text-[#FFB000] uppercase tracking-widest mb-1">PLUGIN</div>
-            {[
-              ['SR',  pluginStats.sampleRate ? `${(pluginStats.sampleRate / 1000).toFixed(1)}kHz` : '—'],
-              ['BUF', pluginStats.bufferSize  ? `${pluginStats.bufferSize} smp`                   : '—'],
-              ['LAT', pluginStats.latencyMs   ? `${pluginStats.latencyMs.toFixed(1)} ms`           : '—'],
-              ['CORR', correlation.toFixed(3)],
-            ].map(([k, v]) => (
-              <div key={k} className="flex justify-between items-center">
-                <span className="text-xs font-mono text-[#888888]">{k}</span>
-                <span className={`text-xs font-mono font-bold ${v === '—' ? 'text-[#666]' : 'text-[#e5e2e1]'}`}>{v}</span>
+          {/* ── FLIGHT RECORDER ────────────────────────────────────── */}
+          <div className="flex-[2] flex flex-col overflow-hidden border-r border-[#222222] min-w-[200px]">
+            <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#1a1a1a] bg-[#0d0d0d]">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#DC143C]" />
+                <span className="text-[11px] font-bold text-[#DC143C] uppercase tracking-widest">FLIGHT RECORDER</span>
               </div>
-            ))}
+              <button onClick={() => setActiveTab('SESSIONS')}
+                className="text-[10px] text-[#888888] hover:text-[#FFB000] transition-colors uppercase tracking-wider font-medium">
+                FULL LOG →
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto flex flex-col-reverse px-3 py-2 gap-1.5 custom-scrollbar">
+              {[...messages].reverse().filter(m => m.type !== 'advisory').slice(0, 6).map(m => (
+                <div key={m.id}
+                  className="flex items-start gap-2.5 text-xs font-mono opacity-70 hover:opacity-100 transition-opacity group cursor-default"
+                >
+                  <div className="flex-shrink-0 mt-0.5 w-4 flex justify-center">
+                    <div className={`w-2 h-2 rounded-sm ${
+                      m.type === 'system' ? 'bg-[#555]' :
+                      m.type === 'user' ? 'bg-[#FFB000]' : 'bg-[#00CFFF]'
+                    }`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-[#aaaaaa] leading-tight truncate">
+                        {m.text?.slice(0, 80)}
+                      </span>
+                      {m.time && (
+                        <span className="text-[9px] text-[#555] flex-shrink-0 font-medium">{m.time}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-2 text-[8px] text-[#444] uppercase tracking-wider mt-0.5">
+                      <span className={
+                        m.type === 'system' ? 'text-[#555]' :
+                        m.type === 'user' ? 'text-[#FFB000]/60' : 'text-[#00CFFF]/60'
+                      }>{m.type}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {messages.filter(m => m.type !== 'advisory').length === 0 && (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="text-[10px] text-[#555] font-mono italic">No events recorded</div>
+                    <div className="text-[8px] text-[#444] font-mono mt-1">Interact with the AI to begin logging</div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ── AI ACTION LOG + UNDO/REDO ────────────────────────── */}
-          <div className="w-44 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-1 overflow-hidden">
+          <div className="w-40 flex-shrink-0 flex flex-col justify-center px-3 py-2 gap-1 overflow-hidden bg-[#0d0d0d]">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-[#00FFaa]">Actions</span>
-              <div className="flex gap-1">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-[#00FFaa]">ACTIONS</span>
+              <div className="flex gap-0.5">
                 <motion.button
-                  className={`text-[10px] px-1.5 py-0.5 border rounded-sm ${actionHistory.length > 0 ? 'text-[#e5e2e1] border-[#555] hover:border-[#00FFaa]' : 'text-[#444] border-[#222]'}`}
+                  className={`text-[11px] px-1.5 py-0.5 border ${actionHistory.length > 0 ? 'text-[#e5e2e1] border-[#444] hover:border-[#00FFaa]' : 'text-[#333] border-[#222]'}`}
                   onClick={undoLastAction}
                   disabled={actionHistory.length === 0}
                   whileTap={{ scale: 0.9 }}
                 >↩</motion.button>
                 <motion.button
-                  className={`text-[10px] px-1.5 py-0.5 border rounded-sm ${actionRedoStack.length > 0 ? 'text-[#e5e2e1] border-[#555] hover:border-[#00FFaa]' : 'text-[#444] border-[#222]'}`}
+                  className={`text-[11px] px-1.5 py-0.5 border ${actionRedoStack.length > 0 ? 'text-[#e5e2e1] border-[#444] hover:border-[#00FFaa]' : 'text-[#333] border-[#222]'}`}
                   onClick={redoLastAction}
                   disabled={actionRedoStack.length === 0}
                   whileTap={{ scale: 0.9 }}
                 >↪</motion.button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto max-h-20 space-y-0.5">
+            <div className="flex-1 overflow-y-auto max-h-24 space-y-0.5 custom-scrollbar">
               {actionLog.length === 0 ? (
                 <div className="text-[8px] text-[#555] italic">No AI actions yet</div>
               ) : (
-                actionLog.slice(0, 5).map((a, i) => (
-                  <div key={a.timestamp + '-' + i} className="text-[8px] font-mono flex justify-between">
-                    <span className="text-[#aaa] truncate mr-1">{a.description || a.widgetId}</span>
-                    <span className="text-[#FFB000] flex-shrink-0">{a.value?.toFixed(2)}</span>
+                actionLog.slice(0, 6).map((a, i) => (
+                  <div key={a.timestamp + '-' + i} className="text-[9px] font-mono flex justify-between items-center group hover:bg-[#1a1a1a] px-1 -mx-1 rounded-sm transition-colors">
+                    <span className="text-[#aaa] truncate mr-1 max-w-[70%]">{a.description || a.widgetId}</span>
+                    <span className="text-[#FFB000] flex-shrink-0 font-bold">{a.value?.toFixed(2)}</span>
                   </div>
                 ))
               )}
-            </div>
-          </div>
-
-          {/* ── MINI SESSION FEED ────────────────────────────────── */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a]">
-              <span className="text-xs font-mono text-[#DC143C] uppercase tracking-widest">FLIGHT RECORDER</span>
-              <button onClick={() => setActiveTab('SESSIONS')}
-                className="text-xs font-mono text-[#888888] hover:text-[#FFB000] transition-colors uppercase tracking-widest">
-                VIEW ALL →
-              </button>
-            </div>
-            <div className="flex-1 overflow-hidden flex flex-col-reverse px-2 py-1 gap-0.5">
-              {[...messages].reverse().filter(m => m.type !== 'advisory').slice(0, 5).map(m => (
-                <div key={m.id} className="flex items-center gap-2 text-xs font-mono opacity-60 hover:opacity-100 transition-opacity truncate">
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                    m.type === 'system' ? 'bg-[#4d4d4d]' :
-                    m.type === 'user' ? 'bg-[#FFB000]' : 'bg-[#00CFFF]'
-                  }`} />
-                  <span className="truncate text-[#aaaaaa]">{m.text?.slice(0,60)}</span>
-                  {m.time && <span className="text-[#666] flex-shrink-0">{m.time}</span>}
-                </div>
-              ))}
             </div>
           </div>
         </section>

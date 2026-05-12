@@ -17,6 +17,14 @@
 #include "PersonalityCore.h"
 #include "AgentWorkspace.h"
 #include <nlohmann/json.hpp>
+#include <signal.h>
+
+// Ignore SIGPIPE: when a WebSocket client disconnects, socket write returns -1
+// instead of killing the process. Check errno == EPIPE in sendFrame.
+static bool sigpipeIgnored = []() {
+    signal(SIGPIPE, SIG_IGN);
+    return true;
+}();
 
 //==============================================================================
 WhyCremisiProcessor::WhyCremisiProcessor()
@@ -172,7 +180,7 @@ WhyCremisiProcessor::WhyCremisiProcessor()
                 {
                     agentWorkspace->addMemoryEntry(
                         "AI " + action.description + " (" + action.widgetId
-                        + ": " + juce::String(prev, 2) + " → " + juce::String(action.value, 2) + ")",
+                        + ": " + juce::String(prev, 2) + " -> " + juce::String(action.value, 2) + ")",
                         "ai_action");
                 }
                 refreshAiContext();

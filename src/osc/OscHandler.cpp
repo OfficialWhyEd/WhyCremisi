@@ -201,7 +201,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 uint32_t intValue = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
                 std::memcpy(&value, &intValue, 4);
                 
-                addToLog("[OSC] " + address + " → " + juce::String(value, 3));
+                addToLog("[OSC] " + address + " -> " + juce::String(value, 3));
                 
                 // Store for legacy callback
                 if (!hasValue)
@@ -226,7 +226,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 std::memcpy(bytes, ptr, 4);
                 int32_t value = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
                 
-                addToLog("[OSC] " + address + " → " + juce::String(value));
+                addToLog("[OSC] " + address + " -> " + juce::String(value));
                 
                 // Store for legacy callback
                 if (!hasValue)
@@ -251,7 +251,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                     str += *ptr++;
                 }
                 
-                addToLog("[OSC] " + address + " → \"" + str + "\"");
+                addToLog("[OSC] " + address + " -> \"" + str + "\"");
                 
                 // Store for legacy callback
                 if (!hasValue)
@@ -272,7 +272,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
             
             default:
                 // Unknown type, skip (would need proper padding calculation)
-                addToLog("[OSC] " + address + " → <unknown type: " + juce::String::charToString(type) + ">");
+                addToLog("[OSC] " + address + " -> <unknown type: " + juce::String::charToString(type) + ">");
                 break;
         }
     }
@@ -326,7 +326,7 @@ void OscHandler::sendMessage(const juce::String& address, float value)
     
     if (bytesSent > 0)
     {
-        addToLog("[OSC] SENT: " + address + " → " + juce::String(value, 3) + 
+        addToLog("[OSC] SENT: " + address + " -> " + juce::String(value, 3) + 
                  " (" + juce::String(bytesSent) + " bytes)");
         messagesSent.fetch_add(1);
     }
@@ -357,7 +357,7 @@ void OscHandler::sendMessage(const juce::String& address, const juce::String& va
     
     if (bytesSent > 0)
     {
-        addToLog("[OSC] SENT: " + address + " → \"" + value + "\"");
+        addToLog("[OSC] SENT: " + address + " -> \"" + value + "\"");
         messagesSent.fetch_add(1);
     }
     else
@@ -386,7 +386,7 @@ void OscHandler::sendMessage(const juce::String& address, int value)
     
     if (bytesSent > 0)
     {
-        addToLog("[OSC] SENT: " + address + " → " + juce::String(value));
+        addToLog("[OSC] SENT: " + address + " -> " + juce::String(value));
         messagesSent.fetch_add(1);
     }
     else

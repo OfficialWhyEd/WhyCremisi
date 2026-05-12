@@ -203,11 +203,43 @@ juce::String AiEngine::getProviderName() const
 bool AiEngine::testConnection()
 {
     if (!configured) return false;
+    lastError.clear();
+
     if (config.provider == Provider::Ollama) {
         juce::String url = config.baseUrl + "/api/tags";
         juce::String response = makeHttpRequest(url, "GET", "", 5000);
         return !response.isEmpty() && response.contains("models");
     }
+
+    if (config.provider == Provider::Gemini) {
+        if (config.apiKey.isEmpty()) { lastError = "No API key configured"; return false; }
+        juce::String url = "https://generativelanguage.googleapis.com/v1beta/models?key=" + config.apiKey;
+        juce::String response = makeHttpRequest(url, "GET", "", 10000);
+        if (response.isEmpty()) { lastError = "No response from Gemini API"; return false; }
+        if (response.contains("error")) {
+            try {
+                auto j = nlohmann::json::parse(response.toStdString());
+                lastError = juce::String(j.value("error", nlohmann::json::object()).value("message", "Unknown error"));
+            } catch (...) { lastError = "API error: " + response.substring(0, 200); }
+            return false;
+        }
+        return response.contains("models");
+    }
+
+    if (config.provider == Provider::OpenAI || config.provider == Provider::OpenRouter || config.provider == Provider::Groq) {
+        if (config.apiKey.isEmpty()) { lastError = "No API key configured"; return false; }
+        return true;
+    }
+
+    if (config.provider == Provider::Anthropic) {
+        if (config.apiKey.isEmpty()) { lastError = "No API key configured"; return false; }
+        juce::String authHeaders = "x-api-key: " + config.apiKey + "\r\n" "anthropic-version: 2023-06-01\r\n";
+        juce::String response = makeHttpRequest("https://api.anthropic.com/v1/messages",
+            "POST", "{\"model\":\"claude-3-5-haiku-20241022\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}",
+            10000, authHeaders);
+        return !response.contains("error") && response.isNotEmpty();
+    }
+
     return config.apiKey.isNotEmpty();
 }
 
@@ -305,6 +337,8 @@ juce::String AiEngine::callGemini(const juce::String& prompt, const juce::String
 {
     if (config.apiKey.isEmpty()) { lastError = "Gemini API key not configured"; return "[ERROR] " + lastError; }
 
+    bool needsSearch = prompt.contains("search") || prompt.contains("internet") || prompt.contains("find") || prompt.contains("look up") || prompt.contains("web") || prompt.contains("google");
+
     juce::String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                        + config.model + ":generateContent?key=" + config.apiKey;
     nlohmann::json body;
@@ -313,6 +347,8 @@ juce::String AiEngine::callGemini(const juce::String& prompt, const juce::String
     body["contents"] = nlohmann::json::array({{{"parts", nlohmann::json::array({{{"text", prompt.toStdString()}}})}}});
     body["generationConfig"]["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["generationConfig"]["maxOutputTokens"] = config.maxTokens;
+    if (needsSearch)
+        body["tools"] = nlohmann::json::array({{{"googleSearch", nlohmann::json::object()}}});
 
     juce::String raw = makeHttpRequest(url, "POST", juce::String(body.dump()), config.timeoutMs);
     if (raw.isEmpty()) { if (lastError.isEmpty()) lastError = "Empty response from Gemini"; return "[ERROR] " + lastError; }

@@ -154,7 +154,7 @@ bool OscBridge::isRunning() const
 //==============================================================================
 void OscBridge::onOscReceived(const juce::String& address, float value)
 {
-    log("[OSC→WS] " + address + " = " + juce::String(value, 3));
+    log("[OSC->WS] " + address + " = " + juce::String(value, 3));
 
     // Rate-limited session logging (SessionManager handles the interval itself)
     if (sessionManager)
@@ -286,7 +286,7 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
                          ? juce::String(message["id"].get<std::string>().data())
                          : "";
 
-    log("[WS→OSC] " + msgType + (reqId.isNotEmpty() ? " (id=" + reqId + ")" : ""));
+    log("[WS->OSC] " + msgType + (reqId.isNotEmpty() ? " (id=" + reqId + ")" : ""));
 
     // Dispatch based on type
     if (msgType == "plugin.init")
@@ -521,6 +521,88 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
             float v = payload["value"].get<float>();
             sendOscToDaw("/whycremisi/drive", v);
         }
+    }
+    else if (command == "midSide")
+    {
+        if (payload.contains("enabled"))
+            sendOscToDaw("/whycremisi/midside", payload["enabled"].get<bool>() ? 1.0f : 0.0f);
+    }
+    else if (command == "phaseInvert")
+    {
+        if (payload.contains("enabled"))
+            sendOscToDaw("/whycremisi/phaseinvert", payload["enabled"].get<bool>() ? 1.0f : 0.0f);
+    }
+    else if (command == "mono")
+    {
+        sendOscToDaw("/whycremisi/mono", 1.0f);
+    }
+    else if (command == "narrow")
+    {
+        sendOscToDaw("/whycremisi/width", 0.0f);
+    }
+    else if (command == "widen")
+    {
+        sendOscToDaw("/whycremisi/width", 1.0f);
+    }
+    else if (command == "targetLoudness")
+    {
+        if (payload.contains("target"))
+            sendOscToDaw("/whycremisi/loudness_target", payload["target"].get<float>());
+    }
+    else if (command == "limiter")
+    {
+        sendOscToDaw("/whycremisi/limiter", 1.0f);
+    }
+    else if (command == "softClip")
+    {
+        if (payload.contains("enabled"))
+            sendOscToDaw("/whycremisi/clip_mode", payload["enabled"].get<bool>() ? 0.0f : 1.0f);
+    }
+    else if (command == "hardClip")
+    {
+        if (payload.contains("enabled"))
+            sendOscToDaw("/whycremisi/clip_mode", payload["enabled"].get<bool>() ? 1.0f : 0.0f);
+    }
+    else if (command == "ceiling")
+    {
+        if (payload.contains("value"))
+            sendOscToDaw("/whycremisi/ceiling", payload["value"].get<float>());
+    }
+    else if (command == "compThreshold")
+    {
+        if (payload.contains("value"))
+            sendOscToDaw("/whycremisi/comp_threshold", payload["value"].get<float>());
+    }
+    else if (command == "compRatio")
+    {
+        if (payload.contains("value"))
+            sendOscToDaw("/whycremisi/comp_ratio", payload["value"].get<float>());
+    }
+    else if (command == "compBypass")
+    {
+        if (payload.contains("enabled"))
+            sendOscToDaw("/whycremisi/comp_bypass", payload["enabled"].get<bool>() ? 1.0f : 0.0f);
+    }
+    else if (command == "compAuto")
+    {
+        sendOscToDaw("/whycremisi/comp_auto", 1.0f);
+    }
+    else if (command == "applyEQ")
+    {
+        if (payload.contains("freq") && payload.contains("gain"))
+            sendOscToDaw("/whycremisi/eq_apply", 1.0f);
+    }
+    else if (command == "eqAnalyze")
+    {
+        sendOscToDaw("/whycremisi/eq_analyze", 1.0f);
+    }
+    else if (command == "eqMatch")
+    {
+        sendOscToDaw("/whycremisi/eq_match", 1.0f);
+    }
+    else if (command == "spectralAnalyze")
+    {
+        sendOscToDaw("/whycremisi/spectral_analyze", 1.0f);
     }
     else
     {
@@ -765,9 +847,10 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
 
     // Helper to send a config.response
     auto sendConfigResponse = [&](nlohmann::json responsePayload) {
-        nlohmann::json response;
+        nlohmann::json response = nlohmann::json::object();
         response["type"] = "config.response";
-        response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : nullptr;
+        if (reqId.isNotEmpty())
+            response["id"] = reqId.toStdString();
         response["timestamp"] = juce::Time::currentTimeMillis();
         response["payload"] = responsePayload;
         wsServer->broadcast(response);
@@ -1224,19 +1307,17 @@ void OscBridge::forwardOscToUI(const juce::String& address, float value)
 void OscBridge::sendOscToDaw(const juce::String& address, float value)
 {
     oscHandler->sendMessage(address, value);
-    log("[OSC←WS] SENT: " + address + " = " + juce::String(value, 3));
+    log("[OSC<-WS] SENT: " + address + " = " + juce::String(value, 3));
 }
-
 void OscBridge::sendOscToDaw(const juce::String& address, const juce::String& value)
 {
     oscHandler->sendMessage(address, value);
-    log("[OSC←WS] SENT: " + address + " = \"" + value + "\"");
+    log("[OSC<-WS] SENT: " + address + " = \"" + value + "\"");
 }
-
 void OscBridge::sendOscToDaw(const juce::String& address, int value)
 {
     oscHandler->sendMessage(address, value);
-    log("[OSC←WS] SENT: " + address + " = " + juce::String(value));
+    log("[OSC<-WS] SENT: " + address + " = " + juce::String(value));
 }
 
 void OscBridge::setDawTarget(const juce::String& host, int sendPort)

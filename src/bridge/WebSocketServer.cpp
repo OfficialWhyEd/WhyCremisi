@@ -611,8 +611,12 @@ void WebSocketServer::sendFrame(juce::StreamingSocket* socket,
     // Payload
     frame.insert(frame.end(), payload.begin(), payload.end());
 
-    // Send
-    socket->write(frame.data(), static_cast<int>(frame.size()));
+    // Send (SIGPIPE is ignored, so write returns -1 on disconnected client)
+    int bytesWritten = socket->write(frame.data(), static_cast<int>(frame.size()));
+    if (bytesWritten < 0)
+    {
+        DBG("[WebSocketServer] Write failed (client disconnected)");
+    }
 }
 
 void WebSocketServer::sendTextFrame(juce::StreamingSocket* socket, const juce::String& text)

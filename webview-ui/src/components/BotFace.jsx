@@ -197,13 +197,14 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16', personality =
       </motion.svg>
 
       {/* ── Personality info badge ── */}
-      {personality && personality.style && personality.style !== 'neutral' && (
+      {personality && personality.style && personality.style !== 'warm' && (
         <motion.div
           className="absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap px-1.5 py-[1px] text-[6px] font-bold uppercase tracking-widest"
           style={{
-            backgroundColor: personality.style === 'aggressive' ? '#DC143C' :
-              personality.style === 'cautious' ? '#FFB000' :
-              personality.style === 'analytical' ? '#00E5FF' : '#888',
+            backgroundColor: personality.style === 'direct' ? '#DC143C' :
+              personality.style === 'consultative' ? '#FFB000' :
+              personality.style === 'analytical' ? '#00E5FF' :
+              personality.style === 'creative' ? '#AA44FF' : '#888',
             color: '#000'
           }}
           initial={{ opacity: 0, y: 4 }}

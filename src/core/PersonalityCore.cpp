@@ -94,7 +94,7 @@ juce::String PersonalityCore::buildPersonalityContext() const
 juce::String PersonalityCore::getPreferredStyle() const
 {
     if (preferences.empty())
-        return "balanced";
+        return "warm";
 
     float gainCount = 0, eqCount = 0, compCount = 0;
     for (const auto& [key, pref] : preferences)
@@ -104,10 +104,10 @@ juce::String PersonalityCore::getPreferredStyle() const
         else if (key.contains("comp")) compCount += pref.weight;
     }
 
-    if (eqCount > gainCount && eqCount > compCount) return "sculpting";
-    if (compCount > gainCount && compCount > eqCount) return "dynamic";
-    if (gainCount > compCount && gainCount > eqCount) return "leveling";
-    return "balanced";
+    if (eqCount > gainCount && eqCount > compCount) return "analytical";
+    if (compCount > gainCount && compCount > eqCount) return "direct";
+    if (gainCount > compCount && gainCount > eqCount) return "consultative";
+    return "warm";
 }
 
 juce::StringArray PersonalityCore::getRecentActions(int count) const

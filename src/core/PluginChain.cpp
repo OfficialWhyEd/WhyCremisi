@@ -106,7 +106,7 @@ juce::String PluginChain::toDescriptiveString() const
     for (const auto& p : plugins)
     {
         if (!p.enabled) continue;
-        if (desc.isNotEmpty()) desc += " → ";
+        if (desc.isNotEmpty()) desc += " -> ";
         desc += p.name;
         if (p.manufacturer.isNotEmpty())
             desc += " (" + p.manufacturer + ")";

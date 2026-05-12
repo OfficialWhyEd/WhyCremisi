@@ -281,12 +281,14 @@ void AgentWorkspace::deriveStyleFromPersonality(const PersonalityCore& pc)
 {
     auto style = pc.getPreferredStyle();
 
-    if (style == "sculpting")
+    if (style == "analytical")
         soul.style = AgentSoul::Analytical;
-    else if (style == "dynamic")
+    else if (style == "direct")
         soul.style = AgentSoul::Direct;
-    else if (style == "leveling")
+    else if (style == "consultative")
         soul.style = AgentSoul::Consultative;
+    else if (style == "creative")
+        soul.style = AgentSoul::Creative;
     else
         soul.style = AgentSoul::Warm;
 
