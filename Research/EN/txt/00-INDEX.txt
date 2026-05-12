@@ -1,0 +1,35 @@
+# WHYCREMISI — Research Papers
+## Research and Technical Documentation Archive
+
+`
+╔══════════════════════════════════════════════════════════════╗
+║           W H Y C R E M I S I   R E S E A R C H            ║
+║         Artificial Intelligence for Music Production         ║
+╚══════════════════════════════════════════════════════════════╝
+`
+
+Version:* 2.0 | **Language:** English | *Status: Active Research
+
+---
+
+## Index
+
+| N. | Title | Topic | Priority |
+|----|-------|-------|----------|
+| 01 | Manifesto & Vision | Philosophy, long-term objectives | ★★★★★ |
+| 02 | System Architecture | Tech stack, components, data flows | ★★★★★ |
+| 03 | Third-Party Plugin Control | FabFilter, iZotope, Waves — full integration | ★★★★★ |
+| 04 | Agent Memory System | OpenClaw Memory, identity, evolution | ★★★★★ |
+| 05 | Communication Protocol | WebSocket, OSC, C++↔React bridge | ★★★★ |
+| 06 | Implementation Roadmap | Phases, milestones, installer spec | ★★★★ |
+| 07 | Brand & Asset Identity | Logo, icons, platform specs | ★★★ |
+
+---
+
+## Abstract
+
+WhyCremisi is the first native AI system for professional music production that does not merely suggest changes — it executes them, controlling in real time the entire production chain: DAW, third-party plugins, automations, effects and mix. The agent operates with persistent memory, evolutionary personality and contextual knowledge of the current session.
+
+---
+
+Italian version → /Research/IT/

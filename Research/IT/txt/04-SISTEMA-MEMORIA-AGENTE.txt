@@ -1,0 +1,339 @@
+# Paper 04 — Sistema di Memoria dell'Agente
+## OpenClaw Memory: Identità, Persistenza, Evoluzione
+
+`
+────────────────────────────────────────────────────────────────
+  WHYCREMISI RESEARCH PAPERS — N.04
+  Sistema di Memoria dell'Agente AI
+  
+  "Non resetta. Ricorda. Cresce."
+────────────────────────────────────────────────────────────────
+`
+
+Categoria: Intelligenza Artificiale — Memoria e Personalità  
+Importanza: ★★★★★
+
+---
+
+## 1. Perché la Memoria è Fondamentale
+
+Un assistente senza memoria è un assistente che ricomincia ogni volta da zero. Risponde bene alle domande, ma non conosce il produttore. Non sa che preferisce kick asciutte. Non ricorda che il progetto "ALBUM_2025" è house music. Non sa che l'utente ha già rifiutato quel tipo di compressione tre volte.
+
+La memoria trasforma uno strumento in un collaboratore.
+
+`
+  SENZA MEMORIA (tutti gli AI attuali)
+  
+  Sessione 1: "Come si usa il compressore?"  → risposta generica
+  Sessione 2: "Come si usa il compressore?"  → risposta identica
+  Sessione 100: identica alla sessione 1
+  
+  ──────────────────────────────────────────────────────────────
+  
+  CON MEMORIA OPENCLAW (WhyCremisi)
+  
+  Sessione 1: "Come si usa il compressore?"
+              → risposta + salva: "utente è principiante, preferisce spiegazioni step-by-step"
+  
+  Sessione 2: "Come si usa il compressore sulla kick?"
+              → risposta adattata: "Come ti spiegai prima, parti dal threshold..."
+              → sa già che è house music, sa che usa FabFilter Pro-C2
+  
+  Sessione 50: capisce il contesto prima che l'utente parli
+               → "Vedo che stai lavorando su una traccia simile a quella di
+                  due settimane fa — vuoi usare la stessa catena di processing?"
+`
+
+---
+
+## 2. Architettura OpenClaw Memory
+
+Il sistema di memoria è ispirato all'architettura "OpenClaw" — una struttura a layers che separa memoria a breve e lungo termine, contesto e identità.
+
+`
+╔══════════════════════════════════════════════════════════════╗
+║                   OPENCLAW MEMORY SYSTEM                     ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  ┌──────────────────────────────────────────────────────┐   ║
+║  │  LAYER 4 — IDENTITÀ PERMANENTE                       │   ║
+║  │  Chi è l'agente. Valori core. Non modificabile.      │   ║
+║  │  AgentIdentity.cpp                                   │   ║
+║  └──────────────────────────────────────────────────────┘   ║
+║                         ▲                                    ║
+║  ┌──────────────────────────────────────────────────────┐   ║
+║  │  LAYER 3 — PERSONALITÀ EVOLUTIVA                     │   ║
+║  │  Stile comunicativo, tono, preferenze. Cambia lento. │   ║
+║  │  PersonalityCore.cpp                                 │   ║
+║  └──────────────────────────────────────────────────────┘   ║
+║                         ▲                                    ║
+║  ┌──────────────────────────────────────────────────────┐   ║
+║  │  LAYER 2 — PROFILO UTENTE                            │   ║
+║  │  Chi è l'utente. Stile musicale. Plugin preferiti.   │   ║
+║  │  AgentUser.cpp                                       │   ║
+║  └──────────────────────────────────────────────────────┘   ║
+║                         ▲                                    ║
+║  ┌──────────────────────────────────────────────────────┐   ║
+║  │  LAYER 1 — MEMORIA SESSIONE                          │   ║
+║  │  Cosa è successo oggi. Azioni, risultati, feedback.  │   ║
+║  │  SessionManager.cpp → session.jsonl                  │   ║
+║  └──────────────────────────────────────────────────────┘   ║
+║                         ▲                                    ║
+║  ┌──────────────────────────────────────────────────────┐   ║
+║  │  LAYER 0 — CONTESTO REAL-TIME                        │   ║
+║  │  Stato attuale: BPM, meter, plugin aperti, plugin.   │   ║
+║  │  DSPEngine + OscBridge (in-memory, volatile)         │   ║
+║  └──────────────────────────────────────────────────────┘   ║
+╚══════════════════════════════════════════════════════════════╝
+`
+
+---
+
+## 3. I Layer in Dettaglio
+
+### 3.1 Layer 0 — Contesto Real-Time
+
+Volatile, in-memory, aggiornato a ogni buffer audio.
+
+`json
+{
+  "timestamp": 1716500000000,
+  "transport": {
+    "isPlaying": true,
+    "bpm": 128.0,
+    "position": "02:34.15"
+  },
+  "audio": {
+    "lufs_integrated": -14.2,
+    "peak_db": -0.1,
+    "stereo_width": 0.72,
+    "dominant_frequency_hz": 220,
+    "dynamic_range_db": 8.4
+  },
+  "active_plugins": [
+    { "track": 1, "slot": 1, "name": "FabFilter Pro-Q3" },
+    { "track": 1, "slot": 2, "name": "FabFilter Pro-C2" },
+    { "track": 0, "slot": 1, "name": "iZotope Ozone 11" }
+  ]
+}
+`
+
+### 3.2 Layer 1 — Memoria di Sessione
+
+Persistita su disco come JSONL (JSON Lines). Ogni evento è una riga.
+
+`
+~/.whycremisi/sessions/
+├── current.json           ← stato vivo della sessione corrente
+├── 2025-05-12.jsonl       ← log eventi di oggi
+├── 2025-05-10.jsonl
+└── index.json             ← indice di tutte le sessioni
+`
+
+Formato evento JSONL:
+
+`json
+{"t":1716500010,"type":"ai.prompt","data":{"prompt":"analizza il mix","response_ms":640}}
+{"t":1716500015,"type":"plugin.action","data":{"plugin":"FabFilter Pro-Q3","param":"Band1_Gain","from":0,"to":-4.5,"accepted":true}}
+{"t":1716500020,"type":"user.feedback","data":{"rating":"positive","comment":"molto meglio"}}
+{"t":1716500030,"type":"agent.observation","data":{"note":"utente accetta tagli EQ aggressivi, preferisce kick asciutte"}}
+`
+
+### 3.3 Layer 2 — Profilo Utente
+
+JSON persistito, aggiornato dall'AgentSoul dopo ogni sessione.
+
+`json
+{
+  "user_id": "whyed",
+  "created": "2025-01-15",
+  "last_active": "2025-05-12",
+  
+  "musical_style": {
+    "genres": ["house", "techno", "electronic"],
+    "bpm_range": [120, 140],
+    "key_centers": ["Am", "Dm", "Gm"]
+  },
+  
+  "plugin_preferences": {
+    "eq": "FabFilter Pro-Q3",
+    "compressor": "FabFilter Pro-C2",
+    "limiter": "FabFilter Pro-L2",
+    "reverb": "Valhalla Room",
+    "saturation": "FabFilter Saturn 2"
+  },
+  
+  "processing_preferences": {
+    "kick_style": "dry_tight",
+    "bass_preference": "punchy_sub",
+    "hi_hat_preference": "bright_open",
+    "master_lufs_target": -14.0,
+    "master_peak_ceiling": -0.3,
+    "compression_style": "transparent"
+  },
+  
+  "interaction_style": {
+    "prefers_explanations": true,
+    "auto_apply_threshold": 0.85,
+    "language": "it",
+    "verbosity": "medium"
+  },
+  
+  "acceptance_rates": {
+    "eq_suggestions": 0.78,
+    "compression_suggestions": 0.65,
+    "reverb_suggestions": 0.45,
+    "mastering_suggestions": 0.90
+  }
+}
+`
+
+### 3.4 Layer 3 — Personalità Evolutiva
+
+L'agente ha uno stile comunicativo che evolve in base ai feedback.
+
+`cpp
+// PersonalityCore.cpp — struttura
+struct PersonalityState {
+    std::string name = "WhyCremisi";
+    std::string style = "professional_warm";
+    float verbosity = 0.6f;       // 0=minimale, 1=dettagliato
+    float technicality = 0.7f;    // 0=semplice, 1=tecnico
+    float proactivity = 0.5f;     // 0=reattivo, 1=proattivo
+    std::string language = "it";
+    
+    // Evolve con ogni sessione
+    void evolveFromFeedback(const UserFeedback& fb);
+};
+`
+
+Stili disponibili:
+
+| Stile | Descrizione | Quando usato |
+|-------|-------------|--------------|
+| professional_warm | Preciso, diretto, con calore umano | Default |
+| technical_minimal | Solo dati, nessuna narrativa | Utenti esperti |
+| educational | Spiega ogni passaggio | Principianti |
+| creative_partner | Suggerisce, propone, si entusiasma | Sessioni creative |
+| quick_assistant | Risposte brevissime | Sessioni veloci |
+
+### 3.5 Layer 4 — Identità Permanente
+
+Non cambia mai. È il nucleo dell'agente.
+
+`
+  IDENTITÀ AGENTE WHYCREMISI
+  
+  Nome:       WhyCremisi
+  Ruolo:      Co-produttore musicale AI
+  Valori:     Qualità sonora · Rispetto autonomia utente · Trasparenza
+  Missione:   Amplificare la creatività, non sostituirla
+  Limiti:     Non agisce mai senza consenso
+              Non mente sull'incertezza
+              Non dimentica (salvo richiesta esplicita)
+`
+
+---
+
+## 4. Il Ciclo di Apprendimento
+
+`
+  ┌─────────────────────────────────────────────────────────┐
+  │                  CICLO DI APPRENDIMENTO                 │
+  └─────────────────────────────────────────────────────────┘
+  
+  PERCEZIONE          ELABORAZIONE         MEMORIZZAZIONE
+  ─────────           ────────────         ──────────────
+  
+  Utente accetta   →  AgentSoul analizza  →  Aggiorna profilo
+  suggerimento EQ      pattern: "accetta       acceptance_rate
+                       tagli narrow <5dB"      eq_suggestions++
+  
+  Utente rifiuta   →  "Troppo aggressivo" →  Abbassa
+  suggerimento         per questo utente       compression_depth
+  comp
+  
+  Utente corregge  →  "Preferisce 128Hz   →  Aggiorna
+  frequenza EQ         non 200Hz"              eq_frequency_bias
+  manualmente
+  
+  Fine sessione    →  Distilla pattern    →  Aggiorna
+                       principali             user_profile.json
+                                              + session JSONL
+`
+
+---
+
+## 5. Formato della Memoria in Prompt
+
+Prima di ogni chiamata AI, WhyCremisi inietta il contesto in questo formato:
+
+`
+[CONTESTO SESSIONE]
+Data: 2025-05-12 | BPM: 128 | Progetto: ALBUM_TRACK_07
+
+[STATO AUDIO LIVE]
+LUFS: -14.2 | Peak: -0.1dB | Larghezza stereo: 0.72
+Problema rilevato: accumulo a 220Hz (-4dB ideale, +2dB attuale)
+
+[PROFILO UTENTE]
+Genere: House | Target LUFS: -14 | Kick: dry_tight
+Plugin preferiti: FabFilter Pro-Q3, Pro-C2, Pro-L2
+Accettazione EQ: 78% | Stile: professional_warm
+
+[MEMORIA RILEVANTE]
+- 3 sessioni fa: ha apprezzato taglio narrow a 200Hz sulla kick
+- Sessione scorsa: ha rifiutato compressione ratio > 4:1 sul master
+- Preferisce spiegazioni tecniche brevi
+
+[PLUGIN ATTIVI]
+Track 1 (Kick): FabFilter Pro-Q3 [slot 1] · Pro-C2 [slot 2]
+Master: iZotope Ozone 11 [slot 1]
+
+[PERSONALITÀ AGENTE]
+Stile: professional_warm | Lingua: italiano
+Verbosità: media | Tecnicità: alta
+`
+
+---
+
+## 6. Privacy e Controllo dei Dati
+
+`
+  PRINCIPI DI PRIVACY
+  
+  ✓ Tutti i dati salvati localmente (~/.whycremisi/)
+  ✓ Nessun dato inviato al cloud senza consenso esplicito
+  ✓ /forget [argomento] — cancella memoria specifica
+  ✓ /reset — azzera tutto il profilo utente
+  ✓ Export JSON completo su richiesta
+  ✓ La chiave API non è mai loggata in chiaro
+`
+
+---
+
+## 7. Stato di Implementazione
+
+`
+  IMPLEMENTATO
+  ✓ SessionManager — JSONL persistente
+  ✓ AgentWorkspace — orchestratore identità
+  ✓ PersonalityCore — stile comunicativo
+  ✓ AgentSoul — registrazione eventi
+  ✓ AgentUser — profilo utente base
+  ✓ Context injection nel prompt AI
+  
+  IN SVILUPPO
+  ○ Learning loop automatico da feedback
+  ○ Pattern detection multi-sessione
+  ○ Export/import profilo tra dispositivi
+  
+  PIANIFICATO
+  ○ Embedding semantico per retrieval memoria
+  ○ Sintesi automatica memoria lunga
+  ○ Multi-utente (studio condiviso)
+`
+
+---
+
+→ Continua in: Paper 05 — Protocollo di Comunicazione

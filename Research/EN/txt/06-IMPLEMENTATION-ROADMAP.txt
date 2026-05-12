@@ -1,0 +1,145 @@
+# Paper 06 — Implementation Roadmap
+## Phases, Milestones and Zero-Dependency Installer Specification
+
+`
+────────────────────────────────────────────────────────────────
+  WHYCREMISI RESEARCH PAPERS — N.06
+  Implementation Roadmap + Installer Specification
+────────────────────────────────────────────────────────────────
+`
+
+---
+
+## Phase Alpha — Foundations ✓ Complete
+
+`
+  ✓ VST3 + Standalone on macOS · WebSocket bridge · AI streaming
+  ✓ BotFace mascot · BoxChat (8 types) · Session flight recorder
+  ✓ OpenClaw Memory system · DSP Engine · Setup screen
+  ✓ Advisory card (Execute/Analyze/Dismiss) · Integration tests
+`
+
+---
+
+## Phase Beta — Plugin Control (In Progress)
+
+`
+  ○ ParameterMapper with FabFilter database
+  ○ iZotope Ozone 11 + Neutron 4 database
+  ○ Plugin parameter browser UI
+  ○ Full undo stack for plugin actions
+  ○ User feedback learning loop
+  ○ Windows build (VST3 + Standalone)
+  ○ Linux build (VST3)
+`
+
+---
+
+## Phase 1.0 — Complete Product
+
+`
+  ○ 100+ plugins mapped
+  ○ VST3 auto-discovery (automatic parameter scan)
+  ○ A/B comparison
+  ○ Reference track analysis
+  ○ Multi-DAW: Ableton, Logic, Reaper, FL Studio, Pro Tools
+  ○ Zero-dependency installer: macOS · Windows · Linux
+  ○ Website + public documentation
+  ○ 30-day trial + commercial license
+`
+
+---
+
+## Phase 2.0 — Ecosystem
+
+`
+  ○ Public plugin API for third-party developers
+  ○ Community plugin mapping database
+  ○ Multi-agent collaboration (separate mix + master agents)
+  ○ Cloud profile sync (opt-in)
+`
+
+---
+
+## Zero-Dependency Installer — Full Specification
+
+Core principle: anyone who receives WhyCremisi has everything working at first launch. No additional downloads. No manual configuration. No external dependencies. Works offline.
+
+### Installer Bundle Contents
+
+`
+  ┌──────────────────────────────────────────────────────────┐
+  │  CORE PLUGIN                                             │
+  │  WhyCremisi.vst3          macOS / Windows / Linux        │
+  │  WhyCremisi.component     AU — macOS / Logic only        │
+  │  WhyCremisi.app           Standalone macOS               │
+  │  WhyCremisi.exe           Standalone Windows             │
+  │  WhyCremisi               Standalone Linux               │
+  ├──────────────────────────────────────────────────────────┤
+  │  LOCAL AI ENGINE (no internet required)                  │
+  │  Ollama runtime           binary for each OS             │
+  │  Base AI model            llama3.2:3b (~2 GB)            │
+  │  Advanced model           llama3.1:8b (~5 GB) [opt-in]  │
+  ├──────────────────────────────────────────────────────────┤
+  │  INCLUDED RUNTIMES                                       │
+  │  WebView2 runtime         Windows — embedded             │
+  │  VC++ Redistributable     Windows — embedded             │
+  │  React UI bundle          pre-compiled, offline          │
+  │  WebSocket server         already in JUCE binary         │
+  ├──────────────────────────────────────────────────────────┤
+  │  PLUGIN DATABASE                                         │
+  │  plugin-database.json     100+ plugins mapped            │
+  │  ai-presets.json          intelligent presets            │
+  ├──────────────────────────────────────────────────────────┤
+  │  ASSETS & CONFIG                                         │
+  │  App icons (all formats)  see Paper 07                   │
+  │  Default config           ready to use                   │
+  │  License.txt + EULA       included                       │
+  └──────────────────────────────────────────────────────────┘
+`
+
+### Platform Installers
+
+`
+  macOS
+    Format:       WhyCremisi-v1.0.pkg
+    Installs to:  /Library/Audio/Plug-Ins/VST3/WhyCremisi.vst3
+                  /Library/Audio/Plug-Ins/Components/WhyCremisi.component
+                  /Applications/WhyCremisi.app
+    Signing:      Apple Developer ID signed + notarised
+    Requirements: macOS 12 Monterey+, Apple Silicon or Intel
+
+  Windows
+    Format:       WhyCremisi-v1.0-setup.exe  (NSIS / Inno Setup)
+    Installs to:  C:\Program Files\Common Files\VST3\WhyCremisi.vst3
+                  C:\Program Files\WhyCremisi\WhyCremisi.exe
+    Signing:      EV code signing certificate
+    Requirements: Windows 10 64-bit+
+
+  Linux
+    Formats:      whycremisi-v1.0.tar.gz + install.sh
+                  whycremisi-v1.0.deb  (Debian/Ubuntu)
+                  whycremisi-v1.0.rpm  (Fedora/RHEL)
+    Installs to:  ~/.vst3/WhyCremisi.vst3
+    Requirements: Ubuntu 22.04+ / Fedora 38+
+`
+
+### First Launch Flow
+
+`
+  1. Plugin loaded in DAW (or Standalone opened)
+  2. SetupScreen appears automatically
+  3. Choice: local AI (Ollama — already bundled) or cloud API
+  4. If local: Ollama starts automatically (no download needed)
+  5. Automatic connection test
+  6. Ready to use in < 30 seconds
+
+  NO additional downloads
+  NO mandatory registration
+  NO external dependencies
+  WORKS fully offline (with local AI)
+`
+
+---
+
+→ Continue: Paper 07 — Brand & Asset Identity
