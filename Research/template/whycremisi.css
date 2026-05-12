@@ -1,0 +1,334 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* ── PAGE ──────────────────────────────────────────────────── */
+@page {
+  size: A4;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background: #0d0d0d;
+  color: #e0e0e0;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 10pt;
+  line-height: 1.7;
+}
+
+/* ── BODY WRAPPER ───────────────────────────────────────────── */
+body {
+  padding: 0 22mm 18mm 22mm;
+  padding-top: 0;
+}
+
+/* ── COVER HEADER ───────────────────────────────────────────── */
+body::before {
+  content: '';
+  display: block;
+  width: calc(100% + 44mm);
+  margin-left: -22mm;
+  height: 4px;
+  background: #FFB000;
+  position: relative;
+  z-index: 10;
+  margin-bottom: 0;
+}
+
+/* ── HEADINGS ───────────────────────────────────────────────── */
+h1 {
+  font-family: 'Inter', sans-serif;
+  font-size: 22pt;
+  font-weight: 900;
+  color: #ffffff;
+  background: #DC143C;
+  padding: 18mm 22mm 14mm 22mm;
+  margin: 0 -22mm 0 -22mm;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  break-after: avoid;
+}
+
+h1 + p em,
+h1 + blockquote {
+  color: #888;
+  font-style: italic;
+}
+
+h2 {
+  font-family: 'Inter', sans-serif;
+  font-size: 13pt;
+  font-weight: 700;
+  color: #DC143C;
+  background: #1a1a1a;
+  border-left: 3px solid #DC143C;
+  padding: 8px 14px;
+  margin-top: 28px;
+  margin-bottom: 10px;
+  border-radius: 0 3px 3px 0;
+  break-after: avoid;
+}
+
+h3 {
+  font-family: 'Inter', sans-serif;
+  font-size: 10pt;
+  font-weight: 700;
+  color: #FFB000;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 20px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  break-after: avoid;
+}
+
+h3::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  background: #FFB000;
+  flex-shrink: 0;
+}
+
+h4 {
+  font-size: 9.5pt;
+  font-weight: 600;
+  color: #aaaaaa;
+  margin-top: 14px;
+  margin-bottom: 4px;
+  break-after: avoid;
+}
+
+/* ── AMBER DIVIDER after h1 content area ─────────────────────── */
+h1 ~ * {
+  position: relative;
+}
+
+/* ── PARAGRAPHS ─────────────────────────────────────────────── */
+p {
+  margin-bottom: 10px;
+  color: #d0d0d0;
+  text-align: justify;
+  hyphens: auto;
+}
+
+strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+em {
+  color: #FFB000;
+  font-style: italic;
+}
+
+/* ── CODE BLOCKS ────────────────────────────────────────────── */
+pre {
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-left: 3px solid #DC143C;
+  border-radius: 0 6px 6px 0;
+  padding: 14px 18px;
+  margin: 14px 0;
+  overflow-x: auto;
+  break-inside: avoid;
+}
+
+pre code {
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 7.5pt;
+  color: #d4d4d4;
+  background: transparent;
+  padding: 0;
+  border: none;
+  line-height: 1.65;
+  display: block;
+  white-space: pre;
+}
+
+code {
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 8pt;
+  color: #FFB000;
+  background: #1f1f1f;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ── TABLES ─────────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 8.5pt;
+  break-inside: avoid;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+thead tr {
+  background: #DC143C;
+}
+
+thead th {
+  color: #ffffff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 7.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  text-align: left;
+  border: none;
+}
+
+tbody tr:nth-child(odd) {
+  background: #1a1a1a;
+}
+
+tbody tr:nth-child(even) {
+  background: #141414;
+}
+
+tbody tr:hover {
+  background: #222;
+}
+
+tbody td {
+  color: #d0d0d0;
+  padding: 7px 12px;
+  border: none;
+  border-bottom: 1px solid #2a2a2a;
+  vertical-align: top;
+}
+
+tbody td:first-child {
+  color: #FFB000;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8pt;
+}
+
+/* ── BLOCKQUOTES / CALLOUTS ─────────────────────────────────── */
+blockquote {
+  border-left: 3px solid #FFB000;
+  background: #181818;
+  padding: 12px 16px;
+  margin: 14px 0;
+  border-radius: 0 4px 4px 0;
+  break-inside: avoid;
+}
+
+blockquote p {
+  color: #cccccc;
+  font-style: italic;
+  margin: 0;
+}
+
+/* ── LISTS ──────────────────────────────────────────────────── */
+ul, ol {
+  padding-left: 20px;
+  margin: 8px 0 12px 0;
+}
+
+ul li {
+  color: #d0d0d0;
+  margin-bottom: 4px;
+  list-style: none;
+  padding-left: 12px;
+  position: relative;
+}
+
+ul li::before {
+  content: '▸';
+  color: #DC143C;
+  position: absolute;
+  left: -4px;
+  font-size: 8pt;
+}
+
+ul ul li::before {
+  content: '◦';
+  color: #FFB000;
+}
+
+ol li {
+  color: #d0d0d0;
+  margin-bottom: 4px;
+}
+
+/* ── HORIZONTAL RULE ────────────────────────────────────────── */
+hr {
+  border: none;
+  border-top: 1px solid #2a2a2a;
+  margin: 22px 0;
+}
+
+/* ── LINKS ──────────────────────────────────────────────────── */
+a {
+  color: #FFB000;
+  text-decoration: none;
+}
+
+/* ── FOOTER AREA ────────────────────────────────────────────── */
+@page {
+  @bottom-left {
+    content: "WHYCREMISI · AI MIX ASSISTANT";
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.5pt;
+    color: #444;
+  }
+  @bottom-center {
+    content: string(chapter);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.5pt;
+    color: #444;
+  }
+  @bottom-right {
+    content: counter(page) " / " counter(pages);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.5pt;
+    color: #444;
+  }
+}
+
+/* ── PRINT SPECIFICS ────────────────────────────────────────── */
+@media print {
+  body {
+    padding-top: 0;
+  }
+  h2, h3, h4 {
+    break-after: avoid;
+  }
+  pre, table, blockquote {
+    break-inside: avoid;
+  }
+}
+
+/* ── DECORATIVE PAPER HEADER ────────────────────────────────── */
+.paper-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 7pt;
+  color: rgba(255,255,255,0.6);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* ── AMBER ACCENT STRIPE after title ────────────────────────── */
+h1::after {
+  content: '';
+  display: block;
+  width: calc(100% + 44mm);
+  margin-left: -22mm;
+  height: 3px;
+  background: #FFB000;
+  margin-top: 14mm;
+  margin-bottom: 0;
+}
