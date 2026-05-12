@@ -31,6 +31,9 @@ class SessionManager;
 class MidiHandler;
 class ParameterMapper;
 class PluginChain;
+class WhyCremisiProcessor;
+class IDawHandler;
+enum class DawType;
 
 class OscBridge : private juce::Timer
 {
@@ -107,6 +110,9 @@ public:
     /** Set Plugin Chain for chain management */
     void setPluginChain(PluginChain* pc);
 
+    /** Set Plugin Processor for program/preset management */
+    void setPluginProcessor(WhyCremisiProcessor* proc) { pluginProcessor = proc; }
+
     /** Set Session Manager for event logging */
     void setSessionManager(SessionManager* sm);
 
@@ -120,8 +126,11 @@ public:
     /** Called from prepareToPlay with real audio device info */
     void broadcastPluginStats(double sampleRate, int bufferSize);
 
+    /** Called from processBlock to report CPU usage */
+    void broadcastCpuUsage(double cpuPct, double peakTimeUs);
+
     /** Called from processBlock to update analyzer data (thread-safe) */
-    void updateAnalyzer(float correlation, float loudness, const std::vector<float>& spectrum);
+    void updateAnalyzer(float correlation, float momentaryLoudness, float shortTermLoudness, float integratedLoudness, float truePeak, const std::vector<float>& spectrum, int clippingCount);
 
     /** Called from processBlock to update meter levels (thread-safe) */
     void updateMeter(float leftDb, float rightDb)
@@ -144,6 +153,7 @@ private:
     //==============================================================================
     // Called when OSC message is received from DAW
     void onOscReceived(const juce::String& address, float value);
+    void onOscStringReceived(const juce::String& address, const juce::String& value);
 
     // WebSocket message handler (receives from UI)
     void handleWebSocketMessage(const nlohmann::json& message);
@@ -157,6 +167,31 @@ private:
     float currentBpm = 120.0f;
     float currentPosition = 0.0f;
     juce::uint32 lastTimerTimeMs = 0;
+
+    // Ableton Live track cache (trackId -> track info)
+    struct AbletonTrackInfo {
+        juce::String name;
+        float volume = 0.0f;
+        float pan = 0.0f;
+        bool mute = false;
+        bool solo = false;
+        std::vector<float> sends;
+        int numDevices = 0;
+    };
+    std::map<int, AbletonTrackInfo> abletonTracks;
+    int abletonTrackCount = 0;
+    bool abletonDetected = false;
+
+    void handleAbletonTrackData(const juce::String& address, float value);
+    void handleAbletonTrackString(const juce::String& address, const juce::String& value);
+    void discoverAbletonTracks();
+    void broadcastAbletonTrack(int trackId);
+
+    // DAW detection & handler
+    DawType detectDawType(const juce::String& address) const;
+    void ensureDawHandler(DawType type);
+    IDawHandler* getOrCreateDawHandler(DawType type);
+    void broadcastDawInfo();
 
     // OSC Handler (receives from DAW)
     std::unique_ptr<OscHandler> oscHandler;
@@ -190,6 +225,9 @@ private:
     ParameterMapper* paramMapper   = nullptr;
     PluginChain*     pluginChain   = nullptr;
     SessionManager* sessionManager = nullptr;
+    WhyCremisiProcessor* pluginProcessor = nullptr;
+    std::unique_ptr<IDawHandler> dawHandler;
+    DawType detectedDawType = static_cast<DawType>(0);
     std::atomic<bool> aiProcessing {false};
 
     // AI thread (async dispatch)
@@ -202,7 +240,11 @@ private:
 
     // Analyzer state (written from processBlock, broadcast periodically)
     std::atomic<float> lastCorrelation { 0.0f };
-    std::atomic<float> lastLoudness { -96.0f };
+    std::atomic<float> lastMomentaryLoudness { -96.0f };
+    std::atomic<float> lastShortTermLoudness { -96.0f };
+    std::atomic<float> lastIntegratedLoudness { -96.0f };
+    std::atomic<float> lastTruePeak { -96.0f };
+    std::atomic<int> lastClippingCount { 0 };
     std::vector<float> lastSpectrum;
     juce::CriticalSection spectrumLock;
 

@@ -8,6 +8,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_dsp/juce_dsp.h>
 #include <memory>
 #include <map>
 #include <functional>
@@ -57,8 +58,8 @@ public:
     double getTailLengthSeconds() const override { return 0.0; }
 
     //==============================================================================
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
+    int getNumPrograms() override { return (int)programNames.size(); }
+    int getCurrentProgram() override { return currentProgramIndex.load(); }
     void setCurrentProgram(int index) override;
     const juce::String getProgramName(int index) override;
     void changeProgramName(int index, const juce::String& newName) override;
@@ -66,6 +67,24 @@ public:
     //==============================================================================
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
+
+    /** Add a new program (preset) to the list */
+    int addProgram(const juce::String& name);
+    
+    /** Remove a program by index */
+    bool removeProgram(int index);
+    
+    /** Get all program names */
+    juce::StringArray getProgramNames() const { return programNames; }
+    
+    /** Save current state as a named preset file */
+    bool savePreset(const juce::File& file);
+    
+    /** Load a preset from a file */
+    bool loadPreset(const juce::File& file);
+
+    /** Broadcast current program info to UI */
+    void broadcastCurrentProgram();
 
     //==============================================================================
     // WhyCremisi specific methods
@@ -170,6 +189,22 @@ private:
     // Audio device info (set in prepareToPlay, broadcast to UI)
     double currentSampleRate  { 44100.0 };
     int    currentBufferSize  { 512 };
+
+    // Parameter smoothing for automation
+    juce::SmoothedValue<float> smoothedGain;
+    bool smoothingInitialised = false;
+
+    // CPU usage monitoring
+    double lastProcessTimeUs { 0.0 };
+    double peakProcessTimeUs { 0.0 };
+    double avgProcessTimeUs  { 0.0 };
+    int    cpuCounter        { 0 };
+    int    cpuBroadcastEvery { 1024 };
+    static constexpr double TIMING_HISTORY_SIZE = 100.0;
+
+    // VST3 Program/Preset management
+    juce::StringArray programNames;
+    std::atomic<int> currentProgramIndex { 0 };
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WhyCremisiProcessor)

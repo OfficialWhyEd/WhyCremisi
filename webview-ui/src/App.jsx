@@ -5,520 +5,7 @@ import { BotFace } from './components/BotFace'
 import { SessionPanel } from './components/SessionPanel'
 import { SetupScreen } from './components/SetupScreen'
 import './index.css'
-
-// ── BoxChat — various box types shown inside chat after AI response ──
-function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd, personality, onAnalyzeFurther, suggestion }) {
-  const [localGain, setLocalGain] = useState(gainDb)
-  const [localDrive, setLocalDrive] = useState(driveVal)
-  const [midSide, setMidSide] = useState(false)
-  const [phaseInvert, setPhaseInvert] = useState(false)
-  const [clipThreshold, setClipThreshold] = useState(-1)
-  const [compThresh, setCompThresh] = useState(-18)
-  const [compRatio, setCompRatio] = useState(4)
-  const [advDismissed, setAdvDismissed] = useState(false)
-  const [advExecuted, setAdvExecuted] = useState(false)
-  useEffect(() => { setLocalGain(gainDb) }, [gainDb])
-  useEffect(() => { setLocalDrive(driveVal) }, [driveVal])
-  const lPct = Math.round(meterL * 100)
-  const rPct = Math.round(meterR * 100)
-  const isClipping = peak > clipThreshold
-  const clipPct = Math.min(100, Math.max(0, ((peak - clipThreshold) / 6) * 100))
-
-  const MetricBar = ({ label, val, color, pct }) => (
-    <div className="space-y-0.5">
-      <div className="flex justify-between text-xs uppercase font-bold">
-        <span className="text-[#aaa]">{label}</span>
-        <span style={{ color }}>{val}</span>
-      </div>
-      <div className="h-1 bg-[#1a1a1a] w-full">
-        <motion.div className="h-full" style={{ backgroundColor: color, boxShadow: `0 0 3px ${color}50` }}
-          initial={{ width: '0%' }} animate={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
-        />
-      </div>
-    </div>
-  )
-
-  const wrap = (label, color, icon, children, actions) => (
-    <motion.div initial={{ opacity:0, y:4 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.35 }}
-      className="mt-2 bg-[#0d0d0d]/70 border border-[#222] overflow-hidden"
-    >
-      <div className="flex items-center justify-between px-2 py-1 border-b border-[#1a1a1a]">
-        <div className="flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-xs" style={{ color }}>{icon}</span>
-          <span className="text-xs font-bold uppercase tracking-widest" style={{ color }}>{label}</span>
-        </div>
-        {actions && <div className="flex gap-1">{actions}</div>}
-      </div>
-      <div className="p-2">{children}</div>
-    </motion.div>
-  )
-
-  // ── VECTORSCOPE: interactive XY phase display ────────────────
-  if (boxType === 'vectorscope') return wrap('Vectorscope', '#AA44FF', 'donut_small', (
-    <div className="flex gap-3">
-      <div className="relative w-28 h-28 flex-shrink-0">
-        <svg viewBox="-1.2 -1.2 2.4 2.4" className="w-full h-full">
-          <circle cx="0" cy="0" r="1" fill="none" stroke="#222" strokeWidth="0.02" />
-          <circle cx="0" cy="0" r="0.5" fill="none" stroke="#1a1a1a" strokeWidth="0.01" />
-          <line x1="-1" y1="0" x2="1" y2="0" stroke="#1a1a1a" strokeWidth="0.01" />
-          <line x1="0" y1="-1" x2="0" y2="1" stroke="#1a1a1a" strokeWidth="0.01" />
-          {Array.from({ length: 80 }, (_, i) => {
-            const a = (i / 80) * Math.PI * 2
-            const r = 0.3 + Math.sin(a * 3 + Date.now() * 0.002) * 0.3 + correlation * 0.3
-            const x = Math.cos(a) * r, y = Math.sin(a) * r
-            const hue = 280 + (1 - correlation) * 60
-            return <circle key={i} cx={x} cy={y} r="0.03" fill={`hsl(${hue}, 90%, 60%)`} opacity={0.7} />
-          })}
-          {Array.from({ length: 40 }, (_, i) => {
-            const a = (i / 40) * Math.PI * 2 + Date.now() * 0.001
-            const r = 0.1 + Math.abs(Math.sin(a * 2)) * 0.4
-            const x = Math.cos(a) * r, y = Math.sin(a) * r
-            return <circle key={'t' + i} cx={x} cy={y} r="0.02" fill="#00E5FF" opacity={0.4} />
-          })}
-        </svg>
-        <div className="absolute bottom-0 left-0 right-0 text-center text-[8px] font-mono text-[#666]">
-          φ = {correlation.toFixed(3)}
-        </div>
-      </div>
-      <div className="flex-1 space-y-1.5 min-w-0">
-        <MetricBar label="Phase Correlation" val={correlation.toFixed(3)} color={correlation < 0.3 ? '#DC143C' : correlation < 0.6 ? '#FFB000' : '#00FFaa'} pct={Math.max(0, Math.min(100, (correlation + 1) * 50))} />
-        <MetricBar label="Mono Compatibility" val={correlation < 0.3 ? 'CRITICAL' : correlation < 0.6 ? 'FAIR' : 'GOOD'} color={correlation < 0.3 ? '#DC143C' : correlation < 0.6 ? '#FFB000' : '#00FFaa'} pct={Math.max(0, Math.min(100, correlation * 100))} />
-        <div className="flex gap-1 pt-1">
-          <motion.button whileTap={{ scale: 0.95 }}
-            className={`flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border ${midSide ? 'bg-[#AA44FF] text-black border-[#AA44FF]' : 'text-[#888] border-[#333] hover:border-[#AA44FF]'}`}
-            onClick={() => { setMidSide(!midSide); onDawCmd('midSide', { enabled: !midSide }) }}>
-            M/S
-          </motion.button>
-          <motion.button whileTap={{ scale: 0.95 }}
-            className={`flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border ${phaseInvert ? 'bg-[#DC143C] text-black border-[#DC143C]' : 'text-[#888] border-[#333] hover:border-[#DC143C]'}`}
-            onClick={() => { setPhaseInvert(!phaseInvert); onDawCmd('phaseInvert', { enabled: !phaseInvert }) }}>
-            φ INVERT
-          </motion.button>
-          <motion.button whileTap={{ scale: 0.95 }}
-            className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00FFaa]"
-            onClick={() => onDawCmd('mono')}>
-            MONO
-          </motion.button>
-        </div>
-      </div>
-    </div>
-  ))
-
-  // ── STEREO FIELD ─────────────────────────────────────────────
-  if (boxType === 'stereo') return wrap('Stereo Field', '#DC143C', 'swap_horiz', (
-    <div className="grid grid-cols-2 gap-1.5">
-      <MetricBar label="L/R Balance" val={lPct>rPct?`${lPct-rPct}% L`:rPct>lPct?`${rPct-lPct}% R`:'CENTER'} color="#DC143C" pct={Math.abs(lPct-rPct)} />
-      <MetricBar label="Side Content" val={`${Math.round(Math.abs(meterL-meterR)*150)}%`} color="#FFB000" pct={Math.round(Math.abs(meterL-meterR)*150)} />
-      <MetricBar label="Correlation" val={`+${(0.62+(meterL+meterR)*0.15).toFixed(2)}`} color="#00E5FF" pct={Math.round((0.62+(meterL+meterR)*0.15)*100)} />
-      <MetricBar label="Width" val={`${Math.round((Math.abs(meterL-meterR)+0.3)*100)}%`} color="#00FFaa" pct={Math.round((Math.abs(meterL-meterR)+0.3)*100)} />
-      <div className="col-span-2 flex gap-1 pt-1">
-        <motion.button whileTap={{ scale: 0.95 }}
-          className={`flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border ${midSide ? 'bg-[#DC143C] text-black border-[#DC143C]' : 'text-[#888] border-[#333] hover:border-[#DC143C]'}`}
-          onClick={() => { setMidSide(!midSide); onDawCmd('midSide', { enabled: !midSide }) }}>
-          MID/SIDE
-        </motion.button>
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00FFaa]"
-          onClick={() => onDawCmd('narrow')}>
-          NARROW
-        </motion.button>
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FFB000]"
-          onClick={() => onDawCmd('widen')}>
-          WIDEN
-        </motion.button>
-      </div>
-    </div>
-  ))
-
-  if (boxType === 'loudness') return wrap('Loudness Analysis', '#00E5FF', 'equalizer', (
-    <div className="grid grid-cols-2 gap-1.5">
-      <MetricBar label="LUFS Integrated" val={lufs>-60?`${lufs.toFixed(1)} LUFS`:'-∞'} color="#00E5FF" pct={Math.max(0,Math.min(100,(lufs+60)/60*100))} />
-      <MetricBar label="Peak Level" val={peak>-60?`${peak.toFixed(1)} dB`:'-∞'} color="#FF6B35" pct={Math.max(0,Math.min(100,(peak+60)/60*100))} />
-      <MetricBar label="Dynamic Range" val={`${(72-(lPct+rPct)/2*0.72).toFixed(1)} dB`} color="#00FFaa" pct={Math.max(0,100-(lPct+rPct)/2)} />
-      <MetricBar label="True Peak" val={peak>-60?`${(peak+0.3).toFixed(1)} dBTP`:'-∞'} color="#FF6B35" pct={Math.max(0,Math.min(100,(peak+60.3)/60*100))} />
-      <MetricBar label="RMS Level" val={lufs>-60?`${(lufs+2.1).toFixed(1)} dB`:'-∞'} color="#FFB000" pct={Math.max(0,Math.min(100,(lufs+62)/62*100))} />
-      <MetricBar label="Crest Factor" val={`${(peak-lufs).toFixed(1)} dB`} color="#DC143C" pct={Math.min(100,Math.max(0,(peak-lufs)*5))} />
-      <div className="col-span-2 flex gap-1 pt-1">
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF]"
-          onClick={() => onDawCmd('targetLoudness', { target: -14 })}>
-          TARGET -14 LUFS
-        </motion.button>
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF]"
-          onClick={() => onDawCmd('targetLoudness', { target: -16 })}>
-          TARGET -16 LUFS
-        </motion.button>
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FF6B35]"
-          onClick={() => onDawCmd('limiter')}>
-          LIMIT
-        </motion.button>
-      </div>
-    </div>
-  ))
-
-  // ── CLIPPING DETECTION ────────────────────────────────────────
-  if (boxType === 'clipping') return wrap('Clipping Detection', '#FF6B35', 'report', (
-    <div className="space-y-2">
-      <div className={`p-2 border ${isClipping ? 'border-[#DC143C] bg-[#DC143C]/10' : 'border-[#333] bg-[#111]'} transition-all`}>
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: isClipping ? '#DC143C' : '#888' }}>
-            {isClipping ? '⚠ CLIPPING DETECTED' : '✓ NO CLIPPING'}
-          </span>
-          <span className="text-xs font-mono" style={{ color: isClipping ? '#DC143C' : '#888' }}>
-            {peak.toFixed(1)} dB
-          </span>
-        </div>
-        <div className="h-2 bg-[#1a1a1a] w-full relative overflow-hidden">
-          <motion.div className="h-full absolute left-0 top-0"
-            style={{ backgroundColor: isClipping ? '#DC143C' : '#00FFaa', boxShadow: isClipping ? '0 0 8px #DC143C' : 'none' }}
-            animate={{ width: `${clipPct}%` }}
-            transition={{ duration: 0.1 }}
-          />
-          <div className="absolute top-0 bottom-0 w-px bg-[#FFB000]" style={{ left: `${((clipThreshold + 60) / 72) * 100}%` }} />
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[9px] text-[#888] font-mono uppercase">Threshold</span>
-        <input type="range" min="-18" max="0" step="0.5" value={clipThreshold}
-          onChange={(e) => setClipThreshold(parseFloat(e.target.value))}
-          className="flex-1 h-1 accent-[#FF6B35] cursor-pointer"
-        />
-        <span className="text-[10px] text-white font-mono w-8 text-right">{clipThreshold.toFixed(1)} dB</span>
-      </div>
-      <div className="flex gap-1">
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#DC143C]"
-          onClick={() => onDawCmd('softClip', { enabled: true })}>
-          SOFT CLIP
-        </motion.button>
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FF6B35]"
-          onClick={() => onDawCmd('hardClip', { enabled: true })}>
-          HARD CLIP
-        </motion.button>
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF]"
-          onClick={() => onDawCmd('ceiling', { value: -1 })}>
-          -1dB CEIL
-        </motion.button>
-      </div>
-    </div>
-  ))
-
-  if (boxType === 'eq') {
-    const bins = (spectrum && spectrum.length > 0) ? spectrum : []
-    const avgBands = (start, end) => {
-      if (bins.length === 0) return 0
-      const s = Math.floor(bins.length * start)
-      const e = Math.floor(bins.length * end)
-      if (e <= s) return 0
-      let sum = 0
-      for (let i = s; i < e; i++) sum += bins[i]
-      return sum / (e - s)
-    }
-    const sub = avgBands(0, 0.05)
-    const low = avgBands(0.05, 0.15)
-    const lowMid = avgBands(0.15, 0.35)
-    const presence = avgBands(0.35, 0.65)
-    const high = avgBands(0.65, 0.85)
-    const air = avgBands(0.85, 1)
-    return wrap('Frequency Analysis', '#FFB000', 'graphic_eq', (
-      <div className="grid grid-cols-3 gap-1.5">
-        <MetricBar label="Sub (20-80Hz)" val={`${(sub * 100).toFixed(0)}%`} color="#9B59B6" pct={sub * 100} />
-        <MetricBar label="Low (80-300Hz)" val={`${(low * 100).toFixed(0)}%`} color="#DC143C" pct={low * 100} />
-        <MetricBar label="Low-Mid (300Hz-1k)" val={`${(lowMid * 100).toFixed(0)}%`} color="#FFB000" pct={lowMid * 100} />
-        <MetricBar label="Presence (1k-5k)" val={`${(presence * 100).toFixed(0)}%`} color="#00FFaa" pct={presence * 100} />
-        <MetricBar label="High (5k-15k)" val={`${(high * 100).toFixed(0)}%`} color="#00E5FF" pct={high * 100} />
-        <MetricBar label="Air (15k+)" val={`${(air * 100).toFixed(0)}%`} color="#E8D5B7" pct={air * 100} />
-      </div>
-    ))
-  }
-
-  // ── SPECTRAL ANALYZER (spectrogram-style) ──────────────────────
-  if (boxType === 'spectral') return wrap('Spectral Analyzer', '#00E5FF', 'finance', (
-    <div className="space-y-1.5">
-      <div className="h-16 flex items-end gap-[1px]">
-        {(spectrum.length > 0 ? spectrum.slice(0, 128) : Array.from({ length: 128 }, (_, i) => 0.1 + Math.sin(i * 0.1 + Date.now() * 0.001) * 0.05 + Math.random() * 0.02)).map((mag, i) => (
-          <motion.div key={i} className="flex-1 rounded-t-sm"
-            style={{
-              backgroundColor: `hsl(${200 + (1 - mag) * 120}, 85%, ${20 + mag * 45}%)`,
-              opacity: 0.85,
-            }}
-            animate={{ height: `${Math.max(3, mag * 100)}%` }}
-            transition={{ duration: 0.06 }}
-          />
-        ))}
-      </div>
-      <div className="flex justify-between text-[8px] font-mono text-[#555]">
-        <span>20Hz</span><span>100Hz</span><span>500Hz</span><span>2kHz</span><span>10kHz</span><span>20kHz</span>
-      </div>
-      <div className="flex gap-1 pt-1">
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF]"
-          onClick={() => onDawCmd('eqAnalyze')}>ANALYZE</motion.button>
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FFB000]"
-          onClick={() => onDawCmd('eqMatch', { target: 'reference' })}>MATCH EQ</motion.button>
-        <motion.button whileTap={{ scale: 0.95 }}
-          className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#DC143C]"
-          onClick={() => onDawCmd('spectralAnalyze')}>FFT</motion.button>
-      </div>
-    </div>
-  ))
-
-  if (boxType === 'slider') return wrap('Volume / Gain Control', '#FFB000', 'tune', (
-    <div className="space-y-2">
-      {[
-        { label: 'Master Gain', val: localGain, setVal: setLocalGain, min: -60, max: 12, color: '#DC143C', cmd: 'setGain', key: 'valueDb' },
-        { label: 'Drive', val: localDrive, setVal: setLocalDrive, min: 0, max: 100, color: '#FFB000', cmd: 'setDrive', key: 'value' },
-      ].map(({ label, val, setVal, min, max, color, cmd, key }) => {
-        const pct = ((val - min) / (max - min)) * 100
-        return (
-          <div key={label} className="space-y-1">
-            <div className="flex justify-between text-xs uppercase font-bold">
-              <span className="text-[#aaa]">{label}</span>
-              <span style={{ color }}>{val.toFixed(1)}</span>
-            </div>
-            <div className="h-2 bg-[#1a1a1a] w-full relative cursor-pointer rounded-sm overflow-hidden"
-              onMouseDown={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-                const newVal = min + pct * (max - min)
-                setVal(newVal)
-                onDawCmd(cmd, { [key]: newVal })
-                const onMove = (ev) => {
-                  const p = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width))
-                  const v = min + p * (max - min)
-                  setVal(v)
-                  onDawCmd(cmd, { [key]: v })
-                }
-                const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
-                document.addEventListener('mousemove', onMove)
-                document.addEventListener('mouseup', onUp)
-              }}
-            >
-              <motion.div className="h-full absolute left-0 top-0" style={{ backgroundColor: color, width: `${pct}%`, boxShadow: `0 0 6px ${color}50` }} />
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  ))
-
-  if (boxType === 'knob') return wrap('Pan / Stereo Position', '#00E5FF', 'track_changes', (
-    <div className="grid grid-cols-2 gap-3">
-      {[
-        { label: 'Master Pan', val: 0, color: '#00E5FF' },
-        { label: 'Stereo Width', val: Math.round((Math.abs(meterL-meterR)+0.3)*100), color: '#FFB000' },
-      ].map(({ label, val, color }) => (
-        <div key={label} className="flex flex-col items-center gap-1">
-          <svg viewBox="0 0 60 60" className="w-12 h-12 rotate-[-90deg]">
-            <circle cx="30" cy="30" r="22" fill="none" stroke="#222" strokeWidth="3" />
-            <motion.circle cx="30" cy="30" r="22" fill="none" stroke={color} strokeWidth="3"
-              strokeLinecap="round"
-              initial={{ strokeDasharray: '0 138' }}
-              animate={{ strokeDasharray: `${(val/100)*138} 138` }}
-              transition={{ duration: 0.8 }}
-              style={{ filter: `drop-shadow(0 0 3px ${color})` }}
-            />
-          </svg>
-          <span className="text-xs text-[#aaa] uppercase font-bold">{label}</span>
-          <span className="text-xs font-mono" style={{ color }}>{val}%</span>
-        </div>
-      ))}
-    </div>
-  ))
-
-  if (boxType === 'transport') return wrap('Transport Status', '#00FFaa', 'play_arrow', (
-    <div className="grid grid-cols-4 gap-1.5">
-      {[
-        { label: 'Status', val: transport.isPlaying ? '▶ PLAY' : '■ STOP', color: transport.isPlaying ? '#00FFaa' : '#4d4d4d' },
-        { label: 'BPM', val: transport.bpm.toFixed(1), color: '#FFB000' },
-        { label: 'Position', val: `${Math.floor(transport.position/60).toString().padStart(2,'0')}:${(transport.position%60).toFixed(0).toString().padStart(2,'0')}`, color: '#4d4d4d' },
-        { label: 'Recording', val: transport.isRecording ? '● REC' : '○ OFF', color: transport.isRecording ? '#DC143C' : '#4d4d4d' },
-      ].map(({ label, val, color }) => (
-        <div key={label} className="bg-[#111] border border-[#1a1a1a] p-1.5 text-center">
-          <div className="text-xs text-[#666] uppercase mb-0.5">{label}</div>
-          <div className="text-xs font-bold font-mono" style={{ color }}>{val}</div>
-        </div>
-      ))}
-      <div className="col-span-4 flex gap-1.5 mt-1">
-        {[['play','▶ PLAY','#00FFaa'],['stop','■ STOP','#4d4d4d'],['record','● REC','#DC143C']].map(([cmd,lbl,clr]) => (
-          <motion.button key={cmd} whileHover={{ scale:1.04 }} whileTap={{ scale:0.95 }}
-            className="flex-1 py-1 text-xs font-bold uppercase border border-[#222] bg-[#111] tracking-widest"
-            style={{ color: clr, borderColor: clr+'40' }}
-            onClick={() => onDawCmd(cmd)}
-          >{lbl}</motion.button>
-        ))}
-      </div>
-    </div>
-  ))
-
-  // ── COMPRESSOR with interactive threshold ─────────────────────
-  if (boxType === 'compressor') return wrap('Compressor Settings', '#9B59B6', 'compress', (
-      <div className="space-y-2">
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <div className="flex justify-between text-[9px] font-mono mb-0.5">
-              <span className="text-[#888] uppercase">Threshold</span>
-              <span className="text-white font-bold">{compThresh} dB</span>
-            </div>
-            <input type="range" min="-40" max="0" step="1" value={compThresh}
-              onChange={(e) => { const v = parseInt(e.target.value); setCompThresh(v); onDawCmd('compThreshold', { value: v }) }}
-              className="w-full h-1 accent-[#9B59B6] cursor-pointer"
-            />
-          </div>
-          <div>
-            <div className="flex justify-between text-[9px] font-mono mb-0.5">
-              <span className="text-[#888] uppercase">Ratio</span>
-              <span className="text-white font-bold">{compRatio}:1</span>
-            </div>
-            <input type="range" min="1" max="20" step="0.5" value={compRatio}
-              onChange={(e) => { const v = parseFloat(e.target.value); setCompRatio(v); onDawCmd('compRatio', { value: v }) }}
-              className="w-full h-1 accent-[#DC143C] cursor-pointer"
-            />
-          </div>
-          <div className="flex flex-col justify-center items-center">
-            <div className="text-[10px] text-[#00FFaa] font-bold font-mono">{Math.max(0, (Math.abs(correlation) * 2 - 1) * compThresh * -0.1).toFixed(1)} dB</div>
-            <div className="text-[8px] text-[#888] uppercase tracking-wider">Gain Red</div>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-1">
-          <motion.button whileTap={{ scale: 0.95 }}
-            className="py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#9B59B6]"
-            onClick={() => onDawCmd('compBypass', { enabled: false })}>
-            BYPASS
-          </motion.button>
-          <motion.button whileTap={{ scale: 0.95 }}
-            className="py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00FFaa]"
-            onClick={() => onDawCmd('compAuto')}>
-            AUTO
-          </motion.button>
-        </div>
-      </div>
-    ))
-
-    if (boxType === 'advisory') {
-      if (advDismissed) return null
-
-      const s = suggestion || { freqLow: 200, freqHigh: 400, gainDb: -2.4, label: '200Hz–400Hz', description: 'harmonic crowding', transientPres: 84, confidence: 0.982 }
-      const advColor = personality?.style === 'direct' ? '#DC143C' :
-        personality?.style === 'consultative' ? '#FFB000' :
-        personality?.style === 'analytical' ? '#00E5FF' :
-        personality?.style === 'creative' ? '#AA44FF' : '#66FF88'
-      const priorityLabel = personality?.style === 'direct' ? 'Critical' :
-        personality?.style === 'consultative' ? 'Advisory' :
-        personality?.style === 'analytical' ? 'Info' :
-        personality?.style === 'creative' ? 'Exploratory' : 'Suggested'
-      const actionLabel = personality?.style === 'direct' ? 'FORCE APPLY CHAIN' :
-        personality?.style === 'consultative' ? 'REVIEW & APPLY' :
-        personality?.style === 'analytical' ? 'SIMULATE CHAIN' :
-        personality?.style === 'creative' ? 'EXPLORE ALTERNATIVES' : 'APPLY SUGGESTED CHAIN'
-      const confidenceTag = `CONF: ${(s.confidence * 100).toFixed(0)}%`
-      const styleName = personality?.style?.toUpperCase() || 'DEFAULT'
-      const freqLabel = `${s.freqLow}Hz–${s.freqHigh}Hz`
-
-      return (
-        <motion.div
-          initial={{ opacity:0, y:10, scale:0.98, filter:'blur(4px)' }}
-          animate={{ opacity:1, y:0, scale:1, filter:'blur(0)' }}
-          transition={{ delay:0.35, duration:0.6, ease:[0.22,1,0.36,1] }}
-          className="mt-2 animate-advisory-in group relative"
-        >
-          <div className="absolute -top-3 -right-1 opacity-5 pointer-events-none select-none">
-            <pre className="text-xs leading-tight text-white font-mono">0x45 0x21 0x88{'\n'}[TRANS_LOCK]{'\n'}0xFF 0x00 0x12</pre>
-          </div>
-          <div className="advisory-card advisory-breathe bg-[#121212] p-4 relative font-mono transition-all duration-500 hover:bg-[#161616]"
-            style={{ borderColor: advColor + '66' }}
-          >
-            <div className="absolute top-2 right-3 flex items-end gap-[2px] h-5 opacity-40">
-              {[40,70,55,90,65].map((h,i) => (
-                <div key={i} className="w-[2px]" style={{ height: h + '%', backgroundColor: advColor }} />
-              ))}
-            </div>
-            <div className="flex justify-between items-start mb-3 border-b border-[#222] pb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-5 relative overflow-hidden flex-shrink-0" style={{ backgroundColor: advColor }}>
-                  <motion.div className="absolute inset-0 bg-white/20" animate={{ y:['0%','100%','0%'] }} transition={{ repeat:Infinity, duration:2 }} />
-                </div>
-                <div>
-                  <span className="text-xs font-bold tracking-tighter uppercase block" style={{ color: advColor }}>
-                    AI_MASTERING_ADVISORY_{styleName}
-                  </span>
-                  <span className="text-xs text-[#888888] tracking-widest">
-                    NODE: CREMISI_X9 · STYLE: {styleName} · {freqLabel}
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col items-end">
-                <span className="text-xs text-white/40 font-bold uppercase tracking-widest">Priority: <span style={{ color: advColor }}>{priorityLabel}</span></span>
-                {personality?.experienceLevel && (
-                  <span className="text-xs text-[#888888] font-mono mt-0.5">EXP LVL: {personality.experienceLevel}</span>
-                )}
-              </div>
-            </div>
-            <div className="text-sm leading-relaxed text-[#FFB000] mb-3">
-              <p className="text-xs leading-relaxed">
-                {personality?.style === 'direct' ? 'Aggressive ' : personality?.style === 'consultative' ? 'Potential ' : personality?.style === 'creative' ? 'Creative ' : 'Detected '}
-                {s.description} in{' '}
-                <span className="text-white font-bold px-0.5" style={{ borderBottom: '1px solid ' + advColor + '66' }}>{freqLabel}</span>.{' '}
-                {personality?.style === 'direct' ? 'Applying surgical dip of' :
-                 personality?.style === 'consultative' ? 'Consider gentle dip of' :
-                 personality?.style === 'analytical' ? 'Recommended dynamic dip of' :
-                 personality?.style === 'creative' ? 'Exploring experimental sculpting of' :
-                 'Suggesting gentle dip of'}{' '}
-                <span className="text-white px-1 font-bold" style={{ backgroundColor: advColor }}>{s.gainDb}dB</span>.{' '}
-                Transient preservation at{' '}
-                <span className="text-white underline decoration-dotted">{s.transientPres}%</span>.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 mb-3 text-xs font-mono text-[#666] opacity-60">
-              <span>HEX: {advColor}</span><span>·</span><span>VAL: {s.gainDb}dB_COR</span><span>·</span><span>{confidenceTag}</span><span>·</span><span>LAT: 0.2ms</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <motion.button
-                whileHover={{ scale:1.02 }} whileTap={{ scale:0.95 }}
-                onClick={() => { setAdvExecuted(true); onDawCmd('applyEQ', { freq: freqLabel, gain: s.gainDb }) }}
-                style={advExecuted ? { backgroundColor: '#00FFaa', color: '#000', border: '1px solid #00FFaa' } : { backgroundColor: advColor, color: '#fff' }}
-                className="relative px-4 py-1.5 text-xs font-bold uppercase tracking-widest transition-all"
-              >
-                <span className="flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[12px]">bolt</span>
-                  {advExecuted ? 'APPLIED ✓' : actionLabel}
-                </span>
-              </motion.button>
-              <motion.button
-                className="border border-[#4d4d4d] text-[#888888] px-4 py-1.5 text-xs font-bold uppercase tracking-widest hover:border-[#FFB000] hover:text-[#FFB000] hover:shadow-[0_0_15px_rgba(255,176,0,0.2)] transition-all"
-                whileTap={{ scale: 0.95 }}
-                onClick={() => onAnalyzeFurther && onAnalyzeFurther(personality?.style)}
-              >
-                ANALYZE FURTHER
-              </motion.button>
-              <button className="text-[#888888] hover:text-white text-xs font-bold uppercase self-center transition-colors hover:underline"
-                style={{ textDecorationColor: advColor }}
-                onClick={() => setAdvDismissed(true)}>DISMISS</button>
-            </div>
-          </div>
-        </motion.div>
-      )
-    }
-
-  // default: metrics
-  return wrap('Mix Analysis', '#FFB000', 'analytics', (
-    <div className="grid grid-cols-2 gap-1.5">
-      <MetricBar label="L/R Balance" val={lPct>rPct?`${lPct-rPct}% L`:rPct>lPct?`${rPct-lPct}% R`:'CENTER'} color="#DC143C" pct={Math.abs(lPct-rPct)} />
-      <MetricBar label="Side Content" val={`${Math.round(Math.abs(meterL-meterR)*150)}%`} color="#FFB000" pct={Math.round(Math.abs(meterL-meterR)*150)} />
-      <MetricBar label="LUFS" val={lufs>-60?`${lufs.toFixed(1)}`:'--'} color="#00E5FF" pct={Math.max(0,Math.min(100,(lufs+60)/60*100))} />
-      <MetricBar label="Peak" val={peak>-60?`${peak.toFixed(1)} dB`:'--'} color="#FF6B35" pct={Math.max(0,Math.min(100,(peak+60)/60*100))} />
-      <MetricBar label="Dynamic Range" val={`${(72-(lPct+rPct)/2*0.72).toFixed(1)} dB`} color="#00FFaa" pct={Math.max(0,100-(lPct+rPct)/2)} />
-      <MetricBar label="Low End" val={`${Math.round((meterL*0.4+0.3)*100)}%`} color="#DC143C" pct={Math.round((meterL*0.4+0.3)*100)} />
-    </div>
-  ))
-}
+import BoxChat from './boxes/BoxChat'
 
 export default function App() {
   // ── setup state ───────────────────────────────────────────────────
@@ -572,6 +59,8 @@ export default function App() {
   // ── Analyzer / Spectrum ────────────────────────────────────────────
   const [spectrum, setSpectrum] = useState([])
   const [correlation, setCorrelation] = useState(0)
+  const [clippingCount, setClipping] = useState(0)
+  const [cpuUsage, setCpuUsage] = useState({ cpuPercent: 0, peakTimeUs: 0 })
 
   // ── MIDI Learn ─────────────────────────────────────────────────────
   const [midiLearnWidget, setMidiLearnWidget] = useState(null)
@@ -644,6 +133,7 @@ export default function App() {
 
   // ── active side module ────────────────────────────────────────────
   const [activeMod, setActiveMod] = useState('ai')
+  const [boxLayout, setBoxLayout] = useState('inline')
 
   const sideModules = [
     { id: 'ai',        icon: 'memory',                     label: 'AI' },
@@ -823,6 +313,13 @@ export default function App() {
     const unsubAnalyzer = whycremisi.on('daw.analyzer', (payload) => {
       if (payload.spectrum) setSpectrum(payload.spectrum)
       if (payload.correlation !== undefined) setCorrelation(payload.correlation)
+      if (payload.truePeak !== undefined) setPeak(payload.truePeak)
+      if (payload.clippingCount !== undefined) setClipping(payload.clippingCount)
+    })
+
+    // CPU usage
+    const unsubCpu = whycremisi.on('plugin.cpu', (payload) => {
+      setCpuUsage(payload)
     })
 
     // AI Action log
@@ -894,7 +391,7 @@ export default function App() {
       intervalsRef.current = []
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
-      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer();       unsubActionLog(); unsubPersAction(); unsubPersContext()
+      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubCpu();       unsubActionLog(); unsubPersAction(); unsubPersContext()
       unsubWsStyle(); unsubWsMemory(); unsubWsBootstrap(); unsubWsRefresh()
       whycremisi.disconnect()
     }
@@ -1000,22 +497,55 @@ export default function App() {
     setMessages(prev => prev.filter(m => m.type !== 'advisory'))
   }, [])
 
-    // ── detect boxchat type from prompt + response ────────────────────
+    // ── detect boxchat type(s) from prompt + response ─────────────────
     const detectBoxType = (prompt = '', response = '') => {
-    	const t = (prompt + ' ' + response).toLowerCase()
-    	if (/spectrum|spectral|fft|analyzer|freq\s*response/.test(t)) return 'spectral'
-    	if (/clip|clipping|distort|overload|red|limit(?!er)|ceiling/.test(t)) return 'clipping'
-    	if (/vector|scope|vectorscope|xy|phase\s*meter/.test(t)) return 'vectorscope'
-    	if (/stereo|width|side|balance|phase(?!\s*meter)|mono|correlation/.test(t)) return 'stereo'
-    	if (/lufs|loud|peak|rms|dynamic|crest|limiter/.test(t)) return 'loudness'
-    	if (/eq|frequen|bass|sub|mid|high|treble|presence|air|100hz|200hz|1khz|4khz/.test(t)) return 'eq'
-    	if (/volume|gain|fader|db(?!\s)|level/.test(t)) return 'slider'
-    	if (/pan|panning|position|center|left|right/.test(t)) return 'knob'
-    	if (/play|stop|record|transport|bpm|tempo/.test(t)) return 'transport'
-    	if (/compres|ratio|attack|release|threshold|knee/.test(t)) return 'compressor'
-    	if (/search|internet|find|look\s*up|web|google/.test(t)) return 'advisory'
-    	if (/chain|apply|execute|suggest|recommend|action|advisory|do it|should|could|try|consider/.test(t)) return 'advisory'
-    	return 'metrics'
+      const t = (prompt + ' ' + response).toLowerCase()
+
+      // first try explicit user requests (e.g. "show me eq", "show eq and spectral")
+      const showMatch = t.match(/show\s+(?:me\s+)?(?:the\s+)?(\w+(?:\s*(?:and|,|&)\s*\w+)*)/)
+      if (showMatch) {
+        const raw = showMatch[1]
+        const explicit = []
+        const words = raw.split(/\s+(?:and|,|&)\s+|\s+/)
+        for (const w of words) {
+          if (/eq|frequen|bass|sub|mid|high|treble|presence|air/.test(w)) explicit.push('eq')
+          else if (/spectrum|spectral|fft|analyzer/.test(w)) explicit.push('spectral')
+          else if (/clip|clipping|distort|overload/.test(w)) explicit.push('clipping')
+          else if (/vector|scope|vectorscope|xy|phase/.test(w)) explicit.push('vectorscope')
+          else if (/stereo|width|side|balance|correlation/.test(w)) explicit.push('stereo')
+          else if (/loud|lufs|peak|rms|dynamic|crest/.test(w)) explicit.push('loudness')
+          else if (/volume|gain|fader|level/.test(w)) explicit.push('slider')
+          else if (/pan|panning|position/.test(w)) explicit.push('knob')
+          else if (/play|stop|record|transport|bpm|tempo/.test(w)) explicit.push('transport')
+          else if (/compres|ratio|attack|release|threshold|knee/.test(w)) explicit.push('compressor')
+          else if (/advisory|suggest|recommend/.test(w)) explicit.push('advisory')
+        }
+        if (explicit.length > 0) {
+          const dedup = [...new Set(explicit)]
+          if (/all|everything|every/.test(raw)) return ['vectorscope','stereo','loudness','clipping','eq','spectral','slider','knob','transport','compressor','metrics']
+          return dedup
+        }
+      }
+      if (/show\s+(?:me\s+)?(?:the\s+)?(?:all|everything)/.test(t)) {
+        return ['vectorscope','stereo','loudness','clipping','eq','spectral','slider','knob','transport','compressor','metrics']
+      }
+
+      // content-based matching
+      const types = []
+      if (/spectrum|spectral|fft|analyzer|freq\s*response/.test(t)) types.push('spectral')
+      if (/clip|clipping|distort|overload|red|limit(?!er)|ceiling/.test(t)) types.push('clipping')
+      if (/vector|scope|vectorscope|xy|phase\s*meter/.test(t)) types.push('vectorscope')
+      if (/stereo|width|side|balance|phase(?!\s*meter)|mono|correlation/.test(t)) types.push('stereo')
+      if (/lufs|loud|peak|rms|dynamic|crest|limiter/.test(t)) types.push('loudness')
+      if (/eq|frequen|bass|sub|mid|high|treble|presence|air|100hz|200hz|1khz|4khz/.test(t)) types.push('eq')
+      if (/volume|gain|fader|db(?!\s)|level/.test(t)) types.push('slider')
+      if (/pan|panning|position|center|left|right/.test(t)) types.push('knob')
+      if (/play|stop|record|transport|bpm|tempo/.test(t)) types.push('transport')
+      if (/compres|ratio|attack|release|threshold|knee/.test(t)) types.push('compressor')
+      if (/search|internet|find|look\s*up|web|google/.test(t)) types.push('advisory')
+      if (/chain|apply|execute|suggest|recommend|action|advisory|do it|should|could|try|consider/.test(t)) types.push('advisory')
+      if (types.length === 0) types.push('metrics')
+      return types
     }
 
   // ── Dynamic suggestion engine from analyzer data + personality ──
@@ -1149,11 +679,12 @@ export default function App() {
 
           {/* Audio stats */}
           <div className="flex items-center gap-2">
-            {[
-              ['SR',  pluginStats.sampleRate ? `${(pluginStats.sampleRate/1000).toFixed(0)}k` : '—'],
-              ['BUF', pluginStats.bufferSize ?? '—'],
-              ['LAT', pluginStats.latencyMs  ? `${pluginStats.latencyMs.toFixed(0)}ms` : '—'],
-            ].map(([k, v]) => (
+              {[
+                ['SR',  pluginStats.sampleRate ? `${(pluginStats.sampleRate/1000).toFixed(0)}k` : '—'],
+                ['BUF', pluginStats.bufferSize ?? '—'],
+                ['LAT', pluginStats.latencyMs  ? `${pluginStats.latencyMs.toFixed(0)}ms` : '—'],
+                ['CPU', cpuUsage.cpuPercent ? `${cpuUsage.cpuPercent.toFixed(1)}%` : '—'],
+              ].map(([k, v]) => (
               <div key={k} className="flex flex-col items-center leading-none">
                 <span className="text-xs font-mono text-[#888] uppercase">{k}</span>
                 <span className="text-xs font-bold text-white tracking-tight">{v}</span>
@@ -1383,6 +914,10 @@ export default function App() {
             </div>
             <div className="flex items-center gap-3 text-xs font-mono text-[#888888]">
               <span>v4.2.0</span>
+              {['inline','grid','popover'].map(l => (
+                <span key={l} className={`text-[9px] uppercase tracking-widest cursor-pointer px-1 ${boxLayout === l ? 'text-[#FFB000] border-b border-[#FFB000]' : 'text-[#666] hover:text-[#FFB000]'}`}
+                  onClick={() => setBoxLayout(l)}>{l}</span>
+              ))}
               {dawConnected && <span className="text-[#00FFaa]">● DAW SYNC</span>}
               {personality?.style && personality.style !== 'warm' && (
                 <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-px border"
@@ -1534,7 +1069,7 @@ export default function App() {
                             />
                           )}
                         </p>
-                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} suggestion={currentSuggestion} />}
+                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} suggestion={currentSuggestion} layout={boxLayout} clippingCount={clippingCount} cpuUsage={cpuUsage} />}
                       </div>
                     </motion.div>
                   )

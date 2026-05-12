@@ -145,6 +145,7 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     oscBridge->setMidiHandler(midiHandler.get());
     oscBridge->setParameterMapper(paramMapper.get());
     oscBridge->setPluginChain(pluginChain.get());
+    oscBridge->setPluginProcessor(this);
     paramMapper->setOscBridge(oscBridge.get());
 
     // Route widget changes from UI → ParameterMapper → MIDI/OSC + Personality + Memory
@@ -247,6 +248,19 @@ WhyCremisiProcessor::WhyCremisiProcessor()
             DBG("[WhyCremisi] OscBridge error: " + oscBridge->getLastError());
     }
 
+    // Initialize factory programs (presets)
+    programNames.add("Default");
+    programNames.add("Bright Mix");
+    programNames.add("Warm Mix");
+    programNames.add("Dark Mix");
+    programNames.add("Mastering");
+    programNames.add("Broadcast");
+    programNames.add("Low End Focus");
+    programNames.add("Airy Highs");
+
+    // Broadcast initial program state
+    broadcastCurrentProgram();
+
     // Listen for parameter changes to propagate to bridge dynamically
     parameters.addParameterListener("dawOscPort", this);
 }
@@ -295,6 +309,12 @@ void WhyCremisiProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     {
         logToFile("[WhyCremisi] OscBridge is NULL!");
     }
+
+    // Initialize parameter smoothing (100ms ramp for zipper-free automation)
+    smoothedGain.reset(sampleRate, 0.1);
+    smoothingInitialised = true;
+    if (gainParam1)
+        smoothedGain.setTargetValue(juce::Decibels::decibelsToGain(gainParam1->load()));
 
     // Prepare DSP Engine
     if (dspEngine)
@@ -352,10 +372,26 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     for (int i = totalIn; i < totalOut; ++i)
         buffer.clear(i, 0, numSamples);
 
+    // Apply smoothed gain for zipper-free automation
     if (gainParam1 != nullptr)
-        buffer.applyGain(juce::Decibels::decibelsToGain(gainParam1->load()));
+    {
+        float targetGain = juce::Decibels::decibelsToGain(gainParam1->load());
+        if (smoothingInitialised)
+        {
+            smoothedGain.setTargetValue(targetGain);
+            if (!smoothedGain.isSmoothing())
+                buffer.applyGain(targetGain);
+            else
+                buffer.applyGain(smoothedGain.getNextValue());
+        }
+        else
+        {
+            buffer.applyGain(targetGain);
+        }
+    }
 
     // ── DSP Processing ──────────────────────────────────────────────
+    double processStart = juce::Time::getMillisecondCounterHiRes();
     if (dspEngine)
     {
         dspEngine->process(buffer);
@@ -366,29 +402,27 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         {
             const auto& data = dspAnalyzer->getData();
 
-            // Compute correlation directly
-            float corr = 0.0f;
-            if (buffer.getNumChannels() >= 2)
-            {
-                int n = buffer.getNumSamples();
-                float sumL = 0.0f, sumR = 0.0f, sumLR = 0.0f, sumL2 = 0.0f, sumR2 = 0.0f;
-                for (int s = 0; s < n; ++s)
-                {
-                    float l = buffer.getSample(0, s);
-                    float r = buffer.getSample(1, s);
-                    sumL += l; sumR += r;
-                    sumLR += l * r;
-                    sumL2 += l * l; sumR2 += r * r;
-                }
-                float denom = std::sqrt((sumL2 - sumL * sumL / n) * (sumR2 - sumR * sumR / n));
-                if (denom > 1e-10f)
-                    corr = (sumLR - sumL * sumR / n) / denom;
-            }
-
             std::vector<float> spectrum = data.magnitudes;
-            oscBridge->updateAnalyzer(corr, data.loudness, spectrum);
+            oscBridge->updateAnalyzer(data.corrMono, data.momentaryLoudness, data.shortTermLoudness,
+                                      data.integratedLoudness, data.truePeak, spectrum, data.clippingCount);
             dspAnalyzer->clearNewData();
         }
+    }
+
+    // CPU usage tracking
+    double elapsedUs = (juce::Time::getMillisecondCounterHiRes() - processStart) * 1000.0;
+    lastProcessTimeUs = elapsedUs;
+    if (elapsedUs > peakProcessTimeUs) peakProcessTimeUs = elapsedUs;
+    avgProcessTimeUs = avgProcessTimeUs * (1.0 - 1.0 / TIMING_HISTORY_SIZE) + elapsedUs / TIMING_HISTORY_SIZE;
+    cpuCounter++;
+
+    if (oscBridge && cpuCounter % cpuBroadcastEvery == 0)
+    {
+        double blockTimeUs = (static_cast<double>(currentBufferSize) / currentSampleRate) * 1e6;
+        double cpuPct = juce::jmin(100.0, (avgProcessTimeUs / blockTimeUs) * 100.0);
+        oscBridge->broadcastPluginStats(currentSampleRate, currentBufferSize);
+        oscBridge->broadcastCpuUsage(cpuPct, peakProcessTimeUs);
+        peakProcessTimeUs = avgProcessTimeUs;  // reset peak to average for next window
     }
 
     // ── Universal transport via getPlayHead() ───────────────────────
@@ -483,15 +517,96 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
 }
 
 //==============================================================================
-void WhyCremisiProcessor::setCurrentProgram(int index) { juce::ignoreUnused(index); }
-const juce::String WhyCremisiProcessor::getProgramName(int index) { juce::ignoreUnused(index); return "Default"; }
-void WhyCremisiProcessor::changeProgramName(int index, const juce::String& newName) { juce::ignoreUnused(index, newName); }
+void WhyCremisiProcessor::setCurrentProgram(int index)
+{
+    if (index >= 0 && index < (int)programNames.size() && index != currentProgramIndex.load())
+    {
+        currentProgramIndex.store(index);
+        broadcastCurrentProgram();
+    }
+}
+
+const juce::String WhyCremisiProcessor::getProgramName(int index)
+{
+    if (index >= 0 && index < (int)programNames.size())
+        return programNames[index];
+    return "Default";
+}
+
+void WhyCremisiProcessor::changeProgramName(int index, const juce::String& newName)
+{
+    if (index >= 0 && index < (int)programNames.size() && newName.isNotEmpty())
+        programNames.set(index, newName);
+}
+
+int WhyCremisiProcessor::addProgram(const juce::String& name)
+{
+    programNames.add(name.isNotEmpty() ? name : ("Program " + juce::String(programNames.size() + 1)));
+    return programNames.size() - 1;
+}
+
+bool WhyCremisiProcessor::removeProgram(int index)
+{
+    if (index < 0 || index >= (int)programNames.size())
+        return false;
+    programNames.remove(index);
+    if (currentProgramIndex.load() >= (int)programNames.size())
+        currentProgramIndex.store(juce::jmax(0, (int)programNames.size() - 1));
+    return true;
+}
+
+bool WhyCremisiProcessor::savePreset(const juce::File& file)
+{
+    juce::MemoryBlock data;
+    getStateInformation(data);
+    return file.replaceWithData(data.getData(), data.getSize());
+}
+
+bool WhyCremisiProcessor::loadPreset(const juce::File& file)
+{
+    juce::MemoryBlock data;
+    if (!file.loadFileAsData(data))
+        return false;
+    setStateInformation(data.getData(), (int)data.getSize());
+    return true;
+}
+
+void WhyCremisiProcessor::broadcastCurrentProgram()
+{
+    if (!oscBridge || !oscBridge->isRunning())
+        return;
+
+    nlohmann::json msg;
+    msg["type"] = "plugin.program";
+    msg["timestamp"] = juce::Time::currentTimeMillis();
+    msg["payload"]["currentIndex"] = currentProgramIndex.load();
+    msg["payload"]["currentName"] = getProgramName(currentProgramIndex.load()).toStdString();
+
+    nlohmann::json names = nlohmann::json::array();
+    for (int i = 0; i < (int)programNames.size(); ++i)
+        names.push_back(programNames[i].toStdString());
+    msg["payload"]["programs"] = names;
+
+    oscBridge->broadcastJson(msg);
+}
 
 //==============================================================================
 void WhyCremisiProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
     state.setProperty("dawIp", dawIp, nullptr);
+    state.setProperty("currentProgram", currentProgramIndex.load(), nullptr);
+    {
+        juce::ValueTree programsTree("programs");
+        for (int i = 0; i < (int)programNames.size(); ++i)
+        {
+            juce::ValueTree prog("program");
+            prog.setProperty("name", programNames[i], nullptr);
+            prog.setProperty("index", i, nullptr);
+            programsTree.appendChild(prog, nullptr);
+        }
+        state.appendChild(programsTree, nullptr);
+    }
     if (midiHandler)
         state.appendChild(midiHandler->save(), nullptr);
     if (pluginChain)
@@ -512,6 +627,27 @@ void WhyCremisiProcessor::setStateInformation(const void* data, int sizeInBytes)
         auto restored = juce::ValueTree::fromXml(*xmlState);
         parameters.replaceState(restored);
         dawIp = restored.getProperty("dawIp", "127.0.0.1").toString();
+
+        // Restore program/preset state
+        {
+            auto programsTree = restored.getChildWithName("programs");
+            if (programsTree.isValid())
+            {
+                juce::StringArray restoredNames;
+                for (int i = 0; i < programsTree.getNumChildren(); ++i)
+                {
+                    auto prog = programsTree.getChild(i);
+                    if (prog.hasProperty("name"))
+                        restoredNames.add(prog.getProperty("name").toString());
+                }
+                if (restoredNames.size() > 0)
+                    programNames = restoredNames;
+            }
+            currentProgramIndex.store((int)restored.getProperty("currentProgram", 0));
+            if (currentProgramIndex.load() >= (int)programNames.size())
+                currentProgramIndex.store(0);
+        }
+        broadcastCurrentProgram();
         if (midiHandler)
         {
             auto midiTree = restored.getChildWithName("midiMappings");

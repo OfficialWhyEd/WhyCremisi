@@ -13,6 +13,11 @@
 #include "MidiHandler.h"
 #include "ParameterMapper.h"
 #include "PluginChain.h"
+#include "PluginProcessor.h"
+#include "IDawHandler.h"
+#include "ReaperDawHandler.h"
+#include "AbletonDawHandler.h"
+#include "DawDetector.h"
 #include <chrono>
 #include <random>
 
@@ -23,9 +28,14 @@ OscBridge::OscBridge(int oscReceivePort, int wsListenPort)
     oscHandler = std::make_unique<OscHandler>(oscPort);
     wsServer = std::make_unique<WebSocketServer>(wsPort);
 
-    // OSC → WebSocket: set callback for incoming OSC from DAW
+    // OSC → WebSocket: set callback for incoming OSC from DAW (float values)
     oscHandler->setCallback([this](const juce::String& address, float value) {
         onOscReceived(address, value);
+    });
+
+    // OSC → WebSocket: set callback for incoming OSC string values (track names, etc.)
+    oscHandler->setStringCallback([this](const juce::String& address, const juce::String& value) {
+        onOscStringReceived(address, value);
     });
 
     // WebSocket → OSC: set callback for incoming messages from UI
@@ -108,8 +118,8 @@ void OscBridge::timerCallback()
     {
         if (lastTimerTimeMs != 0)
             currentPosition += (now - lastTimerTimeMs) / 1000.0f;
-        // Broadcast transport every ~1s (every 30 ticks)
-        if (++meterTickCounter % 30 == 0)
+        // Broadcast transport at ~10Hz (every 3 ticks at 33ms = ~100ms)
+        if (++meterTickCounter % 3 == 0)
             broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
     }
     lastTimerTimeMs = now;
@@ -122,13 +132,29 @@ void OscBridge::timerCallback()
     if (meterTickCounter % 10 == 0)
     {
         float corr = lastCorrelation.load();
-        float loud = lastLoudness.load();
+        float momentary = lastMomentaryLoudness.load();
+        float shortTerm = lastShortTermLoudness.load();
+        float integrated = lastIntegratedLoudness.load();
+        float truePeak = lastTruePeak.load();
+        int clipCount = lastClippingCount.load();
 
         nlohmann::json ana;
         ana["type"] = "daw.analyzer";
         ana["timestamp"] = juce::Time::currentTimeMillis();
         ana["payload"]["correlation"] = corr;
-        ana["payload"]["loudness"] = loud;
+        ana["payload"]["loudnessMomentary"] = momentary;
+        ana["payload"]["loudnessShortTerm"] = shortTerm;
+        ana["payload"]["loudnessIntegrated"] = integrated;
+        ana["payload"]["truePeak"] = truePeak;
+        ana["payload"]["clippingCount"] = clipCount;
+
+        // Include device stats
+        double latencyMs = (lastBufferSize > 0 && lastSampleRate > 0)
+                           ? (lastBufferSize / lastSampleRate) * 1000.0
+                           : 0.0;
+        ana["payload"]["sampleRate"] = lastSampleRate;
+        ana["payload"]["bufferSize"] = lastBufferSize;
+        ana["payload"]["latencyMs"] = latencyMs;
 
         {
             const juce::ScopedLock sl(spectrumLock);
@@ -155,6 +181,14 @@ bool OscBridge::isRunning() const
 void OscBridge::onOscReceived(const juce::String& address, float value)
 {
     log("[OSC->WS] " + address + " = " + juce::String(value, 3));
+
+    // Auto-detect DAW type from first incoming OSC address
+    if (!dawHandler)
+    {
+        auto type = detectDawType(address);
+        if (type != DawType::Unknown)
+            ensureDawHandler(type);
+    }
 
     // Rate-limited session logging (SessionManager handles the interval itself)
     if (sessionManager)
@@ -202,6 +236,35 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         if (sessionManager) sessionManager->logTransport(false, currentIsRecording, currentBpm, currentPosition);
     }
+    // ── Ableton Live: Track parameters & discovery ──────────────────────────
+    else if (address == "/live/song/get/num_tracks")
+    {
+        abletonDetected = true;
+        abletonTrackCount = (int)value;
+        log("[Ableton] Detected! " + juce::String(abletonTrackCount) + " tracks");
+        discoverAbletonTracks();
+    }
+    else if (address.startsWith("/live/track/") && address.endsWith("/get/volume"))
+    {
+        handleAbletonTrackData(address, value);
+    }
+    else if (address.startsWith("/live/track/") && address.endsWith("/get/panning"))
+    {
+        handleAbletonTrackData(address, value);
+    }
+    else if (address.startsWith("/live/track/") && address.endsWith("/get/mute"))
+    {
+        handleAbletonTrackData(address, value);
+    }
+    else if (address.startsWith("/live/track/") && address.endsWith("/get/solo"))
+    {
+        handleAbletonTrackData(address, value);
+    }
+    else if (address.startsWith("/live/track/") && address.endsWith("/get/sends"))
+    {
+        // Sends come back as individual float values per send slot
+        handleAbletonTrackData(address, value);
+    }
     // ── REAPER / generic OSC transport fallback ─────────────────────────────
     else if (address == "/play" || (address.contains("play") && !address.contains("back")))
     {
@@ -235,9 +298,15 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
     // ── Track data → forward to UI ──────────────────────────────────────────
     else
     {
-        // REAPER-specific track parameter handling
+        // REAPER-specific track parameter handling + Ableton Live feedback
         auto extractTrackId = [&](const juce::String& suffix) -> int {
             juce::String idStr = address.fromFirstOccurrenceOf("/track/", false, true);
+            idStr = idStr.upToLastOccurrenceOf(suffix, false, true);
+            return idStr.getIntValue();
+        };
+
+        auto extractAbletonTrackId = [&](const juce::String& suffix) -> int {
+            juce::String idStr = address.fromFirstOccurrenceOf("/live/track/", false, true);
             idStr = idStr.upToLastOccurrenceOf(suffix, false, true);
             return idStr.getIntValue();
         };
@@ -245,7 +314,25 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
         int trackId = 0;
         bool handled = true;
 
-        if (address.startsWith("/track/") && address.endsWith("/volume"))
+        // Ableton set operation feedback (e.g. /live/track/N/set/volume)
+        if (address.startsWith("/live/track/") && address.contains("/set/"))
+        {
+            if (address.endsWith("/volume"))
+                trackId = extractAbletonTrackId("/set/volume");
+            else if (address.endsWith("/panning"))
+                trackId = extractAbletonTrackId("/set/panning");
+            else if (address.endsWith("/mute"))
+                trackId = extractAbletonTrackId("/set/mute");
+            else if (address.endsWith("/solo"))
+                trackId = extractAbletonTrackId("/set/solo");
+            else
+                handled = false;
+
+            if (handled)
+                handleAbletonTrackData(address, value);
+        }
+        // REAPER-specific
+        else if (address.startsWith("/track/") && address.endsWith("/volume"))
             trackId = extractTrackId("/volume");
         else if (address.startsWith("/track/") && address.endsWith("/pan"))
             trackId = extractTrackId("/pan");
@@ -267,6 +354,209 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
             forwardOscToUI(address, value);
         }
     }
+}
+
+//==============================================================================
+// OSC string callback — handles track names, device names, etc.
+//==============================================================================
+void OscBridge::onOscStringReceived(const juce::String& address, const juce::String& value)
+{
+    log("[OSC->WS][STR] " + address + " = \"" + value + "\"");
+
+    if (sessionManager)
+        sessionManager->logOscEvent(address, 0.0f);
+
+    // Ableton Live: track name
+    if (address.startsWith("/live/track/") && address.endsWith("/get/name"))
+    {
+        handleAbletonTrackString(address, value);
+    }
+    else
+    {
+        forwardOscToUI(address, 0.0f);
+    }
+}
+
+//==============================================================================
+// Ableton Live: handle track parameter data
+//==============================================================================
+void OscBridge::handleAbletonTrackData(const juce::String& address, float value)
+{
+    // Parse track ID from /live/track/N/... address
+    juce::String remainder = address.fromFirstOccurrenceOf("/live/track/", false, true);
+    int trackId = remainder.upToFirstOccurrenceOf("/", false, true).getIntValue();
+    if (trackId < 1) return;
+
+    abletonDetected = true;
+    auto& track = abletonTracks[trackId];
+
+    if (address.endsWith("/volume") || address.endsWith("/get/volume"))
+        track.volume = value;
+    else if (address.endsWith("/panning") || address.endsWith("/get/panning"))
+        track.pan = value;
+    else if (address.endsWith("/mute") || address.endsWith("/get/mute"))
+        track.mute = (value > 0.5f);
+    else if (address.endsWith("/solo") || address.endsWith("/get/solo"))
+        track.solo = (value > 0.5f);
+    else if (address.contains("/send"))
+    {
+        // Extract send index: /live/track/N/sends/M/value
+        auto sendStr = remainder.fromFirstOccurrenceOf("/sends/", false, true);
+        int sendIdx = sendStr.upToFirstOccurrenceOf("/", false, true).getIntValue();
+        if (sendIdx >= (int)track.sends.size())
+            track.sends.resize(sendIdx + 1, 0.0f);
+        track.sends[sendIdx] = value;
+    }
+
+    broadcastAbletonTrack(trackId);
+}
+
+void OscBridge::handleAbletonTrackString(const juce::String& address, const juce::String& value)
+{
+    // Parse track ID from /live/track/N/get/name
+    juce::String remainder = address.fromFirstOccurrenceOf("/live/track/", false, true);
+    int trackId = remainder.upToFirstOccurrenceOf("/", false, true).getIntValue();
+    if (trackId < 1) return;
+
+    abletonDetected = true;
+    auto& track = abletonTracks[trackId];
+    track.name = value;
+
+    broadcastAbletonTrack(trackId);
+}
+
+//==============================================================================
+// Ableton Live: broadcast track info to UI
+//==============================================================================
+void OscBridge::broadcastAbletonTrack(int trackId)
+{
+    auto it = abletonTracks.find(trackId);
+    if (it == abletonTracks.end()) return;
+    const auto& track = it->second;
+
+    nlohmann::json msg;
+    msg["type"] = "daw.track";
+    msg["timestamp"] = juce::Time::currentTimeMillis();
+    msg["payload"]["trackId"] = trackId;
+    msg["payload"]["name"] = track.name.toStdString();
+    msg["payload"]["volume"] = track.volume;
+    msg["payload"]["pan"] = track.pan;
+    msg["payload"]["isMuted"] = track.mute;
+    msg["payload"]["isSoloed"] = track.solo;
+    msg["payload"]["source"] = "ableton";
+
+    nlohmann::json sendArray = nlohmann::json::array();
+    for (auto s : track.sends)
+        sendArray.push_back(s);
+    msg["payload"]["sends"] = sendArray;
+    msg["payload"]["numDevices"] = track.numDevices;
+
+    if (wsServer)
+        wsServer->broadcast(msg);
+}
+
+//==============================================================================
+// Ableton Live: auto-discover all tracks on connection
+//==============================================================================
+void OscBridge::discoverAbletonTracks()
+{
+    if (!abletonDetected || abletonTrackCount == 0)
+    {
+        // Send a query to learn the track count
+        sendOscToDaw("/live/song/get/num_tracks", 0.0f);
+        return;
+    }
+
+    log("[Ableton] Discovering " + juce::String(abletonTrackCount) + " tracks...");
+
+    // Enumerate all tracks
+    for (int i = 1; i <= abletonTrackCount; ++i)
+    {
+        juce::String prefix = "/live/track/" + juce::String(i);
+        sendOscToDaw(prefix + "/get/name", 0.0f);
+        sendOscToDaw(prefix + "/get/volume", 0.0f);
+        sendOscToDaw(prefix + "/get/panning", 0.0f);
+        sendOscToDaw(prefix + "/get/mute", 0.0f);
+        sendOscToDaw(prefix + "/get/solo", 0.0f);
+    }
+
+    // Broadcast list of discovered track IDs to UI
+    nlohmann::json msg;
+    msg["type"] = "daw.trackList";
+    msg["timestamp"] = juce::Time::currentTimeMillis();
+    msg["payload"]["count"] = abletonTrackCount;
+    msg["payload"]["source"] = "ableton";
+    nlohmann::json ids = nlohmann::json::array();
+    for (int i = 1; i <= abletonTrackCount; ++i)
+        ids.push_back(i);
+    msg["payload"]["trackIds"] = ids;
+    if (wsServer)
+        wsServer->broadcast(msg);
+}
+
+//==============================================================================
+// DAW detection & handler management
+//==============================================================================
+DawType OscBridge::detectDawType(const juce::String& address) const
+{
+    return DawDetector::detectFromOscAddress(address);
+}
+
+void OscBridge::ensureDawHandler(DawType type)
+{
+    if (type == static_cast<DawType>(0) || type == DawType::Unknown)
+        return;
+    if (dawHandler && detectedDawType == type)
+        return;
+
+    detectedDawType = type;
+    dawHandler = nullptr; // reset
+
+    switch (type)
+    {
+        case DawType::Reaper:
+            dawHandler = std::make_unique<ReaperDawHandler>();
+            break;
+        case DawType::Ableton:
+            dawHandler = std::make_unique<AbletonDawHandler>();
+            break;
+        default:
+            break;
+    }
+
+    if (dawHandler)
+    {
+        // Wire up the send callback so handler can emit OSC
+        dawHandler->setSendCallback([this](const juce::String& addr, float val) {
+            sendOscToDaw(addr, val);
+        });
+
+        log("[DAW] Handler created: " + dawHandler->getName());
+        broadcastDawInfo();
+    }
+}
+
+IDawHandler* OscBridge::getOrCreateDawHandler(DawType type)
+{
+    if (!dawHandler)
+        ensureDawHandler(type);
+    return dawHandler.get();
+}
+
+void OscBridge::broadcastDawInfo()
+{
+    if (!wsServer || !wsServer->isRunning())
+        return;
+
+    nlohmann::json msg;
+    msg["type"] = "daw.info";
+    msg["timestamp"] = juce::Time::currentTimeMillis();
+    msg["payload"]["detected"] = dawHandler ? dawHandler->getName().toStdString()
+                                            : DawDetector::getName(detectedDawType).toStdString();
+    msg["payload"]["oscHelp"] = DawDetector::getOscHelp(detectedDawType).toStdString();
+    msg["payload"]["abletonDetected"] = abletonDetected;
+
+    wsServer->broadcast(msg);
 }
 
 //==============================================================================
@@ -381,10 +671,18 @@ void OscBridge::handleClientConnection(int clientId, bool connected)
         // Push real audio device stats (SR, buffer, latency)
         broadcastPluginStats(lastSampleRate, lastBufferSize);
 
-        // Request fresh transport state from Ableton (triggers OSC responses)
+        // Request fresh transport + track state from Ableton
         sendOscToDaw("/live/song/get/is_playing", 0.0f);
         sendOscToDaw("/live/song/get/tempo", 0.0f);
         sendOscToDaw("/live/song/get/current_song_time", 0.0f);
+        sendOscToDaw("/live/song/get/num_tracks", 0.0f);
+
+        // Broadcast current program state to newly connected client
+        if (pluginProcessor)
+            pluginProcessor->broadcastCurrentProgram();
+
+        // Broadcast DAW detection info
+        broadcastDawInfo();
     }
     else
     {
@@ -411,37 +709,62 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
 
     broadcastSessionEvent("daw_command", {{"command", command.toStdString()}});
 
-    // AbletonOSC + REAPER dual-send + optimistic local state update.
-    // Optimistic update: change internal state and broadcast immediately so
-    // the UI is responsive even before DAW feedback arrives over OSC.
+    // Use DAW handler if detected, otherwise fall back to dual-send
+    auto sendViaHandler = [&](auto&& handlerFn, auto&& fallbackFn) {
+        if (dawHandler)
+            handlerFn();
+        else
+            fallbackFn();
+    };
+
     if (command == "play")
     {
         currentIsPlaying = true;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        sendOscToDaw("/live/song/start_playing", 1.0f);  // AbletonOSC
-        sendOscToDaw("/play", 1.0f);                      // REAPER
+        sendViaHandler(
+            [&]() { dawHandler->play(); },
+            [&]() {
+                sendOscToDaw("/live/song/start_playing", 1.0f);
+                sendOscToDaw("/play", 1.0f);
+            }
+        );
     }
     else if (command == "stop")
     {
         currentIsPlaying = false;
         currentPosition  = 0.0f;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        sendOscToDaw("/live/song/stop_playing", 1.0f);   // AbletonOSC
-        sendOscToDaw("/stop", 1.0f);                      // REAPER
+        sendViaHandler(
+            [&]() { dawHandler->stop(); },
+            [&]() {
+                sendOscToDaw("/live/song/stop_playing", 1.0f);
+                sendOscToDaw("/stop", 1.0f);
+            }
+        );
     }
     else if (command == "record")
     {
         currentIsRecording = !currentIsRecording;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        sendOscToDaw("/live/song/record", 1.0f);          // AbletonOSC
-        sendOscToDaw("/record", 1.0f);                    // REAPER
+        sendViaHandler(
+            [&]() { dawHandler->record(); },
+            [&]() {
+                sendOscToDaw("/live/song/record", 1.0f);
+                sendOscToDaw("/record", 1.0f);
+            }
+        );
     }
     else if (command == "pause")
     {
         currentIsPlaying = false;
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        sendOscToDaw("/live/song/continue_playing", 1.0f);
-        sendOscToDaw("/pause", 1.0f);
+        sendViaHandler(
+            [&]() { dawHandler->pause(); },
+            [&]() {
+                sendOscToDaw("/live/song/continue_playing", 1.0f);
+                sendOscToDaw("/pause", 1.0f);
+            }
+        );
     }
     else if (command == "setTempo")
     {
@@ -450,8 +773,13 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
             float bpm = payload["bpm"].get<float>();
             currentBpm = bpm;
             broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-            sendOscToDaw("/live/song/set/tempo", bpm);    // AbletonOSC
-            sendOscToDaw("/tempo", bpm);                   // REAPER
+            sendViaHandler(
+                [&]() { dawHandler->setTempo(bpm); },
+                [&]() {
+                    sendOscToDaw("/live/song/set/tempo", bpm);
+                    sendOscToDaw("/tempo", bpm);
+                }
+            );
         }
     }
     else if (command == "setVolume")
@@ -460,10 +788,14 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         {
             int trackId = payload["trackId"].get<int>();
             float db = payload["valueDb"].get<float>();
-            // AbletonOSC uses 0-1 linear; convert from dB
             float linear = juce::Decibels::decibelsToGain(db);
-            sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/volume", linear);
-            sendOscToDaw("/track/" + juce::String(trackId) + "/volume", db);
+            sendViaHandler(
+                [&]() { dawHandler->setVolume(trackId, linear); },
+                [&]() {
+                    sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/volume", linear);
+                    sendOscToDaw("/track/" + juce::String(trackId) + "/volume", db);
+                }
+            );
         }
     }
     else if (command == "setPan")
@@ -472,8 +804,13 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         {
             int trackId = payload["trackId"].get<int>();
             float pan = payload["value"].get<float>();
-            sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/panning", pan);
-            sendOscToDaw("/track/" + juce::String(trackId) + "/pan", pan);
+            sendViaHandler(
+                [&]() { dawHandler->setPan(trackId, pan); },
+                [&]() {
+                    sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/panning", pan);
+                    sendOscToDaw("/track/" + juce::String(trackId) + "/pan", pan);
+                }
+            );
         }
     }
     else if (command == "muteTrack")
@@ -481,9 +818,14 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         if (payload.contains("trackId") && payload.contains("muted"))
         {
             int trackId = payload["trackId"].get<int>();
-            float muted = payload["muted"].get<bool>() ? 1.0f : 0.0f;
-            sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/mute", muted);
-            sendOscToDaw("/track/" + juce::String(trackId) + "/mute", muted);
+            bool muted = payload["muted"].get<bool>();
+            sendViaHandler(
+                [&]() { dawHandler->muteTrack(trackId, muted); },
+                [&]() {
+                    sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/mute", muted ? 1.0f : 0.0f);
+                    sendOscToDaw("/track/" + juce::String(trackId) + "/mute", muted ? 1.0f : 0.0f);
+                }
+            );
         }
     }
     else if (command == "soloTrack")
@@ -491,17 +833,34 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         if (payload.contains("trackId") && payload.contains("soloed"))
         {
             int trackId = payload["trackId"].get<int>();
-            float soloed = payload["soloed"].get<bool>() ? 1.0f : 0.0f;
-            sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/solo", soloed);
-            sendOscToDaw("/track/" + juce::String(trackId) + "/solo", soloed);
+            bool soloed = payload["soloed"].get<bool>();
+            sendViaHandler(
+                [&]() { dawHandler->soloTrack(trackId, soloed); },
+                [&]() {
+                    sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/solo", soloed ? 1.0f : 0.0f);
+                    sendOscToDaw("/track/" + juce::String(trackId) + "/solo", soloed ? 1.0f : 0.0f);
+                }
+            );
         }
     }
     else if (command == "requestTransport")
     {
-        // Poll AbletonOSC for current state
-        sendOscToDaw("/live/song/get/is_playing", 0.0f);
-        sendOscToDaw("/live/song/get/tempo", 0.0f);
-        sendOscToDaw("/live/song/get/current_song_time", 0.0f);
+        sendViaHandler(
+            [&]() {
+                // Ableton: poll for current state
+                if (dawHandler->isAbleton())
+                {
+                    sendOscToDaw("/live/song/get/is_playing", 0.0f);
+                    sendOscToDaw("/live/song/get/tempo", 0.0f);
+                    sendOscToDaw("/live/song/get/current_song_time", 0.0f);
+                }
+            },
+            [&]() {
+                sendOscToDaw("/live/song/get/is_playing", 0.0f);
+                sendOscToDaw("/live/song/get/tempo", 0.0f);
+                sendOscToDaw("/live/song/get/current_song_time", 0.0f);
+            }
+        );
     }
     else if (command == "setGain")
     {
@@ -603,6 +962,139 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     else if (command == "spectralAnalyze")
     {
         sendOscToDaw("/whycremisi/spectral_analyze", 1.0f);
+    }
+    else if (command == "gotoMarker")
+    {
+        int idx = payload.contains("index") ? payload["index"].get<int>() : 0;
+        sendViaHandler(
+            [&]() { dawHandler->gotoMarker(idx); },
+            [&]() {
+                sendOscToDaw("/live/song/goto/marker", (float)idx);
+                sendOscToDaw("/marker/goto", (float)idx);
+            }
+        );
+    }
+    else if (command == "setMarker")
+    {
+        sendViaHandler(
+            [&]() { dawHandler->setMarker(); },
+            [&]() {
+                sendOscToDaw("/live/song/set/marker", 1.0f);
+                sendOscToDaw("/marker/insert", 1.0f);
+            }
+        );
+    }
+    else if (command == "prevMarker")
+    {
+        sendViaHandler(
+            [&]() { dawHandler->prevMarker(); },
+            [&]() {
+                sendOscToDaw("/live/song/prev/marker", 1.0f);
+                sendOscToDaw("/marker/prev", 1.0f);
+            }
+        );
+    }
+    else if (command == "nextMarker")
+    {
+        sendViaHandler(
+            [&]() { dawHandler->nextMarker(); },
+            [&]() {
+                sendOscToDaw("/live/song/next/marker", 1.0f);
+                sendOscToDaw("/marker/next", 1.0f);
+            }
+        );
+    }
+    else if (command == "selectTrack")
+    {
+        if (payload.contains("index"))
+        {
+            int idx = payload["index"].get<int>();
+            sendViaHandler(
+                [&]() { dawHandler->selectTrack(idx); },
+                [&]() {
+                    sendOscToDaw("/live/track/" + juce::String(idx) + "/select", 1.0f);
+                }
+            );
+        }
+    }
+    else if (command == "fxParam")
+    {
+        if (payload.contains("trackId") && payload.contains("fxId") && payload.contains("paramId") && payload.contains("value"))
+        {
+            int t = payload["trackId"].get<int>();
+            int f = payload["fxId"].get<int>();
+            int p = payload["paramId"].get<int>();
+            float v = payload["value"].get<float>();
+            sendViaHandler(
+                [&]() { dawHandler->setFxParam(t, f, p, v); },
+                [&]() {
+                    sendOscToDaw("/live/track/" + juce::String(t) + "/fx/" + juce::String(f) + "/param/" + juce::String(p), v);
+                }
+            );
+        }
+    }
+    else if (command == "programSelect")
+    {
+        if (payload.contains("index") && pluginProcessor)
+        {
+            int idx = payload["index"].get<int>();
+            pluginProcessor->setCurrentProgram(idx);
+        }
+    }
+    else if (command == "programList")
+    {
+        if (pluginProcessor)
+        {
+            nlohmann::json msg;
+            msg["type"] = "plugin.program";
+            msg["timestamp"] = juce::Time::currentTimeMillis();
+            msg["payload"]["currentIndex"] = pluginProcessor->getCurrentProgram();
+            msg["payload"]["currentName"] = pluginProcessor->getProgramName(
+                pluginProcessor->getCurrentProgram()).toStdString();
+            nlohmann::json names = nlohmann::json::array();
+            auto progs = pluginProcessor->getProgramNames();
+            for (int i = 0; i < progs.size(); ++i)
+                names.push_back(progs[i].toStdString());
+            msg["payload"]["programs"] = names;
+            wsServer->broadcast(msg);
+        }
+    }
+    else if (command == "programRename")
+    {
+        if (payload.contains("index") && payload.contains("name") && pluginProcessor)
+        {
+            int idx = payload["index"].get<int>();
+            std::string name = payload["name"];
+            pluginProcessor->changeProgramName(idx, juce::String(name.data()));
+        }
+    }
+    else if (command == "presetSave")
+    {
+        if (payload.contains("path") && pluginProcessor)
+        {
+            std::string path = payload["path"];
+            pluginProcessor->savePreset(juce::File(juce::String(path.data())));
+        }
+        else if (pluginProcessor)
+        {
+            // Save to default location
+            auto defaultDir = juce::File::getSpecialLocation(
+                juce::File::userDocumentsDirectory).getChildFile("WhyCremisi/Presets");
+            defaultDir.createDirectory();
+            auto file = defaultDir.getChildFile(
+                pluginProcessor->getProgramName(pluginProcessor->getCurrentProgram()) + ".whycremisi");
+            pluginProcessor->savePreset(file);
+            log("[CMD] Preset saved: " + file.getFullPathName());
+        }
+    }
+    else if (command == "presetLoad")
+    {
+        if (payload.contains("path") && pluginProcessor)
+        {
+            std::string path = payload["path"];
+            pluginProcessor->loadPreset(juce::File(juce::String(path.data())));
+            log("[CMD] Preset loaded: " + juce::String(path.data()));
+        }
     }
     else
     {
@@ -1117,10 +1609,29 @@ void OscBridge::broadcastPluginStats(double sampleRate, int bufferSize)
         " LAT=" + juce::String(latencyMs, 2) + "ms");
 }
 
-void OscBridge::updateAnalyzer(float correlation, float loudness, const std::vector<float>& spectrum)
+void OscBridge::broadcastCpuUsage(double cpuPct, double peakTimeUs)
+{
+    if (!wsServer || !wsServer->isRunning() || wsServer->getConnectedClientsCount() == 0)
+        return;
+
+    nlohmann::json msg;
+    msg["type"] = "plugin.cpu";
+    msg["id"]   = nullptr;
+    msg["timestamp"] = juce::Time::currentTimeMillis();
+    msg["payload"]["cpuPercent"] = cpuPct;
+    msg["payload"]["peakTimeUs"] = peakTimeUs;
+
+    wsServer->broadcast(msg);
+}
+
+void OscBridge::updateAnalyzer(float correlation, float momentaryLoudness, float shortTermLoudness, float integratedLoudness, float truePeak, const std::vector<float>& spectrum, int clippingCount)
 {
     lastCorrelation.store(correlation);
-    lastLoudness.store(loudness);
+    lastMomentaryLoudness.store(momentaryLoudness);
+    lastShortTermLoudness.store(shortTermLoudness);
+    lastIntegratedLoudness.store(integratedLoudness);
+    lastTruePeak.store(truePeak);
+    lastClippingCount.store(clippingCount);
     const juce::ScopedLock sl(spectrumLock);
     lastSpectrum = spectrum;
 }

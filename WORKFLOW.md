@@ -17,8 +17,8 @@ Evitare conflitti e sovrascritture quando i tre agenti lavorano sullo stesso rep
 | Agente | Proprietario | Branch | Prefix commit |
 |--------|-------------|--------|---------------|
 | **Aura** | Carlo | `aura` | `AURA:` |
-| **Heartbroken** | Edo (precedente) | `heartbroken` | `HEARTBROKEN:` |
-| **Heartbroken-Claude** | Edo (Claude) | `heartbroken-claude` | `HEARTBROKEN-CLAUDE:` |
+| **Big Pickle (OpenCode)** | Edo | `big-pickle` | `BIG-PICKLE:` |
+| **Heartbroken-Claude** | Edo | `heartbroken-claude` | `HEARTBROKEN-CLAUDE:` |
 
 **Merge verso master:** sempre con messaggio `heartbroken - claude version: <descrizione>`
 

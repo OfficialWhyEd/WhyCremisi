@@ -89,6 +89,9 @@ target_sources(WhyCremisiVSTPlugin
         src/dsp/Limiter.cpp
         src/dsp/Analyzer.cpp
         src/dsp/DSPEngine.cpp
+        src/daw/ReaperDawHandler.cpp
+        src/daw/AbletonDawHandler.cpp
+        src/daw/DawDetector.cpp
 )
 
 # ==============================================================================
@@ -127,6 +130,7 @@ target_include_directories(WhyCremisiVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bridge
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/daw
 )
 
 # ==============================================================================

@@ -7,7 +7,16 @@
   Receive: UDP listener on configurable port (default 9000)
   Send: UDP to target host:port (default localhost:9001)
   
-  Phase 1 COMPLETE: Receive + Send
+  Sections:
+    Lifecycle        - constructor, destructor, start/stop
+    Transport Cmds   - DAW transport: play, stop, record, etc.
+    Mixer Cmds       - Track mixer: gain, pan, mute, solo
+    Sending          - sendMessage overloads + sendTarget
+    Query            - learn mode, port, connection status
+    Callbacks        - incoming message routing
+    OSC Parsing      - binary packet -> address + values
+    OSC Encoding     - address/type/arg -> binary packet
+    Logging          - thread-safe message log
   ==============================================================================
 */
 
@@ -25,63 +34,78 @@ class OscHandler
 {
 public:
     //==============================================================================
-    /** Callback type for incoming OSC messages */
-    using OscCallback = std::function<void(const juce::String& address, float value)>;
-    using OscStringCallback = std::function<void(const juce::String& address, const juce::String& value)>;
-    
-    // Legacy callback type for backward compatibility
-    using MessageCallback = std::function<void(const juce::String&, const juce::var&)>;
-    
+    // Lifecycle
     //==============================================================================
     OscHandler(int port = 9000);
     ~OscHandler();
-    
-    //==============================================================================
-    /** Start/stop the OSC listener */
+
     void start();
     void stop();
     bool isRunning() const { return running.load() && connected.load(); }
-    
+    void setPort(int newPort);
+    int getPort() const { return port; }
+
     //==============================================================================
-    /** Send OSC messages to DAW */
+    // DAW Transport Commands
+    //==============================================================================
+    void sendPlay();
+    void sendStop();
+    void sendRecord();
+    void sendTransportAction(const juce::String& action);
+    void sendTempo(float bpm);
+    void sendPosition(double seconds);
+
+    //==============================================================================
+    // DAW Mixer Commands
+    //==============================================================================
+    void sendGainChange(int trackIndex, float gainDb);
+    void sendPanChange(int trackIndex, float pan);
+    void sendMuteToggle(int trackIndex);
+    void sendSoloToggle(int trackIndex);
+    void sendMixerCommand(const juce::String& command, float value);
+
+    //==============================================================================
+    // Sending
+    //==============================================================================
     void sendMessage(const juce::String& address, float value);
     void sendMessage(const juce::String& address, const juce::String& value);
     void sendMessage(const juce::String& address, int value);
-    
-    //==============================================================================
-    /** Set send target (DAW OSC address) */
     void setSendTarget(const juce::String& host, int sendPort);
     juce::String getSendHost() const { return sendHost; }
     int getSendPort() const { return sendPortNum; }
-    
+
     //==============================================================================
-    /** Set callbacks for incoming messages */
-    void setCallback(OscCallback callback);
-    void setStringCallback(OscStringCallback callback);
-    void setMessageCallback(MessageCallback callback);  // Legacy support
-    
+    // Query / Status
     //==============================================================================
-    /** Set the OSC port (restarts listener if running) */
-    void setPort(int newPort);
-    int getPort() const { return port; }
-    
-    //==============================================================================
-    /** Get the OSC message log (for UI/debug) */
-    const juce::StringArray& getMessageLog() const { return messageLog; }
-    void clearLog() { messageLog.clear(); }
-    
-    //==============================================================================
-    /** OSC learn mode - captures next incoming address */
     void enableLearnMode(bool enable) { learnMode.store(enable); }
     bool isInLearnMode() const { return learnMode.load(); }
     juce::String getLearnedAddress() const { return learnedAddress; }
-    
-    //==============================================================================
-    /** Connection status */
     bool isConnected() const { return connected.load(); }
     int getMessagesReceived() const { return messagesReceived.load(); }
 
+    //==============================================================================
+    // Callbacks (incoming message routing)
+    //==============================================================================
+    using OscCallback = std::function<void(const juce::String& address, float value)>;
+    using OscStringCallback = std::function<void(const juce::String& address, const juce::String& value)>;
+    using MessageCallback = std::function<void(const juce::String&, const juce::var&)>;
+
+    void setCallback(OscCallback cb);
+    void setStringCallback(OscStringCallback cb);
+    void setMessageCallback(MessageCallback cb);
+
+    //==============================================================================
+    // Logging
+    //==============================================================================
+    using LogCallback = std::function<void(const juce::String& line)>;
+    void setLogCallback(LogCallback cb) { logCallback = std::move(cb); }
+    const juce::StringArray& getMessageLog() const { return messageLog; }
+    void clearLog() { messageLog.clear(); }
+    int getMessagesSent() const { return messagesSent.load(); }
+
 private:
+    //==============================================================================
+    // Internal State
     //==============================================================================
     int port;
     std::atomic<bool> running{false};
@@ -89,50 +113,53 @@ private:
     std::atomic<bool> learnMode{false};
     std::atomic<int> messagesReceived{0};
     std::atomic<int> messagesSent{0};
-    
     juce::String learnedAddress;
-    
+
     //==============================================================================
-    /** Listener thread */
+    // Listener Thread
+    //==============================================================================
     std::unique_ptr<std::thread> listenerThread;
     void listenerLoop();
-    
+
     //==============================================================================
-    /** Message parsing */
+    // OSC Packet Parsing
+    //==============================================================================
     void handleOscPacket(const char* data, int size);
-    void handleOscMessage(const juce::String& address, const juce::String& typeTag, 
+    void handleOscMessage(const juce::String& address, const juce::String& typeTag,
                           const char* arguments, int argSize);
-    
+
     //==============================================================================
-    /** Callbacks */
-    OscCallback callback;
-    OscStringCallback stringCallback;
-    MessageCallback messageCallback;  // Legacy
-    
+    // OSC Binary Encoding
     //==============================================================================
-    /** Message log (thread-safe via lock) */
-    juce::StringArray messageLog;
-    juce::CriticalSection logLock;
-    void addToLog(const juce::String& msg);
-    
-    //==============================================================================
-    /** UDP sockets */
-    std::unique_ptr<juce::DatagramSocket> socket;        // Receive socket
-    std::unique_ptr<juce::DatagramSocket> sendSocket;     // Send socket
-    
-    //==============================================================================
-    /** Send target */
-    juce::String sendHost = "127.0.0.1";
-    int sendPortNum = 9001;
-    
-    //==============================================================================
-    /** OSC binary encoding helpers */
     void writeOscAddress(juce::MemoryBlock& dest, const juce::String& address);
     void writeOscTypeTag(juce::MemoryBlock& dest, const juce::String& typeTag);
     void writeOscFloatArg(juce::MemoryBlock& dest, float value);
     void writeOscIntArg(juce::MemoryBlock& dest, int32_t value);
     void writeOscStringArg(juce::MemoryBlock& dest, const juce::String& value);
     void padToFourBytes(juce::MemoryBlock& dest);
-    
+
+    //==============================================================================
+    // Callback Storage
+    //==============================================================================
+    OscCallback callback;
+    OscStringCallback stringCallback;
+    MessageCallback messageCallback;
+
+    //==============================================================================
+    // Logging
+    //==============================================================================
+    juce::StringArray messageLog;
+    juce::CriticalSection logLock;
+    LogCallback logCallback;
+    void addToLog(const juce::String& msg);
+
+    //==============================================================================
+    // UDP Sockets
+    //==============================================================================
+    std::unique_ptr<juce::DatagramSocket> socket;
+    std::unique_ptr<juce::DatagramSocket> sendSocket;
+    juce::String sendHost = "127.0.0.1";
+    int sendPortNum = 9001;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OscHandler)
 };
