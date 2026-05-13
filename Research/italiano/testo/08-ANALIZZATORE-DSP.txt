@@ -1,0 +1,243 @@
+Paper 08 — Analizzatore DSP: Motore di Analisi Audio
+FFT, LUFS, Correlazione, Clipping e Metriche in Tempo Reale
+
+────────────────────────────────────────────────────────────────
+  WHYCREMISI RESEARCH PAPERS — N.08
+  Motore di Analisi Audio DSP
+  
+  "Misurare il suono è il primo passo per dominarlo."
+────────────────────────────────────────────────────────────────
+
+Categoria: Elaborazione Audio / DSP
+Dipendenze: JUCE DSP Module, FFTReal, SIMD (opzionale)
+
+---
+
+1. Panoramica del Motore DSP
+
+Il motore di analisi DSP di WhyCremisi e il sistema sensoriale dell'agente AI — il suo equivalente del sistema uditivo umano. Opera su buffer audio in tempo reale (64-1024 samples) e produce metriche strutturate che alimentano sia la UI che i modelli decisionali dell'AI.
+
+Ogni blocco audio processato attraversa l'intera catena di analisi. I risultati sono aggregati ogni 16ms (circa 62 volte al secondo a 48kHz) e inviati al layer di presentazione.
+
+---
+
+2. Architettura dell'Analizzatore
+
+2.1 Catena di Analisi FFT
+
+L'analisi spettrale si basa su una FFT con finestra di Hanning:
+
+Parametri FFT:
+─────────────────────────────────────────────
+Dimensione finestra    2048 samples
+Hop size               512 samples     (75% overlap)
+Finestra               Hanning (von Hann)
+Zero-padding           No
+Frequenza minima       21.5 Hz  (a 48kHz)
+Frequenza massima      24.0 kHz  (Nyquist)
+Risoluzione in freq.   23.4 Hz  (per bin a 48kHz)
+─────────────────────────────────────────────
+
+[NOTE] L'overlap del 75% garantisce una risoluzione temporale di ~10.6ms a 48kHz, sufficiente per transienti percettivamente rilevanti mantenendo il carico computazionale sotto controllo.
+
+2.2 Bins dello Spettro
+
+Con FFT size 2048, il numero di bins utili (fino a Nyquist) e 1024. Ogni bin ha una larghezza di ~23.4Hz a 48kHz.
+
+BIN   FREQUENZA (Hz)   NOTE
+──────────────────────────────────────────
+0     0               DC component (scartato)
+1     23.4             Sub bass estremo
+2     46.9             Sub bass
+...
+43    1007.8           Medio-bassi
+128   3000.0           Presence
+256   6000.0           High-mid
+512   12000.0           Brillanza
+1024  24000.0           Nyquist (scartato)
+──────────────────────────────────────────
+
+2.3 Canali Stereo
+
+L'analisi viene eseguita indipendentemente su entrambi i canali.
+
+---
+
+3. Metriche di Loudness
+
+3.1 Algoritmo LUFS (ITU-R BS.1770-4)
+
+WhyCremisi implementa la misurazione di loudness secondo lo standard ITU-R BS.1770-4, con tre finestre temporali:
+
+Tipo                    Finestra     Aggiornamento
+──────────────────────────────────────────────────────
+Momentary (M)           400 ms       Ogni 100 ms
+Short-term (S)          3 s          Ogni 300 ms
+Integrated (I)          ∞ (cumul.)   A ogni blocco
+──────────────────────────────────────────────────────
+
+3.2 Gating
+
+L'ITU-R BS.1770-4 richiede un gating a due stadi per il calcolo dell'Integrated LUFS:
+
+Stadio 1 — Absolute Gate:
+ Soglia: -70 LUFS (silenzio)
+ Blocchi sotto soglia → esclusi dal calcolo
+
+Stadio 2 — Relative Gate:
+ Calcola loudness media dei blocchi sopra -70 LUFS
+ Soglia relativa: media + 10 LUFS (tipico: -25 LUFS)
+ Blocchi sotto soglia relativa → esclusi dal calcolo
+
+Risultato: Integrated LUFS = media dei blocchi rimanenti
+
+[NOTE] Il gating relativo e cruciale: senza di esso, il silenzio tra le tracce abbasserebbe artificialmente il valore di loudness integrato, portando a masterizzazioni non conformi agli standard broadcast.
+
+3.3 True Peak
+
+Il True Peak viene calcolato via oversampling 4x con filtro di ricostruzione sinc. Precisione: ±0.1 dB (conforme a ITU-R BS.1770-4). Utilizzato per limitazione sicura e mastering broadcast.
+
+---
+
+4. Correlazione di Fase
+
+4.1 Phase Correlation Meter
+
+Il correlation meter misura la similarita tra canale sinistro e destro con valori normalizzati [-1.0, 1.0]. +1.0 indica identita perfetta (mono), 0.0 indica completa decorrelazione, -1.0 indica inversione di fase totale. Il colore dell'indicatore segue la palette WhyCremisi: cremisi #DC143C per out of phase, amber #FFB000 per mid range, verde per in phase.
+
+4.2 Analisi Mid/Side
+
+Mid (M) = L + R (tutto cio che e comune), Side (S) = L - R (tutto cio che e differenza). Il rapporto M/S indica se il mix e stretto e centrato (M >> S), bilanciato e spazioso (M = S), o largo con possibili problemi di fase (M << S).
+
+4.3 Vectorscope / Phase Scope
+
+Il vectorscope e un display L/R a 2D che traccia l'ampiezza istantanea. Una linea a 45° indica mono perfetto, un cerchio indica stereo bilanciato, una linea orizzontale indica solo canale sinistro, una linea verticale indica fuori fase di 180°.
+
+---
+
+5. Clipping Detection
+
+5.1 Peak Hold con RMS
+
+Il rilevatore di clipping opera con soglia configurabile [-∞ .. 0] dBFS (default -0.5 dBFS), decay regolabile 0.5-10 dB/s, hold 0-5000 ms, history buffer degli ultimi 1024 eventi.
+
+5.2 History Buffer
+
+Ogni evento di clipping registra: timestamp (campione assoluto), track index, channel index (0=L, 1=R), e peak value in dBFS. La history supporta auto-reset con modalita: manuale, timeout, threshold, o track change.
+
+---
+
+6. Spettro di Frequenza
+
+6.1 Scala Logaritmica 20Hz-20kHz
+
+L'asse delle frequenze viene mappato in scala logaritmica per corrispondere alla percezione umana. Formula: freq = 20 * pow(20000/20, pixel / larghezza).
+
+6.2 Bande di Frequenza Aggregate
+
+I 1024 bins FFT vengono aggregati in 7 bande musicali:
+
+Banda          Range         Bins FFT   Colore UI
+──────────────────────────────────────────────────────
+Sub           20 - 60 Hz     0 - 2      #DC143C  (cremisi)
+Bass          60 - 250 Hz    2 - 10     #FF6B6B
+Low-Mid       250 - 500 Hz   10 - 21    #FFB000  (amber)
+Mid           500 - 2 kHz    21 - 85    #FFD700
+High-Mid      2 - 6 kHz      85 - 256   #22c55e  (green)
+Presence      6 - 10 kHz     256 - 426  #00E5FF  (cyan AI)
+Brilliance    10 - 20 kHz    426 - 853  #00FFaa  (verde OK)
+──────────────────────────────────────────────────────
+
+6.3 Peak Hold Spettrale
+
+Decadimento: 2 dB/s (regolabile 0.5-10), hold iniziale 500 ms, aggiornamento a ogni frame FFT, reset su richiesta o cambio traccia.
+
+[NOTE] Il peak hold con decay lento e essenziale per identificare rapidamente frequenze problematiche: un picco momentaneo viene tenuto in vista abbastanza a lungo da consentire all'AI di suggerire un intervento EQ mirato.
+
+---
+
+7. Prestazioni e Ottimizzazione
+
+7.1 Gestione dei Buffer
+
+Gerarchia di buffer a 4 livelli:
+
+Livello 1: Buffer di ingresso (JUCE AudioBuffer), dimensione 64-1024 samples.
+Livello 2: Ring Buffer FFT (lock-free), dimensione 4096 samples (2x FFT size).
+Livello 3: Ring Buffer History (lock-free), dimensione 48000 samples (1s a 48kHz).
+Livello 4: ProcessAggregator (thread-safe), dimensione 64 frames (~1s di metrica).
+
+7.2 Ring Buffer Lock-Free
+
+Implementazione con std::array, std::atomic<size_t> per writePos e readPos, memory ordering relaxed per scrittura, release/acquire per sincronizzazione.
+
+7.3 Considerazioni SIMD
+
+Operazioni vettorizzabili: moltiplicazione finestra Hanning (~4x speedup), magnitudine sqrtf(real² + imag²) per 8 bins (~6x), LUFS mean square (~4x), correlazione prodotto L[n] × R[n] (~3x).
+
+7.4 Thread Safety
+
+Modello di concorrenza a tre thread:
+- THREAD AUDIO (real-time): scrittura ring buffer, FFT, LUFS momentary, clipping. Nessuna allocazione heap, nessun mutex, nessuna I/O.
+- THREAD UI (main thread): lettura risultati aggregati, rendering grafico, invio OSC/WebSocket.
+- THREAD AGGREGATORE (timer 16ms): lettura dati da buffer atomici, metriche derivate, smoothing, JSON.
+
+[NOTE] La separazione rigorosa tra thread audio e thread UI e fondamentale: il thread audio non puo mai essere bloccato da operazioni di I/O o allocazioni di memoria. Tutta la comunicazione avviene tramite strutture dati atomiche lock-free.
+
+---
+
+8. Integrazione con il Sistema
+
+8.1 Connessione con PluginProcessor
+
+PluginProcessor (JUCE) chiama Analyzer::processBlock() per ogni blocco audio, che esegue FFT, LUFS, correlazione e clipping per ogni canale, poi aggregazione con computeBands() e computeMeterData().
+
+8.2 Invio via OscBridge
+
+I dati aggregati vengono serializzati in JSON e inviati tramite WebSocket come messaggio di tipo "daw.analyzer", contenente timestamp, sample rate, e metriche di loudness, correlazione, clipping e spettro a bande.
+
+8.3 Frequenza di Aggiornamento
+
+LUFS Momentary: ogni 100 ms, latenza max 100 ms.
+LUFS Short-term: ogni 300 ms, latenza max 300 ms.
+LUFS Integrated: ogni blocco, cumulativo.
+True Peak: ogni blocco, latenza 5.3 ms.
+Correlazione: ogni 16 ms, latenza 16 ms.
+Clipping: ogni 16 ms, latenza 5.3 ms.
+Spettro bande: ogni 32 ms, latenza 32 ms.
+FFT spettro completo: ogni 16 ms, latenza 16 ms.
+
+---
+
+9. Limitazioni e Miglioramenti Futuri
+
+9.1 Limitazioni Attuali
+
+- FFT solo su CPU: elevato carico CPU con sample rate alti
+- Mono/Stereo soltanto: nessun supporto multicanale (5.1, 7.1)
+- Nessuna separazione fonica: battiti inmiscono mascheramento spettrale
+- Finestra Hanning fissa: migliorabile con finestre adattative
+- Nessuna compensazione ambientale: rumore di fondo non filtrato
+
+9.2 Miglioramenti Pianificati
+
+GPU Acceleration per FFT: utilizzo di CUDA/Metal Performance Shaders per FFT concorrenti su piu canali, speedup stimato 10-50x.
+
+Machine Learning per Source Separation: pre-processing con modello lightweight (Demucs o Spleeter ridotto) per separare il segnale in componenti (voce, batteria, basso, altro) prima dell'analisi.
+
+Espansione Multicanale: supporto futuro per 5.1 Surround, 7.1 Surround, Ambisonics (FFT sferica su ordine 1-3), oggetti audio.
+
+Miglioramenti Incrementali: finestre adattative (Kaiser), zero-padding opzionale, detection automatica del rumore di fondo, sonogramma in tempo reale con mel scale opzionale, cache degli spettri per confronto A/B.
+
+---
+
+Riferimenti
+
+1. ITU-R BS.1770-4 — Algorithms to measure audio programme loudness and true-peak audio level (2015)
+2. FFTPack / JUCE DSP Module — Implementazione FFT di riferimento
+3. Zolzer, U. — Digital Audio Signal Processing (3rd ed., Wiley 2022)
+4. Smith, J.O. — Spectral Audio Signal Processing (online, 2011)
+
+---
+
+→ Continua in: [Paper 09 — — ]

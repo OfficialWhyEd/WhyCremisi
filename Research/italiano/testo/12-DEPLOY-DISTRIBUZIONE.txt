@@ -1,0 +1,136 @@
+Paper 12 — Deploy e Distribuzione
+CI/CD, Code Signing, Notarizzazione e Installer
+
+SUMMARY: Questo paper descrive la pipeline di distribuzione completa di WhyCremisi,
+dalla build automation alla pubblicazione finale. Copre il versionamento semantico,
+la compilazione multi-piattaforma, la firma digitale (code signing), la notarizzazione
+macOS, la creazione di installer e l'automazione tramite GitHub Actions. L'obiettivo
+e garantire un rilascio sicuro, ripetibile e verificabile su macOS, Windows e Linux.
+
+
+1 — PANORAMICA DEL CICLO DI RILASCIO
+
+WhyCremisi adotta Semantic Versioning 2.0.0 (MAJOR.MINOR.PATCH):
+
+  Componente | Quando incrementa                      | Esempio
+  MAJOR      | Breaking change API/plugin               | 2.0.0
+  MINOR      | Nuova feature, backward-compatibile      | 1.3.0
+  PATCH      | Bug fix, nessuna nuova feature           | 1.2.1
+
+Il ciclo di rilascio segue quattro stadi:
+  Nightly -> Beta -> RC -> Stable
+
+I rami hotfix/* partono da main e vengono mergiati sia in main che in develop
+per evitare regressioni.
+
+
+2 — BUILD AUTOMATION
+
+WhyCremisi utilizza CMake presets per standardizzare la build su tutti i sistemi.
+
+Presets: debug, release, relwithdebinfo
+
+Su macOS: CMake con generatore Xcode, CMAKE_OSX_ARCHITECTURES = "x86_64;arm64"
+per produrre un universal binary. Code signing con certificato Developer ID
+Application.
+
+Su Windows: CMake con generatore "Visual Studio 17 2022", signing con signtool.exe
+e timestamp RFC 3161.
+
+Su Linux: CMake con generatore Ninja, packaging con CPack (DEB e RPM).
+
+
+3 — CODE SIGNING MACOS
+
+La firma digitale e obbligatoria per distribuire plugin audio su macOS.
+
+Certificato: Apple Developer ID Application (validita 3 anni).
+Entitlements: disable-library-validation, allow-unsigned-executable-memory,
+allow-dyld-environment-variables.
+
+Hardened Runtime abilitato via --options runtime.
+
+
+4 — CODE SIGNING WINDOWS
+
+Certificato Extended Validation (EV) Code Signing.
+
+Signtool:
+  signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a /v
+
+Il Windows Hardware Compatibility Program (WHCP) puo fornire firma Microsoft
+aggiuntiva per driver audio.
+
+
+5 — NOTARIZZAZIONE MACOS
+
+La notarizzazione verifica che il software sia privo di componenti dannosi.
+
+Pipeline:
+  1. ditto -c -k per creare zip
+  2. xcrun notarytool submit con apple-id, team-id, password
+  3. xcrun notarytool log per verificare stato
+  4. xcrun stapler staple per attaccare ticket al DMG
+
+
+6 — INSTALLER
+
+macOS: DMG con background personalizzato, symlink Applications, EULA,
+component plist (VST3/AU/Standalone).
+
+Windows: Inno Setup con componenti selezionabili: VST3 64-bit, AAX, Standalone.
+
+Linux: Pacchetti .deb e .rpm generati con CPack.
+
+
+7 — CANALI DI DISTRIBUZIONE
+
+Download diretti da sito web con checksum SHA-256 e firma GPG.
+
+Auto-update:
+  - macOS: Sparkle (appcast XML + DMG firmato)
+  - Windows: Squirrel (.nupkg + Release EXE)
+
+License key validation: POST /validate, risposta JWT token (30gg validita).
+Telemetry opt-in via Crashpad.
+
+
+8 — RELEASE AUTOMATION
+
+GitHub Actions workflow con matrix build su 3 OS:
+  1. Checkout + setup Python
+  2. CMake configure + build con preset release
+  3. Code signing (macOS: cert.p12 + keychain; Windows: cert.pfx + signtool)
+  4. Notarization (macOS: notarytool + stapler)
+  5. Packaging (CPack)
+  6. Upload to GitHub Release
+
+Changelog generato da git-cliff basato su conventional commits.
+
+Draft release PR verso main attiva build di staging, test suite e bozza
+release notes.
+
+
+9 — VERIFICA POST-RILASCIO
+
+Smoke test:
+  - codesign --verify e spctl su macOS
+  - signtool verify su Windows
+  - sha256sum verifica checksum
+
+Malware scan via VirusTotal API, XProtect, Windows Defender.
+
+DAW compatibility smoke test su: Ableton Live 12, Logic Pro 11, Pro Tools 2024,
+FL Studio 21, Cubase 13, REAPER 7, Studio One 6.
+
+
+RIFERIMENTI
+- CMake Presets
+- Apple Code Signing
+- Apple NotaryTool
+- Sparkle Framework
+- Squirrel.Windows
+- Inno Setup
+- git-cliff
+- VirusTotal API
+- JUCE Audio Plugin

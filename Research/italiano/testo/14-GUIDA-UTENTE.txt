@@ -1,0 +1,382 @@
+================================================================================
+  PAPER 14 — GUIDA PER L'UTENTE
+  WhyCremisi: Quick Start, Interfaccia e Flussi di Lavoro
+  "L'AI non si configura. Si usa."
+================================================================================
+
+Versione: 1.0
+Categoria: Manuale Utente
+Piattaforme: macOS 12+ | Windows 10+ | Linux (Wine/Ubuntu Studio)
+
+--------------------------------------------------------------------------------
+
+1. INTRODUZIONE
+
+1.1 Cos'è WhyCremisi
+
+WhyCremisi è un ponte VST3/AU potenziato dall'intelligenza artificiale che
+collega la tua DAW a un agente AI in grado di ascoltare, analizzare e
+controllare in tempo reale ogni parametro di ogni plugin nella tua sessione.
+
+Cosa FA:                            Cosa NON fa:
+- Ascolta il segnale audio in       - Non sostituisce il produttore
+  tempo reale
+- Controlla parametri di qualsiasi   - Non genera musica autonoma
+  plugin VST3/AU
+- Analizza spettro, fase, dinamiche  - Non carica plugin inesistenti
+  e LUFS
+- Propone e applica catene di        - Non modifica il routing audio
+  effetti
+- Ricorda preferenze e sessioni      - Non registra l'audio della sessione
+  passate
+- Comunica via testo e comandi       - Non bypassa la sicurezza della DAW
+  vocali
+
+1.2 Requisiti di Sistema
+
+Componente              | Requisito
+------------------------|-------------------------------------------
+Sistema Operativo       | macOS 12+ / Windows 10+ / Linux
+                        | (Wine 8+ o Ubuntu Studio 22.04+)
+DAW                     | Ableton Live 11+ / Reaper 6+ /
+                        | Logic Pro / FL Studio 21+ /
+                        | Pro Tools 2023+
+Formati Plugin          | VST3 / AU (macOS)
+Connessione             | Internet (necessaria per AI)
+RAM                     | 8 GB consigliati (16 GB per sessioni grandi)
+Spazio Disco            | 500 MB per l'installazione
+
+[NOTE] WhyCremisi funziona offline per il controllo plugin e l'analisi
+audio, ma richiede connessione internet per le funzionalità AI. In assenza
+di rete, l'interfaccia passa in modalità "solo analisi".
+
+--------------------------------------------------------------------------------
+
+2. INSTALLAZIONE
+
+2.1 Procedura di Installazione
+
+Passo 1: Scarica l'ultima release da whycremisi.com/download
+         File: WhyCremisi_x.x.x.dmg (macOS) / .exe (Windows)
+
+Passo 2: Monta il DMG (macOS) o esegui l'installer (Windows)
+         Trascina WhyCremisi.app nella cartella Applicazioni
+
+Passo 3: Avvia WhyCremisi (comparirà nell'icona di sistema)
+         Verifica che il servizio WebSocket sia in ascolto
+         (porta 9800 predefinita)
+
+Passo 4: Configura la DAW per rilevare il plugin
+         (Vedi sezione 2.2 per ogni DAW specifica)
+
+2.2 Attivazione nella DAW
+
+Ableton Live 11+:
+1. Apri Ableton > Preferences > Plug-Ins
+2. In "Plugin Sources" aggiungi: /Library/Audio/Plug-Ins/VST3
+3. Clicca "Rescan" (o "Rescan All" per pulire la cache)
+4. Trascina "WhyCremisi" dal Browser Plugin su una traccia
+
+Reaper 6+:
+1. Apri Reaper > Preferences > VST
+2. In "VST plugin paths" aggiungi: /Library/Audio/Plug-Ins/VST3
+3. Clicca "Clear cache / rescan"
+4. FX > "WhyCremisi" > Add
+
+Logic Pro:
+1. Apri Logic > Preferences > Audio > Plug-In Manager
+2. Verifica che WhyCremisi sia listato sotto "AU Instruments"
+3. Clicca "Reset & Rescan Selection" se non compare
+4. Inserisci su una traccia strumentale: Audio FX > WhyCremisi
+
+2.3 Configurazione WebSocket e OSC
+
+  WebSocket Server    ws://localhost:9800        [Attivo]
+  WebSocket Password  ************               [Modifica]
+  OSC Server          osc.udp://localhost:9000   [Attivo]
+  OSC Porta Input     9000
+  OSC Porta Output    9001
+
+[NOTE] Le porte WebSocket (9800) e OSC (9000-9001) sono predefinite.
+Se in conflitto con altri servizi, modificale in Impostazioni > Rete.
+
+--------------------------------------------------------------------------------
+
+3. PRIMA CONNESSIONE
+
+3.1 Avvio del Plugin
+
+1. Inserisci WhyCremisi su una traccia nella tua DAW
+2. L'interfaccia principale si apre automaticamente
+3. Osserva gli indicatori di stato nella barra superiore
+
+3.2 Stato della Connessione
+
+La barra di stato mostra tre indicatori colorati:
+
+Indicatore | Colore  | Significato
+DAW        | Verde   | Plugin rilevato e sincronizzato con l'host
+DAW        | Giallo  | Plugin caricato ma non sincronizzato
+DAW        | Rosso   | Plugin non rilevato - verifica installazione
+WS         | Verde   | Connessione WebSocket attiva
+WS         | Rosso   | WebSocket disconnesso - riavvia il servizio
+AI         | Verde   | Agente AI connesso e operativo
+AI         | Giallo  | AI in elaborazione
+AI         | Rosso   | AI non disponibile - verifica connessione internet
+
+3.3 Primo Comando
+
+Utente > "Ciao, analizza la traccia corrente"
+
+WhyCremisi > Analisi completata. Ecco un riepilogo:
+  LUFS Integrato:  -18.3  (ideale per mixing)
+  True Peak:       -2.1 dBTP
+  Range Dinamico:  12.4 dB
+  LRA:              8.7 dB
+  La traccia ha buona dinamica. Vuoi che suggerisca dei miglioramenti?
+
+[NOTE] Se l'AI non risponde entro 5 secondi, verifica la connessione
+internet in Impostazioni > Rete > Test Connessione.
+
+--------------------------------------------------------------------------------
+
+4. INTERFACCIA PRINCIPALE
+
+4.1 Trasport Bar
+
+Comando       | Icona | Descrizione
+Play          | >>    | Avvia la riproduzione
+Stop          | []    | Ferma la riproduzione
+Record        | O     | Avvia la registrazione
+Pause         | ||    | Mette in pausa
+Rewind        | |<<   | Torna all'inizio
+Fast Forward  | >>|   | Va alla fine
+
+BPM e timecode della sessione sono visualizzati nella barra.
+
+4.2 Level Meters
+
+Indicatori stereo con doppia lettura LUFS + Peak:
+- Barra verde:  livello sicuro (sotto -6 dBTP)
+- Barra gialla: livello caldo (-6 a -1 dBTP)
+- Barra rossa:  clipping (sopra -1 dBTP)
+
+4.3 Correlation Meter
+
+Misura la correlazione di fase tra canale L e R:
++1 = Fase perfetta (mono compatibile)
+ 0 = Nessuna correlazione
+-1 = Fuori fase (problemi)
+Valori ideali: +0.5 a +1.0 per mix bilanciati.
+
+4.4 Oscilloscopio
+
+Visualizzazione della forma d'onda in tempo reale. Utile per:
+- Identificare transienti (batteria, percussioni)
+- Visualizzare saturazione e clipping
+- Confrontare dinamiche pre/post processing
+
+4.5 Spettrogramma (FFT)
+
+Banda           | Range         | Uso Principale
+Sub-bass        | 20-60 Hz      | Kick, subwoofer
+Bass            | 60-250 Hz     | Basso, fondamentali
+Low-mid         | 250-500 Hz    | Corpo strumenti, mud
+Mid             | 500-2000 Hz   | Voce, chitarra, presenza
+Upper-mid       | 2000-4000 Hz  | Presenza, sibilanti
+High            | 4000-20000 Hz | Aria, brillantezza, hi-hat
+
+4.6 AI Chat Window
+
+Include cronologia chat, suggerimenti rapidi, campo di input,
+pulsanti Send e microfono.
+
+4.7 Plugin Browser
+
+Elenco di tutti i plugin VST3/AU rilevati nella sessione corrente,
+con nome, produttore, versione, stato e parametri esposti.
+
+4.8 Preset Manager
+
+Salva e carica configurazioni complete di EQ, compressione, riverbero,
+contesto AI e target LUFS.
+
+[NOTE] I preset salvano lo stato dei plugin controllati via WhyCremisi,
+non l'intera sessione DAW.
+
+--------------------------------------------------------------------------------
+
+5. FLUSSI DI LAVORO
+
+5.1 Mixing Assistito: "Compress the Vocals"
+
+1. WhyCremisi analizza la traccia vocale
+2. Propone compressore su Pro-C2: ratio 3:1, attack 8ms, release 45ms
+3. Utente clicca ANTEPRIMA > ascolta A/B
+4. Utente clicca APPLICA
+5. WhyCremisi registra nell'history
+
+5.2 Masterizzazione: "Apply a Master Chain for Spotify"
+
+1. WhyCremisi analizza master bus (LUFS -18.3, TP -2.1 dBTP)
+2. Propone catena: Pro-Q3 > Ozone 11 > Pro-C2 > Pro-L2
+3. Target: LUFS -14 integrato, TP -1.0 dBTP
+
+5.3 Suono Creativo: "70s Analog Synth"
+
+1. WhyCremisi analizza timbro corrente
+2. Applica catena: Saturn 2 (tape saturation), Pro-Q3 (low-pass),
+   RC-20 Retro Color (wow/flutter), Pro-R (spring reverb 2.5s)
+
+5.4 Risoluzione Problemi: "Fix the Bass Muddiness"
+
+1. WhyCremisi analizza FFT > accumulo a 180-350Hz
+2. Suggerisce Pro-Q3 banda peak a 240Hz, gain -4.2dB, Q 2.5
+
+--------------------------------------------------------------------------------
+
+6. COMANDI VOCALI/TESTO
+
+Categoria     | Esempio                              | Azione
+Volume/Gain   | "Set reverb send to -12 dB"          | Regola parametro
+Effetti       | "Add sidechain compression to the    | Crea catena
+              |  kick and bass"                      |
+Routing       | "Create a parallel compression chain | Routing + FX
+              |  on the drums"                       |
+Analisi       | "Analyze the master bus for          | Report dettagliato
+              |  clipping"                           |
+Confronto     | "Compare this mix with the reference | A/B analysis
+              |  track"                              |
+Preset        | "Load the 'Warm Vocal' preset"       | Carica preset
+Trasporto     | "Play from bar 24"                   | Controllo DAW
+EQ            | "High-pass the guitars at 120Hz"     | Filtro specifico
+
+Esempi dettagliati:
+
+"Set reverb to 25%"
+> Wet/Dry del riverbero portato da 40% a 25% sulla traccia corrente.
+
+"Add sidechain compression to the kick and bass"
+> 1. Crea compressore sulla traccia basso
+> 2. Imposta sidechain input dalla traccia kick
+> 3. Configura: ratio 4:1, attack 1ms, release 50ms
+
+"Analyze the master bus for clipping"
+> True Peak: -0.3 dBTP - Clipping rilevato!
+> 1,247 campioni di clipping (0.03% del totale)
+> Suggerimento: Riduci il gain del limiter di 1.5dB
+
+"Compare this mix with the reference track"
+> Confronto metriche: LUFS, True Peak, LRA, EQ Shape, Stereo Width
+
+--------------------------------------------------------------------------------
+
+7. PREFERENZE E IMPOSTAZIONI
+
+7.1 Interfaccia
+
+Tema:         Scuro / Chiaro / Sistema
+Lingua:       Italiano / English
+Dimensione:   100% / 125% / 150% / 200%
+Chat:         Normale / Compatta
+
+7.2 Shortcut da Tastiera
+
+Cmd+Enter       Invia comando chat
+Cmd+K           Focus sulla chat
+Cmd+L           Pulisci cronologia chat
+Cmd+M           Mute/Unmute output
+Cmd+,           Apri preferenze
+Space           Play/Pause DAW
+Cmd+Z           Annulla ultima azione AI
+Cmd+Shift+Z     Ripristina ultima azione
+Esc             Chiudi modale
+
+7.3 Comportamento AI
+
+Creativita:   Bassa / Media / Alta
+Verbosita:    Sintetico / Dettaglio / Esteso
+Auto-apply:   Mai / Dopo conferma / Always
+Volume Alert: Attivo / Disattivo (soglia -1 dBTP)
+
+[NOTE] "Auto-apply Always" e sconsigliato per utenti inesperti.
+WhyCremisi suggerisce di iniziare con "Dopo conferma".
+
+--------------------------------------------------------------------------------
+
+8. RISOLUZIONE DEI PROBLEMI
+
+PROBLEMA: Plugin non compare nella DAW
+> Verifica installazione in /Library/Audio/Plug-Ins/VST3/
+> Aggiorna cache DAW (Rescan All / Clear cache/rescan)
+> Logic richiede AU, FL Studio richiede VST3
+
+PROBLEMA: Nessun suono dopo l'inserimento
+> Disattiva bypass dal plugin header
+> Verifica che il segnale passi attraverso il plugin
+> Controlla modalita operativa
+
+PROBLEMA: AI non risponde
+> 1. Verifica connessione internet
+> 2. Controlla stato AI (rosso?)
+> 3. Riavvia servizio WhyCremisi
+> 4. Controlla firewall (porta 443)
+> 5. Riavvia DAW
+
+PROBLEMA: OSC non funziona
+> 1. Verifica porta 9000 non occupata
+> 2. Controlla target IP
+> 3. Reaper: Abilita "Control surface OSC"
+> 4. Test: nc -u localhost 9000
+
+PROBLEMA: WebSocket disconnesso
+> 1. Riavvia servizio WebSocket
+> 2. Verifica porta 9800 libera
+> 3. Controlla VPN/proxy
+> 4. Log: ~/Library/Logs/WhyCremisi/websocket.log
+
+Log Viewer: Menu > Aiuto > Log Viewer
+Livelli: INF, DBG, WRN, ERR, ACT
+
+--------------------------------------------------------------------------------
+
+9. CONSIGLI E BEST PRACTICE
+
+5 Consigli per Nuovi Utenti:
+
+1. INIZIA CON UN BRANO SEMPLICE
+   > 4-8 tracce, pochi plugin, genere conosciuto
+
+2. USA SEMPRE L'ANTEPRIMA
+   > Ascolta prima di applicare qualsiasi modifica
+   > Il pulsante ANTEPRIMA non modifica nulla
+
+3. VERIFICA I PARAMETRI PRIMA DI CONFERMARE
+   > Leggi i valori proposti dall'AI
+   > Regola manualmente se necessario
+
+4. USA I PRESET COME PUNTO DI PARTENZA
+   > I preset danno una base solida
+   > Personalizza sempre per il tuo brano
+
+5. DAI FEEDBACK COSTANTE ALL'AI
+   > "Too much compression" > l'AI regola
+   > "More presence" > l'AI aggiunge EQ
+   > Piu feedback = risultati migliori
+
+Workflow Ideale:
+FASE 1 - ANALISI:    Carica il brano > "Analyze the session"
+FASE 2 - MIX GREZZO: Correggi EQ, livelli base, bilanciamento stereo
+FASE 3 - MIX FINALE: Compressione, effetti, automazioni
+FASE 4 - MASTERING:  Catena master, verifica finale, export
+
+Errori Comuni da Evitare:
+- Applicare senza ascoltare (usa sempre ANTEPRIMA)
+- Comandi troppo vaghi (sii specifico)
+- Ignorare i warning AI (leggi i messaggi)
+- Non salvare preset (salva dopo ogni sessione)
+- Troppi comandi in fila (aspetta la risposta AI)
+
+================================================================================
+  "WhyCremisi non e un plugin: e un produttore in una scatola."
+================================================================================

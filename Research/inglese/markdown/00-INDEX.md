@@ -23,6 +23,14 @@
 | 05 | [Communication Protocol](papers/05-COMMUNICATION-PROTOCOL.md) | WebSocket, OSC, C++↔React bridge | ★★★★ |
 | 06 | [Implementation Roadmap](papers/06-IMPLEMENTATION-ROADMAP.md) | Phases, milestones, installer spec | ★★★★ |
 | 07 | [Brand & Asset Identity](papers/07-BRAND-ASSETS.md) | Logo, icons, platform specs | ★★★ |
+| 08 | [DSP Engine Deep Dive](papers/08-DSP-ENGINE.md) | FFT, LUFS, correlation, clipping, real-time metrics | ★★★★★ |
+| 09 | [AI Engine Architecture](papers/09-AI-ARCHITECTURE.md) | Providers, streaming, function calling, context | ★★★★★ |
+| 10 | [Security & Data Model](papers/10-SECURITY-DATA-MODEL.md) | Encryption, API keys, sandboxing, permissions | ★★★★ |
+| 11 | [Testing & QA Strategy](papers/11-TESTING-QA.md) | Unit tests, integration, E2E, CI/CD | ★★★★ |
+| 12 | [Deployment & Distribution](papers/12-DEPLOYMENT-DISTRIBUTION.md) | Code signing, notarization, installer | ★★★★ |
+| 13 | [Plugin Database Schema](papers/13-PLUGIN-DATABASE-SCHEMA.md) | JSON schema for 100+ supported plugins | ★★★ |
+| 14 | [User Guide](papers/14-USER-GUIDE.md) | Quick start, interface, workflows | ★★★ |
+| 15 | [Developer Guide](papers/15-DEVELOPER-GUIDE.md) | Contributing, dev environment, architecture | ★★★ |
 
 ---
 

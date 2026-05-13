@@ -1,0 +1,380 @@
+================================================================================
+  PAPER 14 — USER GUIDE
+  WhyCremisi: Quick Start, Interface and Workflows
+  "AI doesn't get configured. It gets used."
+================================================================================
+
+Version: 1.0
+Category: User Manual
+Platforms: macOS 12+ | Windows 10+ | Linux (Wine/Ubuntu Studio)
+
+--------------------------------------------------------------------------------
+
+1. INTRODUCTION
+
+1.1 What WhyCremisi Is
+
+WhyCremisi is an AI-powered VST3/AU plugin bridge that connects your DAW to
+an AI agent capable of listening, analyzing, and controlling every parameter
+of every plugin in your session in real time.
+
+What It DOES:                       What It DOES NOT:
+- Listens to audio signals in       - Does not replace the producer
+  real time
+- Controls any VST3/AU plugin       - Does not generate standalone music
+  parameter
+- Analyzes spectrum, phase,         - Does not load non-existent plugins
+  dynamics, LUFS
+- Proposes and applies effect       - Does not alter audio routing
+  chains
+- Remembers preferences and past    - Does not record session audio
+  sessions
+- Communicates via text and         - Does not bypass DAW security
+  voice commands
+
+1.2 System Requirements
+
+Component           | Requirement
+--------------------|-------------------------------------------
+Operating System    | macOS 12+ / Windows 10+ / Linux
+                    | (Wine 8+ or Ubuntu Studio 22.04+)
+DAW                 | Ableton Live 11+ / Reaper 6+ /
+                    | Logic Pro / FL Studio 21+ /
+                    | Pro Tools 2023+
+Plugin Formats      | VST3 / AU (macOS)
+Internet            | Required for AI features
+RAM                 | 8 GB recommended (16 GB for large sessions)
+Disk Space          | 500 MB for installation
+
+[NOTE] WhyCremisi works offline for plugin control and audio analysis, but
+requires an internet connection for AI features. When offline, the interface
+switches to "analysis-only" mode.
+
+--------------------------------------------------------------------------------
+
+2. INSTALLATION
+
+2.1 Installation Procedure
+
+Step 1: Download the latest release from whycremisi.com/download
+        File: WhyCremisi_x.x.x.dmg (macOS) / .exe (Windows)
+
+Step 2: Mount the DMG (macOS) or run the installer (Windows)
+        Drag WhyCremisi.app into the Applications folder
+
+Step 3: Launch WhyCremisi (it will appear in the system tray)
+        Verify the WebSocket service is listening (default port 9800)
+
+Step 4: Configure your DAW to detect the plugin
+        (See section 2.2 for each specific DAW)
+
+2.2 DAW Activation
+
+Ableton Live 11+:
+1. Open Ableton > Preferences > Plug-Ins
+2. Under "Plugin Sources" add: /Library/Audio/Plug-Ins/VST3
+3. Click "Rescan" (or "Rescan All" to clear cache)
+4. Drag "WhyCremisi" from the Plugin Browser onto a track
+
+Reaper 6+:
+1. Open Reaper > Preferences > VST
+2. Under "VST plugin paths" add: /Library/Audio/Plug-Ins/VST3
+3. Click "Clear cache / rescan"
+4. FX > "WhyCremisi" > Add
+
+Logic Pro:
+1. Open Logic > Preferences > Audio > Plug-In Manager
+2. Verify WhyCremisi is listed under "AU Instruments"
+3. Click "Reset & Rescan Selection" if missing
+4. Insert on an instrument track: Audio FX > WhyCremisi
+
+2.3 WebSocket and OSC Configuration
+
+  WebSocket Server    ws://localhost:9800        [Active]
+  WebSocket Password  ************               [Change]
+  OSC Server          osc.udp://localhost:9000   [Active]
+  OSC Input Port      9000
+  OSC Output Port     9001
+
+[NOTE] The default WebSocket (9800) and OSC (9000-9001) ports are
+predefined. If they conflict with other services, change them in
+Settings > Network.
+
+--------------------------------------------------------------------------------
+
+3. FIRST CONNECTION
+
+3.1 Launching the Plugin
+
+1. Insert WhyCremisi on a track in your DAW
+2. The main interface opens automatically
+3. Observe the status indicators in the top bar
+
+3.2 Connection Status
+
+Indicator | Color  | Meaning
+DAW       | Green  | Plugin detected and synced with host
+DAW       | Yellow | Plugin loaded but not synced
+DAW       | Red    | Plugin not detected - check installation
+WS        | Green  | WebSocket connection active
+WS        | Red    | WebSocket disconnected - restart service
+AI        | Green  | AI agent connected and operational
+AI        | Yellow | AI processing
+AI        | Red    | AI unavailable - check internet connection
+
+3.3 First Command
+
+User > "Hello, analyze the current track"
+
+WhyCremisi > Analysis complete. Here is a summary:
+  Integrated LUFS:  -18.3  (ideal for mixing)
+  True Peak:        -2.1 dBTP
+  Dynamic Range:    12.4 dB
+  LRA:               8.7 dB
+  The track has good dynamics. Would you like me to suggest improvements?
+
+[NOTE] If the AI does not respond within 5 seconds, check your internet
+connection in Settings > Network > Test Connection.
+
+--------------------------------------------------------------------------------
+
+4. MAIN INTERFACE
+
+4.1 Transport Bar
+
+Command       | Icon | Description
+Play          | >>   | Starts playback
+Stop          | []   | Stops playback
+Record        | O    | Starts recording
+Pause         | ||   | Pauses playback
+Rewind        | |<<  | Goes to start
+Fast Forward  | >>|  | Goes to end
+
+BPM and session timecode are displayed in the bar.
+
+4.2 Level Meters
+
+Stereo indicators with dual LUFS + Peak readout:
+- Green bar:  safe level (below -6 dBTP)
+- Yellow bar: warm level (-6 to -1 dBTP)
+- Red bar:    clipping (above -1 dBTP)
+
+4.3 Correlation Meter
+
+Measures phase correlation between L and R channels:
++1 = Perfect phase (mono compatible)
+ 0 = No correlation
+-1 = Out of phase (problematic)
+Ideal values: +0.5 to +1.0 for balanced mixes.
+
+4.4 Oscilloscope
+
+Real-time waveform display. Useful for:
+- Identifying transients (drums, percussion)
+- Visualizing saturation and clipping
+- Comparing pre/post processing dynamics
+
+4.5 Spectrogram (FFT)
+
+Frequency Band  | Range         | Primary Use
+Sub-bass        | 20-60 Hz      | Kick, subwoofer
+Bass            | 60-250 Hz     | Bass, fundamentals
+Low-mid         | 250-500 Hz    | Instrument body, mud
+Mid             | 500-2000 Hz   | Vocals, guitar, presence
+Upper-mid       | 2000-4000 Hz  | Presence, sibilance
+High            | 4000-20000 Hz | Air, brilliance, hi-hat
+
+4.6 AI Chat Window
+
+Includes chat history, quick suggestions, input field,
+Send and microphone buttons.
+
+4.7 Plugin Browser
+
+Lists all VST3/AU plugins detected in the current session,
+with name, manufacturer, version, status and exposed parameters.
+
+4.8 Preset Manager
+
+Save and load complete configurations of EQ, compression, reverb,
+AI context and LUFS target.
+
+[NOTE] Presets save the state of plugins controlled through WhyCremisi,
+not the entire DAW session.
+
+--------------------------------------------------------------------------------
+
+5. WORKFLOWS
+
+5.1 Assisted Mixing: "Compress the Vocals"
+
+1. WhyCremisi analyzes the vocal track
+2. Proposes compressor on Pro-C2: ratio 3:1, attack 8ms, release 45ms
+3. User clicks PREVIEW > A/B listening
+4. User clicks APPLY
+5. WhyCremisi logs to history
+
+5.2 Mastering: "Apply a Master Chain for Spotify"
+
+1. WhyCremisi analyzes master bus (LUFS -18.3, TP -2.1 dBTP)
+2. Proposes chain: Pro-Q3 > Ozone 11 > Pro-C2 > Pro-L2
+3. Target: Integrated LUFS -14, TP -1.0 dBTP
+
+5.3 Creative Sound: "70s Analog Synth"
+
+1. WhyCremisi analyzes current timbre
+2. Applies chain: Saturn 2 (tape saturation), Pro-Q3 (low-pass),
+   RC-20 Retro Color (wow/flutter), Pro-R (spring reverb 2.5s)
+
+5.4 Problem Solving: "Fix the Bass Muddiness"
+
+1. WhyCremisi analyzes FFT > buildup at 180-350Hz
+2. Suggests Pro-Q3 peak band at 240Hz, gain -4.2dB, Q 2.5
+
+--------------------------------------------------------------------------------
+
+6. VOICE/TEXT COMMANDS
+
+Category      | Example                              | Action
+Volume/Gain   | "Set reverb send to -12 dB"          | Adjust parameter
+Effects       | "Add sidechain compression to the    | Create chain
+              |  kick and bass"                      |
+Routing       | "Create a parallel compression chain | Routing + FX
+              |  on the drums"                       |
+Analysis      | "Analyze the master bus for          | Detailed report
+              |  clipping"                           |
+Comparison    | "Compare this mix with the reference | A/B analysis
+              |  track"                              |
+Preset        | "Load the 'Warm Vocal' preset"       | Load preset
+Transport     | "Play from bar 24"                   | DAW control
+EQ            | "High-pass the guitars at 120Hz"     | Specific filter
+
+Detailed examples:
+
+"Set reverb to 25%"
+> Reverb Wet/Dry brought from 40% to 25% on the current track.
+
+"Add sidechain compression to the kick and bass"
+> 1. Creates compressor on the bass track
+> 2. Sets sidechain input from kick track
+> 3. Configures: ratio 4:1, attack 1ms, release 50ms
+
+"Analyze the master bus for clipping"
+> True Peak: -0.3 dBTP - Clipping detected!
+> 1,247 clipping samples (0.03% of total)
+> Suggestion: Reduce limiter gain by 1.5dB
+
+"Compare this mix with the reference track"
+> Comparison metrics: LUFS, True Peak, LRA, EQ Shape, Stereo Width
+
+--------------------------------------------------------------------------------
+
+7. PREFERENCES AND SETTINGS
+
+7.1 Interface
+
+Theme:        Dark / Light / System
+Language:     Italiano / English
+Window Size:  100% / 125% / 150% / 200%
+Chat Size:    Normal / Compact
+
+7.2 Keyboard Shortcuts
+
+Cmd+Enter       Send chat command
+Cmd+K           Focus chat
+Cmd+L           Clear chat history
+Cmd+M           Mute/Unmute output
+Cmd+,           Open preferences
+Space           Play/Pause DAW
+Cmd+Z           Undo last AI action
+Cmd+Shift+Z     Redo last action
+Esc             Close modal
+
+7.3 AI Behavior
+
+Creativity:   Low / Medium / High
+Verbosity:    Concise / Detailed / Extended
+Auto-apply:   Never / After confirm / Always
+Volume Alert: Active / Disabled (threshold -1 dBTP)
+
+[NOTE] "Auto-apply Always" mode is not recommended for inexperienced
+users. WhyCremisi suggests starting with "After confirm".
+
+--------------------------------------------------------------------------------
+
+8. TROUBLESHOOTING
+
+PROBLEM: Plugin does not appear in the DAW
+> Verify installation in /Library/Audio/Plug-Ins/VST3/
+> Update DAW cache (Rescan All / Clear cache/rescan)
+> Logic requires AU, FL Studio requires VST3
+
+PROBLEM: No sound after inserting the plugin
+> Disable bypass from plugin header
+> Verify signal passes through the plugin
+> Check operating mode
+
+PROBLEM: AI is not responding
+> 1. Check internet connection
+> 2. Check AI status (red?)
+> 3. Restart WhyCremisi service
+> 4. Check firewall (port 443)
+> 5. Restart DAW
+
+PROBLEM: OSC not working
+> 1. Verify port 9000 is not occupied
+> 2. Check target IP
+> 3. Reaper: Enable "Control surface OSC"
+> 4. Test: nc -u localhost 9000
+
+PROBLEM: WebSocket disconnected
+> 1. Restart WebSocket service
+> 2. Verify port 9800 is free
+> 3. Check VPN/proxy
+> 4. Log: ~/Library/Logs/WhyCremisi/websocket.log
+
+Log Viewer: Menu > Help > Log Viewer
+Levels: INF, DBG, WRN, ERR, ACT
+
+--------------------------------------------------------------------------------
+
+9. TIPS AND BEST PRACTICES
+
+5 Tips for New Users:
+
+1. START WITH A SIMPLE SONG
+   > 4-8 tracks, few plugins, familiar genre
+
+2. ALWAYS USE PREVIEW
+   > Listen before applying any changes
+   > The PREVIEW button changes nothing
+
+3. VERIFY PARAMETERS BEFORE CONFIRMING
+   > Read the values proposed by the AI
+   > Manual tweak if necessary
+
+4. USE PRESETS AS A STARTING POINT
+   > Presets give a solid foundation
+   > Always customize for your specific track
+
+5. PROVIDE CONSTANT FEEDBACK TO THE AI
+   > "Too much compression" > AI adjusts
+   > "More presence" > AI adds EQ
+   > More feedback = better results
+
+Ideal Workflow:
+PHASE 1 - ANALYSIS:     Load the song > "Analyze the session"
+PHASE 2 - ROUGH MIX:    EQ corrections, base levels, stereo balance
+PHASE 3 - FINAL MIX:    Compression, effects, automations
+PHASE 4 - MASTERING:    Master chain, final verification, export
+
+Common Mistakes to Avoid:
+- Applying without listening (always use PREVIEW)
+- Commands too vague (be specific)
+- Ignoring AI warnings (read the messages)
+- Not saving presets (save after each session)
+- Too many commands in a row (wait for AI response)
+
+================================================================================
+  "WhyCremisi is not a plugin: it's a producer in a box."
+================================================================================

@@ -18,9 +18,10 @@ echo "  WhyCremisi Research Papers — PDF Build"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # IT papers
+IT_DIR="$RESEARCH_DIR/italiano/markdown"
 echo ""
 echo "▸ Italian papers"
-for f in "$RESEARCH_DIR/IT/papers/"0*.md "$RESEARCH_DIR/IT/00-INDICE.md"; do
+for f in "$IT_DIR/"[0-9]*.md; do
   [ -f "$f" ] || continue
   base=$(basename "$f" .md)
   out="$EXPORT_DIR/IT/${base}.pdf"
@@ -29,15 +30,15 @@ for f in "$RESEARCH_DIR/IT/papers/"0*.md "$RESEARCH_DIR/IT/00-INDICE.md"; do
     --stylesheet "$CSS" \
     --pdf-options "$PDF_OPTS" \
     2>/dev/null
-  # move generated pdf
   src_pdf="${f%.md}.pdf"
   [ -f "$src_pdf" ] && mv "$src_pdf" "$out"
 done
 
 # EN papers
+EN_DIR="$RESEARCH_DIR/inglese/markdown"
 echo ""
 echo "▸ English papers"
-for f in "$RESEARCH_DIR/EN/papers/"0*.md "$RESEARCH_DIR/EN/00-INDEX.md"; do
+for f in "$EN_DIR/"[0-9]*.md; do
   [ -f "$f" ] || continue
   base=$(basename "$f" .md)
   out="$EXPORT_DIR/EN/${base}.pdf"

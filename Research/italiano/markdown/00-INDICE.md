@@ -30,6 +30,14 @@
 | 05 | [Protocollo di Comunicazione](papers/05-PROTOCOLLO-COMUNICAZIONE.md) | WebSocket, OSC, bridge C++↔React | ★★★★ |
 | 06 | [Roadmap di Implementazione](papers/06-ROADMAP-IMPLEMENTAZIONE.md) | Fasi, milestone, obiettivi tecnici | ★★★★ |
 | 07 | [Asset e Brand Identity](papers/07-ASSET-BRAND.md) | Logo, icone, specifiche grafiche per tutte le piattaforme | ★★★ |
+| 08 | [Analizzatore DSP](papers/08-ANALIZZATORE-DSP.md) | FFT, LUFS, correlazione, clipping, metriche in tempo reale | ★★★★★ |
+| 09 | [Architettura del Motore AI](papers/09-ARCHITETTURA-AI.md) | Provider, streaming, function calling, contesto | ★★★★★ |
+| 10 | [Sicurezza e Modello Dati](papers/10-SICUREZZA-MODELLO-DATI.md) | Crittografia, API key, sandboxing, permessi | ★★★★ |
+| 11 | [Test e Strategia di Qualità](papers/11-TEST-QUALITA.md) | Unit test, integrazione, E2E, CI/CD | ★★★★ |
+| 12 | [Deploy e Distribuzione](papers/12-DEPLOY-DISTRIBUZIONE.md) | Code signing, notarizzazione, installer | ★★★★ |
+| 13 | [Schema Database Plugin](papers/13-SCHEMA-DATABASE-PLUGIN.md) | JSON schema per 100+ plugin supportati | ★★★ |
+| 14 | [Guida per l'Utente](papers/14-GUIDA-UTENTE.md) | Quick start, interfaccia, flussi di lavoro | ★★★ |
+| 15 | [Guida per Sviluppatori](papers/15-GUIDA-SVILUPPATORI.md) | Contribuire, ambiente di sviluppo, architettura | ★★★ |
 
 ---
 

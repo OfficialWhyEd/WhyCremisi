@@ -1,0 +1,243 @@
+Paper 08 — DSP Engine: Audio Analysis Core
+FFT, LUFS, Correlation, Clipping and Real-Time Metrics
+
+────────────────────────────────────────────────────────────────
+  WHYCREMISI RESEARCH PAPERS — N.08
+  DSP Audio Analysis Engine
+  
+  "Measuring sound is the first step to mastering it."
+────────────────────────────────────────────────────────────────
+
+Category: Audio Processing / DSP
+Dependencies: JUCE DSP Module, FFTReal, SIMD (optional)
+
+---
+
+1. DSP Engine Overview
+
+The WhyCremisi DSP analysis engine is the AI agent's sensory system — its equivalent of the human auditory system. It operates on real-time audio buffers (64-1024 samples) and produces structured metrics that feed both the UI and the AI decision models.
+
+Every processed audio block passes through the full analysis chain. Results are aggregated every 16ms (approximately 62 times per second at 48kHz) and sent to the presentation layer.
+
+---
+
+2. Analyzer Architecture
+
+2.1 FFT Analysis Chain
+
+Spectral analysis is based on a Hanning-windowed FFT:
+
+FFT Parameters:
+─────────────────────────────────────────────
+Window size           2048 samples
+Hop size              512 samples       (75% overlap)
+Window                Hanning (von Hann)
+Zero-padding          No
+Minimum frequency     21.5 Hz  (at 48kHz)
+Maximum frequency     24.0 kHz  (Nyquist)
+Frequency resolution  23.4 Hz  (per bin at 48kHz)
+─────────────────────────────────────────────
+
+[NOTE] The 75% overlap guarantees a temporal resolution of ~10.6ms at 48kHz, sufficient for perceptually relevant transients while keeping computational load under control.
+
+2.2 Spectrum Bins
+
+With FFT size 2048, the number of usable bins (up to Nyquist) is 1024. Each bin has a width of ~23.4Hz at 48kHz.
+
+BIN   FREQUENCY (Hz)   NOTE
+──────────────────────────────────────────
+0     0               DC component (discarded)
+1     23.4            Extreme sub bass
+2     46.9            Sub bass
+...
+43    1007.8          Low-mids
+128   3000.0          Presence
+256   6000.0          High-mid
+512   12000.0         Brilliance
+1024  24000.0         Nyquist (discarded)
+──────────────────────────────────────────
+
+2.3 Stereo Channels
+
+Analysis is performed independently on both channels.
+
+---
+
+3. Loudness Metrics
+
+3.1 LUFS Algorithm (ITU-R BS.1770-4)
+
+WhyCremisi implements loudness measurement per the ITU-R BS.1770-4 standard, with three time windows:
+
+Type                    Window       Update Rate
+──────────────────────────────────────────────────────
+Momentary (M)           400 ms       Every 100 ms
+Short-term (S)          3 s          Every 300 ms
+Integrated (I)          ∞ (cumul.)   Every block
+──────────────────────────────────────────────────────
+
+3.2 Gating
+
+ITU-R BS.1770-4 requires a two-stage gate for Integrated LUFS calculation:
+
+Stage 1 — Absolute Gate:
+ Threshold: -70 LUFS (silence)
+ Blocks below threshold → excluded from calculation
+
+Stage 2 — Relative Gate:
+ Compute average loudness of blocks above -70 LUFS
+ Relative threshold: average + 10 LUFS (typical: -25 LUFS)
+ Blocks below relative threshold → excluded from calculation
+
+Result: Integrated LUFS = average of remaining blocks
+
+[NOTE] Relative gating is crucial: without it, silence between tracks would artificially lower the integrated loudness value, leading to non-compliant broadcast masters.
+
+3.3 True Peak
+
+True Peak is calculated via 4x oversampling with sinc reconstruction filter. Precision: ±0.1 dB (ITU-R BS.1770-4 compliant). Used for safe limiting and broadcast mastering.
+
+---
+
+4. Phase Correlation
+
+4.1 Phase Correlation Meter
+
+The correlation meter measures similarity between left and right channels with normalized values [-1.0, 1.0]. +1.0 indicates perfect identity (mono), 0.0 indicates complete decorrelation, -1.0 indicates total phase inversion. Indicator color follows the WhyCremisi palette: cremisi #DC143C for out of phase, amber #FFB000 for mid range, green for in phase.
+
+4.2 Mid/Side Analysis
+
+Mid (M) = L + R (everything common), Side (S) = L - R (everything different). The M/S ratio indicates whether the mix is narrow and centered (M >> S), balanced and spacious (M = S), or wide with potential phase issues (M << S).
+
+4.3 Vectorscope / Phase Scope
+
+The vectorscope is a 2D L/R display tracking instantaneous amplitude. A 45-degree line indicates perfect mono, a circle indicates balanced stereo, a horizontal line indicates left-only, a vertical line indicates 180 degrees out of phase.
+
+---
+
+5. Clipping Detection
+
+5.1 Peak Hold with RMS
+
+The clipping detector operates with configurable threshold [-infinity .. 0] dBFS (default -0.5 dBFS), adjustable decay 0.5-10 dB/s, hold 0-5000 ms, and a history buffer of the last 1024 events.
+
+5.2 History Buffer
+
+Each clipping event records: timestamp (absolute sample position), track index, channel index (0=L, 1=R), and peak value in dBFS. History supports auto-reset with modes: manual, timeout, threshold, or track change.
+
+---
+
+6. Frequency Spectrum
+
+6.1 Log Scale 20Hz-20kHz
+
+The frequency axis is mapped on a logarithmic scale to match human perception. Formula: freq = 20 * pow(20000/20, pixel / width).
+
+6.2 Aggregate Frequency Bands
+
+The 1024 FFT bins are aggregated into 7 musical bands:
+
+Band           Range         FFT Bins   UI Color
+──────────────────────────────────────────────────────
+Sub           20 - 60 Hz     0 - 2      #DC143C  (cremisi)
+Bass          60 - 250 Hz    2 - 10     #FF6B6B
+Low-Mid       250 - 500 Hz   10 - 21    #FFB000  (amber)
+Mid           500 - 2 kHz    21 - 85    #FFD700
+High-Mid      2 - 6 kHz      85 - 256   #22c55e  (green)
+Presence      6 - 10 kHz     256 - 426  #00E5FF  (cyan AI)
+Brilliance    10 - 20 kHz    426 - 853  #00FFaa  (OK green)
+──────────────────────────────────────────────────────
+
+6.3 Spectral Peak Hold
+
+Decay rate: 2 dB/s (adjustable 0.5-10), initial hold 500 ms, update every FFT frame, reset on request or track change.
+
+[NOTE] Slow-decay peak hold is essential for rapid identification of problem frequencies: a momentary peak is kept visible long enough for the AI to suggest a targeted EQ intervention.
+
+---
+
+7. Performance and Optimization
+
+7.1 Buffer Management
+
+Four-level buffer hierarchy:
+
+Level 1: Input buffer (JUCE AudioBuffer), size 64-1024 samples.
+Level 2: FFT Ring Buffer (lock-free), size 4096 samples (2x FFT size).
+Level 3: History Ring Buffer (lock-free), size 48000 samples (1s at 48kHz).
+Level 4: ProcessAggregator (thread-safe), size 64 frames (~1s of metrics).
+
+7.2 Lock-Free Ring Buffer
+
+Implementation with std::array, std::atomic<size_t> for writePos and readPos, relaxed memory ordering for write, release/acquire for synchronization.
+
+7.3 SIMD Considerations
+
+Vectorizable operations: Hanning window multiplication (~4x speedup), magnitude sqrtf(real² + imag²) for 8 bins (~6x), LUFS mean square (~4x), correlation L[n] × R[n] product (~3x).
+
+7.4 Thread Safety
+
+Three-thread concurrency model:
+- AUDIO THREAD (real-time): ring buffer write, FFT, LUFS momentary, clipping. No heap allocations, no mutex, no I/O.
+- UI THREAD (main thread): aggregated result reads, graphical rendering, OSC/WebSocket dispatch.
+- AGGREGATOR THREAD (16ms timer): data reads from atomic buffers, derived metrics, smoothing, JSON.
+
+[NOTE] Strict separation between audio and UI threads is critical: the audio thread must never be blocked by I/O operations or memory allocations. All communication occurs through lock-free atomic data structures.
+
+---
+
+8. System Integration
+
+8.1 PluginProcessor Connection
+
+PluginProcessor (JUCE) calls Analyzer::processBlock() for each audio block, which executes FFT, LUFS, correlation and clipping per channel, followed by aggregation with computeBands() and computeMeterData().
+
+8.2 OscBridge Dispatch
+
+Aggregated data is serialized to JSON and sent via WebSocket as a "daw.analyzer" message type, containing timestamp, sample rate, and metrics for loudness, correlation, clipping, and spectrum bands.
+
+8.3 Update Frequencies
+
+LUFS Momentary: every 100 ms, max latency 100 ms.
+LUFS Short-term: every 300 ms, max latency 300 ms.
+LUFS Integrated: every block, cumulative.
+True Peak: every block, latency 5.3 ms.
+Correlation: every 16 ms, latency 16 ms.
+Clipping: every 16 ms, latency 5.3 ms.
+Spectrum bands: every 32 ms, latency 32 ms.
+Full FFT spectrum: every 16 ms, latency 16 ms.
+
+---
+
+9. Limitations and Future Improvements
+
+9.1 Current Limitations
+
+- CPU-only FFT: high CPU load at high sample rates
+- Mono/Stereo only: no multichannel support (5.1, 7.1)
+- No source separation: rhythm overlaps mask spectral analysis
+- Fixed Hanning window: improvable with adaptive windows
+- No ambient compensation: background noise unfiltered
+
+9.2 Planned Improvements
+
+GPU Acceleration for FFT: using CUDA/Metal Performance Shaders for concurrent FFT across multiple channels, estimated speedup 10-50x.
+
+Machine Learning for Source Separation: pre-processing with lightweight model (reduced Demucs or Spleeter) to separate signal into components (voice, drums, bass, other) before analysis.
+
+Multichannel Expansion: future support for 5.1 Surround, 7.1 Surround, Ambisonics (spherical FFT on order 1-3), audio objects.
+
+Incremental Enhancements: adaptive windows (Kaiser), optional zero-padding, automatic noise floor detection, real-time sonogram with optional mel scale, spectrum cache for A/B comparison.
+
+---
+
+References
+
+1. ITU-R BS.1770-4 — Algorithms to measure audio programme loudness and true-peak audio level (2015)
+2. FFTPack / JUCE DSP Module — Reference FFT implementation
+3. Zolzer, U. — Digital Audio Signal Processing (3rd ed., Wiley 2022)
+4. Smith, J.O. — Spectral Audio Signal Processing (online, 2011)
+
+---
+
+→ Continue to: [Paper 09 — — ]
