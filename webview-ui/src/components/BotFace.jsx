@@ -33,12 +33,18 @@ const PUPILS = {
   advisory: { lx: 35, ly: 40, rx: 67, ry: 38 }
 }
 
-export function BotFace({ state = 'idle', className = 'w-16 h-16', personality = null }) {
+export function BotFace({ state = 'idle', className = 'w-16 h-16', personality = null, audioLevel = 0 }) {
   const prevState = useRef(state)
   const [pulseKey, setPulseKey] = useState(0)
   const [glitchActive, setGlitchActive] = useState(false)
   const [burstActive, setBurstActive] = useState(false)
   const [pupilOffset, setPupilOffset] = useState({ x: 0, y: 0 })
+  const [smoothAudio, setSmoothAudio] = useState(0)
+
+  // Smooth audio level for natural mouth movement
+  useEffect(() => {
+    setSmoothAudio(prev => prev * 0.55 + Math.min(1, Math.max(0, audioLevel)) * 0.45)
+  }, [audioLevel])
 
   const color = STATE_COLORS[state] || STATE_COLORS.idle
   const paths = PATHS[state] || PATHS.idle
@@ -66,15 +72,27 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16', personality =
     return () => clearInterval(id)
   }, [state])
 
-  const mouthAnimate = state === 'typing'
-    ? [paths.m, 'M 40 64 Q 50 70 60 64', paths.m]
-    : state === 'listening' ? [paths.m, 'M 34 65 Q 50 65 66 65', paths.m]
-    : state === 'loading'   ? [paths.m, 'M 41 66 Q 50 66 59 66', paths.m]
-    : paths.m
+  // Audio-reactive mouth: control point Y opens downward proportional to level
+  // Closed: Q 50 65  →  Wide open: Q 50 86
+  // Upper lip rises slightly when open for oval shape
+  const audioMouthOpen = smoothAudio > 0.04
+  const ctrlY = 65 + smoothAudio * 21        // 65 → 86
+  const startY = 65 - smoothAudio * 3        // 65 → 62 (lips spread)
+  const audioMouthPath = `M 38 ${startY.toFixed(1)} Q 50 ${ctrlY.toFixed(1)} 62 ${startY.toFixed(1)}`
 
-  const mouthTrans = (state === 'typing' || state === 'listening' || state === 'loading')
-    ? { repeat: Infinity, duration: 0.55, ease: 'easeInOut' }
-    : { duration: 0.5, type: 'spring', bounce: 0.45 }
+  const mouthAnimate = audioMouthOpen
+    ? audioMouthPath
+    : state === 'typing'
+      ? [paths.m, 'M 40 64 Q 50 70 60 64', paths.m]
+      : state === 'listening' ? [paths.m, 'M 34 65 Q 50 65 66 65', paths.m]
+      : state === 'loading'   ? [paths.m, 'M 41 66 Q 50 66 59 66', paths.m]
+      : paths.m
+
+  const mouthTrans = audioMouthOpen
+    ? { duration: 0.06, ease: 'linear' }
+    : (state === 'typing' || state === 'listening' || state === 'loading')
+      ? { repeat: Infinity, duration: 0.55, ease: 'easeInOut' }
+      : { duration: 0.5, type: 'spring', bounce: 0.45 }
 
   const eyeL = state === 'idle' ? [paths.l, paths.l, 'M 26 44 Q 35 44 44 44', paths.l] : paths.l
   const eyeR = state === 'idle' ? [paths.r, paths.r, 'M 56 44 Q 65 44 74 44', paths.r] : paths.r
@@ -172,6 +190,20 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16', personality =
           <motion.circle key={i} cx={43+i*7} cy="82" r="2.2" fill="currentColor"
             animate={{ opacity:[0.2,1,0.2], scale:[0.7,1.3,0.7] }}
             transition={{ repeat:Infinity, duration:1.1, delay:i*0.18, ease:'easeInOut' }}
+          />
+        ))}
+
+        {/* Audio-reactive sound waves around head */}
+        {smoothAudio > 0.04 && [1,2,3].map(i => (
+          <motion.circle key={`wave-${i}`}
+            cx="50" cy="50"
+            r={46 + i * 8}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={Math.max(0.3, smoothAudio * 1.8 / i)}
+            strokeOpacity={Math.max(0, smoothAudio * 0.5 / i)}
+            animate={{ r: [46 + i*8, 52 + i*10, 46 + i*8], strokeOpacity: [smoothAudio*0.5/i, 0, 0] }}
+            transition={{ duration: 0.5, ease: 'easeOut', repeat: Infinity, repeatDelay: 0.1 * i }}
           />
         ))}
 

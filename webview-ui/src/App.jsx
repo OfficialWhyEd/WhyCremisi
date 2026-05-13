@@ -79,12 +79,53 @@ export default function App() {
     description: ''
   })
 
+  // ── Theme ───────────────────────────────────────────────────────────
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('whycremisi_theme') || 'dark'
+  })
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('whycremisi_theme', theme)
+  }, [theme])
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+  }, [])
+
+  // ── AI Personality Style ────────────────────────────────────────────
+  const PERSONALITY_STYLES = [
+    { id: 'analytical',  label: 'AN', name: 'Analytical',  icon: '📊' },
+    { id: 'consultative',label: 'CS', name: 'Consultative',icon: '💬' },
+    { id: 'direct',      label: 'DR', name: 'Direct',      icon: '⚡' },
+    { id: 'creative',    label: 'CR', name: 'Creative',    icon: '🎨' },
+    { id: 'warm',        label: 'WA', name: 'Warm',        icon: '🔥' },
+  ]
+  const [personalityStyle, setPersonalityStyle] = useState('analytical')
+  const [showStylePicker, setShowStylePicker] = useState(false)
+
+  const applyPersonalityStyle = useCallback((styleId) => {
+    setPersonalityStyle(styleId)
+    setShowStylePicker(false)
+    if (whycremisi.isConnected()) {
+      whycremisi.sendMessage('ai.personalityStyle', { style: styleId })
+    }
+    const styleNames = { analytical: 'Analytical', consultative: 'Consultative', direct: 'Direct', creative: 'Creative', warm: 'Warm' }
+    addSystemMessage(`Personality set to ${styleNames[styleId] || styleId}`)
+  }, [])
+
   // ── AI Action Log + Undo/Redo ──────────────────────────────────────
   const [actionLog, setActionLog] = useState([])
   const [actionHistory, setActionHistory] = useState([])
   const [actionRedoStack, setActionRedoStack] = useState([])
   const actionHistoryRef = useRef([])
   const actionRedoRef = useRef([])
+
+  const addSystemMessage = useCallback((text) => {
+    setMessages(prev => [...prev, {
+      id: Date.now() + Math.random(),
+      type: 'system',
+      text: `[--:--:--] ${text}`
+    }])
+  }, [])
 
   const pushAction = useCallback((action) => {
     setActionLog(prev => [action, ...prev].slice(0, 100))
@@ -640,7 +681,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* ── HEADER ─────────────────────────────────────────────────── */}
-      <header className="bg-[#131313] flex justify-between items-center w-full px-4 py-1 border-b border-[#222222] z-50 relative h-9">
+      <header className="flex justify-between items-center w-full px-4 py-1 border-b z-50 relative h-9" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-black tracking-tighter text-[#DC143C] uppercase leading-none">WHYCREMISI</h1>
           <nav className="flex gap-4 uppercase tracking-[0.1em] font-bold text-xs">
@@ -715,8 +756,34 @@ export default function App() {
 
           <div className="w-px h-4 bg-[#222222]" />
 
+          {/* Personality style picker */}
+          <div className="relative">
+            <button
+              className="text-xs font-mono text-[#888888] hover:text-[#FFB000] transition-colors cursor-pointer px-1.5 py-0.5 border border-[#222222] rounded"
+              onClick={() => setShowStylePicker(!showStylePicker)}
+              title={`Style: ${PERSONALITY_STYLES.find(s => s.id === personalityStyle)?.name || 'Analytical'}`}
+            >
+              {PERSONALITY_STYLES.find(s => s.id === personalityStyle)?.label || 'AN'}
+            </button>
+            {showStylePicker && (
+              <div className="absolute top-full right-0 mt-1 bg-[#1a1a1a] border border-[#222222] rounded shadow-lg z-50 min-w-[140px]">
+                {PERSONALITY_STYLES.map(s => (
+                  <button key={s.id}
+                    className={`block w-full text-left px-3 py-1.5 text-xs font-mono transition-colors hover:bg-[#2a2a2a] ${personalityStyle === s.id ? 'text-[#FFB000]' : 'text-[#888888]'}`}
+                    onClick={() => applyPersonalityStyle(s.id)}
+                  >
+                    {s.label} — {s.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Action icons */}
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 items-center">
+            <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
+              {theme === 'dark' ? '☀' : '☾'}
+            </button>
             <span className="material-symbols-outlined text-base text-[#888888] hover:text-[#FFB000] cursor-pointer transition-colors"
               onClick={() => { setSetupComplete(false); localStorage.removeItem('whycremisi_setup_done') }}>settings</span>
             <span className="material-symbols-outlined text-base text-[#888888] hover:text-[#DC143C] cursor-pointer transition-colors"
@@ -726,7 +793,7 @@ export default function App() {
       </header>
 
       {/* ── SIDEBAR ────────────────────────────────────────────────── */}
-      <aside className="fixed left-0 top-9 h-[calc(100vh-2.25rem)] w-12 flex flex-col items-center py-2 bg-[#131313] border-r border-[#222222] z-40">
+      <aside className="fixed left-0 top-9 h-[calc(100vh-2.25rem)] w-12 flex flex-col items-center py-2 z-40" style={{ backgroundColor: 'var(--bg-panel)', borderRight: '1px solid var(--border)' }}>
         <div className="text-xs font-mono text-[#888888] uppercase mb-4 rotate-180 select-none" style={{ writingMode:'vertical-lr' }}>
           MOD
         </div>
