@@ -228,57 +228,119 @@ const DIAGRAMS = {
 
 };
 
+// ── BOX-DRAWING CHAR DETECTION ────────────────────────────────────────────────
+const BOX_CHARS = /[╔╗╚╝║═╠╣╦╩╬┌┐└┘│─├┤┬┴┼▼▲►◄←→↑↓]/;
+const CODE_ONLY = /^[\s\S]{0,20}(function |class |import |const |let |var |#include|void |int |float |if \(|for \(|while \(|\{[\s\S]*\})/;
+
+// Convert raw ASCII box-drawing text into a clean visual "diagram card"
+function asciiToVisualCard(raw) {
+  // Strip box-drawing chars, clean up
+  const lines = raw
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .split('\n')
+    .map(l => l
+      .replace(/[╔╗╚╝║═╠╣╦╩╬]/g, '')
+      .replace(/[┌┐└┘│─├┤┬┴┼]/g, '')
+      .replace(/[▼▲►◄←→↑↓]/g, '→')
+      .replace(/\s+/g, ' ')
+      .trim()
+    )
+    .filter(l => l.length > 1);
+
+  // Identify block types by content
+  const all = lines.join(' ').toLowerCase();
+
+  // Named diagram SVGs take priority
+  if (/ui layer|react.*webview|bridge layer.*juce|daw layer.*plugin/.test(all))
+    return DIAGRAMS.architecture();
+  if (/layer 4.*identity|layer 3.*personality|layer 0.*real.time|openclaw/.test(all))
+    return DIAGRAMS.memoryLayers();
+  if (/phase alpha|phase beta|phase 1\.0|phase 2\.0|✓ vst3.*standalone/.test(all))
+    return DIAGRAMS.roadmap();
+  if (/core plugin|local ai engine|ollama runtime|installer bundle/.test(all))
+    return DIAGRAMS.installerBundle();
+  if (/ai\.prompt|daw\.transport|plugin\.control|websocket.*json/.test(all))
+    return DIAGRAMS.messageFlow();
+  if (/parametermapper|setpluginparameter|vst3.*automation|fabfilter.*pro/.test(all))
+    return DIAGRAMS.pluginControl();
+
+  // Paper header box — remove silently
+  if (/whycremisi research papers|whycremisi.*paper/i.test(raw) && lines.length < 12)
+    return '';
+
+  // Generic: render as styled info-card rows
+  const rows = lines.slice(0, 18);
+  const rowH = 22;
+  const svgH = Math.max(60, rows.length * rowH + 32);
+  const rowsSVG = rows.map((line, i) => {
+    const isHeader = i === 0 || /^[A-Z\s]{4,}$/.test(line);
+    const col = isHeader ? '#DC143C' : (i % 2 === 0 ? '#d8d8d8' : '#888');
+    const bg  = isHeader ? 'rgba(220,20,60,0.08)' : 'none';
+    const fw  = isHeader ? '700' : '400';
+    const fs  = isHeader ? '8' : '8.5';
+    const ff  = isHeader ? 'JetBrains Mono' : 'Inter';
+    // Detect sub-label (starts with · or ✓ or ○)
+    const isItem = /^[·✓○▸•]/.test(line);
+    const itemCol = isItem ? '#FFB000' : col;
+    return `
+      <rect x="8" y="${i * rowH + 8}" width="604" height="${rowH - 2}" rx="3" fill="${bg}"/>
+      <text x="${isItem ? 24 : 14}" y="${i * rowH + 22}" fill="${itemCol}"
+        font-family="${ff}" font-size="${fs}" font-weight="${fw}">${
+          line.replace(/</g,'&lt;').replace(/>/g,'&gt;').substring(0, 85)
+        }</text>`;
+  }).join('');
+
+  // Pick a label based on content
+  const label = /layer|memoria|memory|stack/i.test(all) ? 'Layer Stack'
+    : /flow|flusso|pipeline|process/i.test(all) ? 'Process Flow'
+    : /install|bundle|distribuz/i.test(all) ? 'Bundle Structure'
+    : /test|qa|qualit/i.test(all) ? 'Test Pipeline'
+    : /deploy|release|build/i.test(all) ? 'Deploy Flow'
+    : /database|schema|json/i.test(all) ? 'Data Schema'
+    : /security|sicurezza|auth/i.test(all) ? 'Security Model'
+    : 'Overview';
+
+  return `<div class="diagram">
+  <div class="diagram-label">${label}</div>
+  <svg viewBox="0 0 620 ${svgH}" xmlns="http://www.w3.org/2000/svg"
+       style="width:100%;max-width:620px;display:block;margin:0 auto;font-family:Inter,sans-serif">
+    ${rowsSVG}
+  </svg>
+</div>`;
+}
+
 // ── DETECT & REPLACE ASCII DIAGRAMS ──────────────────────────────────────────
 
 function injectDiagrams(html, filename) {
-  // Replace ASCII art pre/code blocks with real SVG diagrams based on content
-  html = html.replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (match, content) => {
-    const t = content;
-    // Architecture diagram
-    if (/WHYCREMISI ARCHITECTURE|UI LAYER.*React|BRIDGE LAYER.*JUCE|DAW LAYER.*PluginProcessor/.test(t))
-      return DIAGRAMS.architecture();
-    // Memory layers
-    if (/LAYER 4.*Identity|LAYER 3.*Personality|LAYER 2.*User Profile|LAYER 0.*Real.Time/.test(t))
-      return DIAGRAMS.memoryLayers();
-    // Plugin control
-    if (/ParameterMapper.*conceptual|setPluginParameter|lookupParamIndex/.test(t))
-      return match; // keep code blocks that are actual code
-    // Roadmap phases
-    if (/Phase Alpha|Phase Beta|Phase 1\.0|Phase 2\.0|VST3.*Standalone.*macOS.*WebSocket/.test(t))
-      return DIAGRAMS.roadmap();
-    // Installer bundle
-    if (/CORE PLUGIN|LOCAL AI ENGINE|Ollama runtime|plugin-database\.json|INSTALLER BUNDLE/.test(t))
-      return DIAGRAMS.installerBundle();
-    // Message flow / WebSocket
-    if (/ai\.prompt.*provider|plugin\.control.*trackId|daw\.transport.*isPlaying/.test(t))
-      return match; // keep message tables as-is (rendered as code)
-    // Paper header box (remove completely — shown in cover)
-    if (/WHYCREMISI RESEARCH PAPERS|─{20,}/.test(t) && t.length < 300)
-      return '';
+  // 1. Replace ALL pre>code blocks
+  html = html.replace(/<pre><code(?:[^>]*)>([\s\S]*?)<\/code><\/pre>/g, (match, content) => {
+    // Keep real code blocks (contain programming syntax, not box art)
+    if (!BOX_CHARS.test(content) || CODE_ONLY.test(content)) return match;
+    return asciiToVisualCard(content);
+  });
+
+  // 2. Replace stray paragraphs/divs that still contain box-drawing chars
+  html = html.replace(/<p>([\s\S]*?)<\/p>/g, (match, content) => {
+    if (BOX_CHARS.test(content) && content.split('\n').length > 3)
+      return asciiToVisualCard(content);
     return match;
   });
 
-  // Inject architecture diagram after h1 if paper 02
-  if (/02-/.test(filename) && !html.includes('class="diagram"')) {
-    html = html.replace(/(<h2[^>]*>)/i, DIAGRAMS.architecture() + '$1');
-  }
-  // Memory layers paper 04
-  if (/04-/.test(filename) && !html.includes('class="diagram"')) {
-    html = html.replace(/(<h2[^>]*>System Architecture|<h2[^>]*>Architettura|<h2[^>]*>OpenClaw|<h2[^>]*>Architettura OpenClaw)/i,
-      DIAGRAMS.memoryLayers() + '$1');
-  }
-  // Roadmap paper 06
-  if (/06-/.test(filename)) {
-    html = html.replace(/(<h2[^>]*>Phase|<h2[^>]*>Fase)/i, DIAGRAMS.roadmap() + '$1');
-  }
-  // Plugin control paper 03
-  if (/03-/.test(filename)) {
-    html = html.replace(/(<h2[^>]*>Control|<h2[^>]*>Controllo)/i, DIAGRAMS.pluginControl() + '$1');
-  }
-  // Communication paper 05
-  if (/05-/.test(filename)) {
-    html = html.replace(/(<h2[^>]*>UI →|<h2[^>]*>Message|<h2[^>]*>Messaggi)/i, DIAGRAMS.messageFlow() + '$1');
-  }
+  // 3. Force-inject named diagrams for key papers if not already present
+  const has = (cls) => html.includes(cls);
+  const injectAfterFirstH2 = (svg) =>
+    html.replace(/(<\/h2>)/, `$1${svg}`);
+
+  if (/02-/.test(filename) && !has('architecture'))
+    html = injectAfterFirstH2(DIAGRAMS.architecture());
+  if (/04-/.test(filename) && !has('memoryLayers'))
+    html = injectAfterFirstH2(DIAGRAMS.memoryLayers());
+  if (/06-/.test(filename) && !has('roadmap'))
+    html = injectAfterFirstH2(DIAGRAMS.roadmap());
+  if (/03-/.test(filename) && !has('pluginControl'))
+    html = injectAfterFirstH2(DIAGRAMS.pluginControl());
+  if (/05-/.test(filename) && !has('messageFlow'))
+    html = injectAfterFirstH2(DIAGRAMS.messageFlow());
 
   return html;
 }
