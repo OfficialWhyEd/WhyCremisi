@@ -68,6 +68,26 @@ juce::String OpenAIProvider::makeHttpRequest(const juce::String& url, const juce
     return makeHttp(url, method, jsonBody, timeoutMs, extraHeaders);
 }
 
+static nlohmann::json buildOpenAIMessages(const juce::String& systemPrompt, const juce::String& userMessage, const juce::String& contextMessages)
+{
+    if (contextMessages.isNotEmpty()) {
+        auto j = parseJsonSafe(contextMessages);
+        if (j.is_array() && !j.empty()) {
+            // If there's a system prompt, prepend it
+            if (systemPrompt.isNotEmpty()) {
+                j.insert(j.begin(), {{"role", "system"}, {"content", systemPrompt.toStdString()}});
+            }
+            j.push_back({{"role", "user"}, {"content", userMessage.toStdString()}});
+            return j;
+        }
+    }
+    nlohmann::json messages = nlohmann::json::array();
+    if (systemPrompt.isNotEmpty())
+        messages.push_back({{"role", "system"}, {"content", systemPrompt.toStdString()}});
+    messages.push_back({{"role", "user"}, {"content", userMessage.toStdString()}});
+    return messages;
+}
+
 AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage)
 {
     Result result;
@@ -75,13 +95,16 @@ AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, 
 
     nlohmann::json body;
     body["model"] = config.model.toStdString();
-    body["messages"] = nlohmann::json::array();
-    if (systemPrompt.isNotEmpty())
-        body["messages"].push_back({{"role", "system"}, {"content", systemPrompt.toStdString()}});
-    body["messages"].push_back({{"role", "user"}, {"content", userMessage.toStdString()}});
+    body["messages"] = buildOpenAIMessages(systemPrompt, userMessage, config.contextMessages);
     body["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["max_tokens"] = config.maxTokens;
     body["stream"] = false;
+
+    if (config.toolsJson.isNotEmpty()) {
+        auto tools = parseJsonSafe(config.toolsJson);
+        if (tools.is_array() && !tools.empty())
+            body["tools"] = tools;
+    }
 
     juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n";
     juce::String raw = makeHttpRequest(getApiUrl(), "POST", juce::String(body.dump()), config.timeoutMs, authHeader);
@@ -89,7 +112,20 @@ AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, 
 
     auto j = parseJsonSafe(raw);
     if (j.contains("choices") && j["choices"].is_array() && !j["choices"].empty()) {
-        result.text = juce::String(j["choices"][0]["message"]["content"].get<std::string>());
+        auto& msg = j["choices"][0]["message"];
+        if (msg.contains("content") && !msg["content"].is_null())
+            result.text = juce::String(msg["content"].get<std::string>());
+        // Parse tool_calls
+        if (msg.contains("tool_calls") && msg["tool_calls"].is_array()) {
+            for (auto& tc : msg["tool_calls"]) {
+                ToolCallResult tcr;
+                tcr.id = juce::String(tc["id"].get<std::string>());
+                tcr.name = juce::String(tc["function"]["name"].get<std::string>());
+                if (tc["function"].contains("arguments"))
+                    tcr.arguments = nlohmann::json::parse(tc["function"]["arguments"].get<std::string>());
+                result.toolCalls.push_back(tcr);
+            }
+        }
         result.success = true;
     } else {
         result.error = extractError(raw);
@@ -106,13 +142,16 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
 
     nlohmann::json body;
     body["model"] = config.model.toStdString();
-    body["messages"] = nlohmann::json::array();
-    if (systemPrompt.isNotEmpty())
-        body["messages"].push_back({{"role", "system"}, {"content", systemPrompt.toStdString()}});
-    body["messages"].push_back({{"role", "user"}, {"content", userMessage.toStdString()}});
+    body["messages"] = buildOpenAIMessages(systemPrompt, userMessage, config.contextMessages);
     body["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["max_tokens"] = config.maxTokens;
     body["stream"] = true;
+
+    if (config.toolsJson.isNotEmpty()) {
+        auto tools = parseJsonSafe(config.toolsJson);
+        if (tools.is_array() && !tools.empty())
+            body["tools"] = tools;
+    }
 
     juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n";
     juce::URL url(getApiUrl());
@@ -136,9 +175,21 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
                 auto j = parseJsonSafe(data);
                 if (j.contains("choices") && j["choices"].is_array() && !j["choices"].empty()) {
                     auto delta = j["choices"][0]["delta"];
-                    if (delta.contains("content")) {
+                    if (delta.contains("content") && !delta["content"].is_null()) {
                         juce::String content = juce::String(delta["content"].get<std::string>());
                         onChunk(content, false);
+                    }
+                    // Streaming tool calls come as delta with tool_calls array
+                    if (delta.contains("tool_calls") && delta["tool_calls"].is_array() && !delta["tool_calls"].empty()) {
+                        for (auto& tc : delta["tool_calls"]) {
+                            if (tc.contains("function") && tc["function"].contains("name") && !tc["function"]["name"].is_null()) {
+                                juce::String toolName = juce::String(tc["function"]["name"].get<std::string>());
+                                juce::String toolArgs;
+                                if (tc["function"].contains("arguments") && !tc["function"]["arguments"].is_null())
+                                    toolArgs = juce::String(tc["function"]["arguments"].get<std::string>());
+                                onChunk("[TOOL_CALL:" + toolName + " " + toolArgs + "]", false);
+                            }
+                        }
                     }
                 }
             }
@@ -148,19 +199,19 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
         }
     }
 
-    onChunk("", true);
+    if (!abortRequested.load())
+        onChunk("", true);
     abortRequested = false;
 }
 
 bool OpenAIProvider::testConnection()
 {
-    if (config.apiKey.isEmpty()) return false;
     return true;
 }
 
 juce::StringArray OpenAIProvider::getAvailableModels()
 {
-    return {"gpt-4o", "gpt-4o-mini", "gpt-4-turbo"};
+    return {"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"};
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -186,6 +237,12 @@ AIProvider::Result AnthropicProvider::sendPrompt(const juce::String& systemPromp
         body["system"] = systemPrompt.toStdString();
     body["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", userMessage.toStdString()}}});
 
+    if (config.toolsJson.isNotEmpty()) {
+        auto tools = parseJsonSafe(config.toolsJson);
+        if (tools.is_array() && !tools.empty())
+            body["tools"] = tools;
+    }
+
     juce::String headers = "x-api-key: " + config.apiKey + "\r\nanthropic-version: 2023-06-01\r\n";
     juce::String raw = makeHttpRequest("https://api.anthropic.com/v1/messages", "POST",
                                         juce::String(body.dump()), config.timeoutMs, headers);
@@ -193,7 +250,19 @@ AIProvider::Result AnthropicProvider::sendPrompt(const juce::String& systemPromp
 
     auto j = parseJsonSafe(raw);
     if (j.contains("content") && j["content"].is_array() && !j["content"].empty()) {
-        result.text = juce::String(j["content"][0]["text"].get<std::string>());
+        for (auto& block : j["content"]) {
+            juce::String type = juce::String(block["type"].get<std::string>());
+            if (type == "text") {
+                result.text = juce::String(block["text"].get<std::string>());
+            } else if (type == "tool_use") {
+                ToolCallResult tcr;
+                tcr.id = juce::String(block["id"].get<std::string>());
+                tcr.name = juce::String(block["name"].get<std::string>());
+                if (block.contains("input"))
+                    tcr.arguments = block["input"];
+                result.toolCalls.push_back(tcr);
+            }
+        }
         result.success = true;
     } else {
         result.error = extractError(raw);
@@ -212,6 +281,12 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
         body["system"] = systemPrompt.toStdString();
     body["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", userMessage.toStdString()}}});
     body["stream"] = true;
+
+    if (config.toolsJson.isNotEmpty()) {
+        auto tools = parseJsonSafe(config.toolsJson);
+        if (tools.is_array() && !tools.empty())
+            body["tools"] = tools;
+    }
 
     juce::String headers = "x-api-key: " + config.apiKey + "\r\nanthropic-version: 2023-06-01\r\n";
 
@@ -234,6 +309,14 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
                     juce::String type = juce::String(j["type"].get<std::string>());
                     if (type == "content_block_delta" && j.contains("delta") && j["delta"].contains("text")) {
                         onChunk(juce::String(j["delta"]["text"].get<std::string>()), false);
+                    }
+                    if (type == "content_block_start" && j.contains("content_block") && j["content_block"].contains("type")) {
+                        juce::String cbType = juce::String(j["content_block"]["type"].get<std::string>());
+                        if (cbType == "tool_use") {
+                            juce::String toolName = juce::String(j["content_block"]["name"].get<std::string>());
+                            juce::String toolInput = j["content_block"].contains("input") ? juce::String(j["content_block"]["input"].dump()) : "";
+                            onChunk("[TOOL_CALL:" + toolName + " " + toolInput + "]", false);
+                        }
                     }
                     if (type == "message_stop") break;
                 }

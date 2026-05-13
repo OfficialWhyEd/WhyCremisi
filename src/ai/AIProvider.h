@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
+#include <nlohmann/json.hpp>
 #include <functional>
 #include <memory>
 
@@ -16,12 +17,23 @@ public:
         int timeoutMs = 30000;
         int maxTokens = 2048;
         float temperature = 0.7f;
+        juce::String toolsJson;          // JSON array of tool definitions (OpenAI/Anthropic format)
+        juce::String contextMessages;     // JSON array of prior messages for multi-turn
+    };
+
+    struct ToolCallResult {
+        juce::String id;
+        juce::String name;
+        nlohmann::json arguments;
+        juce::String output;             // filled by tool executor
+        bool hasOutput = false;
     };
 
     struct Result {
         juce::String text;
         bool success = false;
         juce::String error;
+        std::vector<ToolCallResult> toolCalls;  // populated when model requests tool use
     };
 
     using StreamCallback = std::function<void(const juce::String& chunk, bool isDone)>;
@@ -35,6 +47,8 @@ public:
 
     void configure(const Config& cfg) { config = cfg; }
     const Config& getConfig() const { return config; }
+    virtual void setToolsJson(const juce::String& json) { config.toolsJson = json; }
+    virtual void setContextMessages(const juce::String& json) { config.contextMessages = json; }
 
 protected:
     Config config;

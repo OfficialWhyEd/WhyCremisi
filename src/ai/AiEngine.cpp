@@ -1,8 +1,15 @@
 #include "AiEngine.h"
 #include "AIProvider.h"
+#include "ToolRegistry.h"
 #include <nlohmann/json.hpp>
 
-AiEngine::AiEngine() { configured = false; }
+AiEngine::AiEngine()
+{
+    configured = false;
+    toolRegistry = std::make_unique<ToolRegistry>();
+    contextManager = std::make_unique<ContextManager>();
+}
+
 AiEngine::~AiEngine() {}
 
 void AiEngine::configure(const Config& cfg)
@@ -10,6 +17,7 @@ void AiEngine::configure(const Config& cfg)
     config = cfg;
     configured = true;
     ensureProvider();
+    syncWidgetTools();
 }
 
 void AiEngine::updateConfig(std::function<void(Config&)> updater)
@@ -17,6 +25,7 @@ void AiEngine::updateConfig(std::function<void(Config&)> updater)
     updater(config);
     configured = true;
     ensureProvider();
+    syncWidgetTools();
 }
 
 void AiEngine::setPersonalityStyle(AiPersonalityStyle style)
@@ -87,6 +96,97 @@ void AiEngine::ensureProvider()
 {
     if (!configured) return;
     currentProvider = createProvider(config.provider);
+    if (currentProvider)
+        syncProviderConfig();
+}
+
+void AiEngine::syncProviderConfig()
+{
+    if (!currentProvider) return;
+    if (toolsEnabled && config.provider != Provider::Ollama && config.provider != Provider::Gemini)
+        currentProvider->setToolsJson(buildToolsJson());
+    else
+        currentProvider->setToolsJson({});
+
+    currentProvider->setContextMessages(buildContextMessagesJson());
+}
+
+void AiEngine::syncWidgetTools()
+{
+    if (!toolRegistry) return;
+    std::vector<std::pair<juce::String, juce::String>> widgetTools;
+    for (const auto& w : widgets)
+        widgetTools.emplace_back(w.widgetId, w.label);
+    toolRegistry->setWidgetTools(widgetTools);
+}
+
+void AiEngine::setToolExecutor(ToolExecutorFn exec)
+{
+    if (toolRegistry)
+        toolRegistry->setExecutor(exec);
+}
+
+// ── Tool Integration ───────────────────────────────────────
+
+juce::String AiEngine::buildToolsJson() const
+{
+    if (!toolRegistry || !toolsEnabled) return {};
+
+    nlohmann::json tools;
+    bool isAnthropic = (config.provider == Provider::Anthropic);
+
+    if (isAnthropic)
+        tools = toolRegistry->getAnthropicTools();
+    else
+        tools = toolRegistry->getOpenAITools();
+
+    return tools.is_null() ? juce::String() : juce::String(tools.dump());
+}
+
+// ── Context Management ─────────────────────────────────────
+
+void AiEngine::addConversationMessage(const juce::String& role, const juce::String& content)
+{
+    if (!contextManager) return;
+    ContextManager::Message::Role r = ContextManager::Message::User;
+    if (role == "system") r = ContextManager::Message::System;
+    else if (role == "assistant") r = ContextManager::Message::Assistant;
+    else if (role == "tool") r = ContextManager::Message::Tool;
+
+    ContextManager::Message msg;
+    msg.role = r;
+    msg.content = content;
+    msg.estimatedTokens = ContextManager::estimateTokens(content);
+    contextManager->addMessage(msg);
+    contextManager->trimToBudget();
+}
+
+void AiEngine::clearConversationContext()
+{
+    if (contextManager)
+        contextManager = std::make_unique<ContextManager>();
+}
+
+juce::String AiEngine::buildContextMessagesJson() const
+{
+    if (!contextManager) return {};
+
+    auto msgs = contextManager->getMessages();
+    if (msgs.empty()) return {};
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& msg : msgs) {
+        nlohmann::json j;
+        switch (msg.role) {
+            case ContextManager::Message::System:    j["role"] = "system"; break;
+            case ContextManager::Message::User:      j["role"] = "user"; break;
+            case ContextManager::Message::Assistant: j["role"] = "assistant"; break;
+            case ContextManager::Message::Tool:      j["role"] = "tool"; break;
+        }
+        j["content"] = msg.content.toStdString();
+        arr.push_back(j);
+    }
+    return juce::String(arr.dump());
 }
 
 // ── Personality Prefix Builder ─────────────────────────────
@@ -171,17 +271,29 @@ juce::String AiEngine::buildSystemPrompt() const
 
     prompt += "\nIMPORTANT: values must be in 0.0-1.0 normalized range.\n";
     prompt += "Only output valid JSON, no other text outside the JSON block.\n";
+
+    if (toolsEnabled) {
+        prompt += "\nYou also have access to DAW function tools. ";
+        prompt += "For direct widget control, use the provided tools instead of JSON actions when appropriate.\n";
+    }
+
     return prompt;
 }
 
 // ── Widget / Context Setters ───────────────────────────────
 
-void AiEngine::setWidgetList(const std::vector<WidgetInfo>& w) { widgets = w; }
+void AiEngine::setWidgetList(const std::vector<WidgetInfo>& w)
+{
+    widgets = w;
+    syncWidgetTools();
+}
+
 void AiEngine::setContext(const juce::String& meterData, const juce::String& transportData)
 {
     lastMeterData = meterData;
     lastTransportData = transportData;
 }
+
 void AiEngine::setPersonalityContext(const juce::String& context) { personalityContext = context; }
 void AiEngine::setAgentWorkspaceContext(const juce::String& context) { agentWorkspaceContext = context; }
 
@@ -189,30 +301,69 @@ void AiEngine::setAgentWorkspaceContext(const juce::String& context) { agentWork
 
 AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& prompt)
 {
+    StructuredResponse response;
     if (!configured || !currentProvider) {
-        StructuredResponse r;
-        r.text = "[AI] Not configured.";
-        r.success = false;
-        return r;
+        response.text = "[AI] Not configured.";
+        response.success = false;
+        return response;
     }
 
     juce::String systemPrompt = buildSystemPrompt();
-    juce::String fullPrompt = "Context:\n" + systemPrompt + "\n\nUser request:\n" + prompt;
+    syncProviderConfig();
+
     auto result = currentProvider->sendPrompt(systemPrompt, prompt);
 
     if (!result.success) {
-        StructuredResponse r;
-        r.text = "[ERROR] " + result.error;
-        r.success = false;
+        response.text = "[ERROR] " + result.error;
+        response.success = false;
         lastError = result.error;
-        return r;
+        return response;
     }
 
-    auto response = parseStructuredResponse(result.text);
-    if (response.success && actionCallback) {
-        for (const auto& action : response.actions)
+    // Handle tool calls
+    if (!result.toolCalls.empty() && toolRegistry) {
+        // Convert ToolCallResults to ToolCalls for executeTools
+        std::vector<ToolCall> calls;
+        for (auto& tcr : result.toolCalls) {
+            ToolCall tc;
+            tc.id = tcr.id;
+            tc.name = tcr.name;
+            tc.arguments = tcr.arguments;
+            calls.push_back(tc);
+        }
+        auto toolResults = toolRegistry->executeTools(calls);
+        nlohmann::json toolMessages = nlohmann::json::array();
+        for (auto& tr : toolResults) {
+            nlohmann::json tm;
+            tm["role"] = "tool";
+            tm["tool_call_id"] = tr.toolCallId.toStdString();
+            tm["content"] = tr.output.toStdString();
+            toolMessages.push_back(tm);
+        }
+        response.rawToolResponse = juce::String(toolMessages.dump());
+
+        // Send follow-up with tool results
+        result = currentProvider->sendPrompt(systemPrompt, prompt);
+        if (!result.success) {
+            response.text = "[ERROR] " + result.error;
+            return response;
+        }
+    }
+
+    auto parsed = parseStructuredResponse(result.text);
+    if (parsed.success && actionCallback) {
+        for (const auto& action : parsed.actions)
             actionCallback(action);
     }
+
+    response.text = parsed.text;
+    response.actions = parsed.actions;
+    response.success = parsed.success;
+
+    // Store in context
+    addConversationMessage("user", prompt);
+    addConversationMessage("assistant", response.text);
+
     return response;
 }
 
@@ -232,7 +383,11 @@ void AiEngine::sendPromptStreaming(const juce::String& prompt, StreamCallback on
     }
 
     juce::String systemPrompt = buildSystemPrompt();
+    syncProviderConfig();
     currentProvider->sendPromptStreaming(systemPrompt, prompt, onChunk);
+
+    // Store in context on completion
+    addConversationMessage("user", prompt);
 }
 
 void AiEngine::sendStructuredStreaming(const juce::String& prompt, StreamCallback onChunk,
@@ -248,11 +403,13 @@ void AiEngine::sendStructuredStreaming(const juce::String& prompt, StreamCallbac
     }
 
     juce::String systemPrompt = buildSystemPrompt();
+    syncProviderConfig();
     juce::String accumulated;
 
     currentProvider->sendPromptStreaming(systemPrompt, prompt,
         [&](const juce::String& chunk, bool isDone) {
-            if (!chunk.isEmpty()) accumulated += chunk;
+            if (!chunk.isEmpty() && !chunk.startsWith("[TOOL_CALL:"))
+                accumulated += chunk;
             if (onChunk) onChunk(chunk, isDone);
             if (isDone && onComplete) {
                 auto response = parseStructuredResponse(accumulated);
@@ -260,6 +417,9 @@ void AiEngine::sendStructuredStreaming(const juce::String& prompt, StreamCallbac
                     for (const auto& action : response.actions)
                         actionCallback(action);
                 }
+                // Store in context
+                addConversationMessage("user", prompt);
+                addConversationMessage("assistant", response.text);
                 onComplete(response);
             }
         });

@@ -8,6 +8,8 @@
 #include <map>
 
 class AIProvider;
+class ToolRegistry;
+class ContextManager;
 
 enum class AiPersonalityStyle {
     Analytical,
@@ -46,6 +48,7 @@ public:
         juce::String text;
         std::vector<AiAction> actions;
         bool success = false;
+        juce::String rawToolResponse;
     };
 
     struct WidgetInfo {
@@ -103,9 +106,21 @@ public:
     static juce::String getPersonalityStyleName(AiPersonalityStyle style);
     static juce::String getPersonalityStyleDescription(AiPersonalityStyle style);
 
+    // Tool integration
+    void setToolsEnabled(bool enabled) { toolsEnabled = enabled; }
+    juce::String buildToolsJson() const;
+    using ToolExecutorFn = std::function<struct ToolResult(const struct ToolCall&)>;
+    void setToolExecutor(ToolExecutorFn exec);
+
+    // Context management
+    void addConversationMessage(const juce::String& role, const juce::String& content);
+    void clearConversationContext();
+    juce::String buildContextMessagesJson() const;
+
 private:
     Config config;
     bool configured = false;
+    bool toolsEnabled = true;
     mutable juce::String lastError;
 
     std::vector<WidgetInfo> widgets;
@@ -119,9 +134,14 @@ private:
     std::unique_ptr<AIProvider> currentProvider;
     std::unique_ptr<AIProvider> createProvider(Provider type);
     void ensureProvider();
+    void syncProviderConfig();
+
+    std::unique_ptr<ToolRegistry> toolRegistry;
+    std::unique_ptr<ContextManager> contextManager;
 
     StructuredResponse parseStructuredResponse(const juce::String& raw) const;
     juce::String buildPersonalityPrefix() const;
+    void syncWidgetTools();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AiEngine)
 };

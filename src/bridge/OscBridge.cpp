@@ -9,6 +9,7 @@
 
 #include "OscBridge.h"
 #include "AiEngine.h"
+#include "ToolRegistry.h"
 #include "SessionManager.h"
 #include "MidiHandler.h"
 #include "ParameterMapper.h"
@@ -1944,6 +1945,125 @@ void OscBridge::setDawTarget(const juce::String& host, int sendPort)
 void OscBridge::setAiEngine(AiEngine* engine)
 {
     aiEngine = engine;
+    if (!aiEngine) return;
+
+    // Wire tool executor: maps tool calls → DAW commands / widget control
+    aiEngine->setToolExecutor([this](const ToolCall& call) -> ToolResult {
+        ToolResult result;
+        result.toolCallId = call.id;
+        result.name = call.name;
+
+        auto sendDawCmd = [&](const std::string& action, const nlohmann::json& params = {}) {
+            nlohmann::json msg;
+            msg["type"] = "daw.command";
+            msg["payload"]["command"] = action;
+            for (auto& [k, v] : params.items())
+                msg["payload"][k] = v;
+            wsServer->broadcast(msg);
+        };
+
+        // Transport
+        if (call.name == "daw.transport.play") {
+            sendDawCmd("play");
+            result.success = true;
+            result.output = "Playback started";
+        }
+        else if (call.name == "daw.transport.stop") {
+            sendDawCmd("stop");
+            result.success = true;
+            result.output = "Playback stopped";
+        }
+        else if (call.name == "daw.transport.record") {
+            bool arm = call.arguments.contains("arm") && call.arguments["arm"].get<bool>();
+            sendDawCmd("record", {{"arm", arm}});
+            result.success = true;
+            result.output = arm ? "Recording armed" : "Recording stopped";
+        }
+        else if (call.name == "daw.transport.setTempo") {
+            float bpm = call.arguments["bpm"].get<float>();
+            sendDawCmd("setTempo", {{"bpm", bpm}});
+            result.success = true;
+            result.output = "Tempo set to " + std::to_string(bpm) + " BPM";
+        }
+        // Track controls
+        else if (call.name == "daw.track.setVolume") {
+            int track = call.arguments["track"].get<int>();
+            float vol = call.arguments["volume"].get<float>();
+            sendDawCmd("setVolume", {{"track", track}, {"volume", vol}});
+            result.success = true;
+            result.output = "Track " + std::to_string(track) + " volume set to " + std::to_string(vol) + "dB";
+        }
+        else if (call.name == "daw.track.setPan") {
+            int track = call.arguments["track"].get<int>();
+            float pan = call.arguments["pan"].get<float>();
+            sendDawCmd("setPan", {{"track", track}, {"pan", pan}});
+            result.success = true;
+            result.output = "Track " + std::to_string(track) + " pan set to " + std::to_string(pan);
+        }
+        else if (call.name == "daw.track.mute") {
+            int track = call.arguments["track"].get<int>();
+            bool mute = call.arguments["mute"].get<bool>();
+            sendDawCmd("mute", {{"track", track}, {"mute", mute}});
+            result.success = true;
+            result.output = "Track " + std::to_string(track) + (mute ? " muted" : " unmuted");
+        }
+        else if (call.name == "daw.track.solo") {
+            int track = call.arguments["track"].get<int>();
+            bool solo = call.arguments["solo"].get<bool>();
+            sendDawCmd("solo", {{"track", track}, {"solo", solo}});
+            result.success = true;
+            result.output = "Track " + std::to_string(track) + (solo ? " soloed" : " unsoloed");
+        }
+        // Plugin controls
+        else if (call.name == "daw.plugin.setParam") {
+            int track = call.arguments["track"].get<int>();
+            std::string plugin = call.arguments["plugin"].get<std::string>();
+            std::string param = call.arguments["param"].get<std::string>();
+            float value = call.arguments["value"].get<float>();
+            sendDawCmd("setPluginParam", {{"track", track}, {"plugin", plugin}, {"param", param}, {"value", value}});
+            result.success = true;
+            result.output = plugin + " " + param + " set to " + std::to_string(value);
+        }
+        else if (call.name == "daw.plugin.bypass") {
+            int track = call.arguments["track"].get<int>();
+            std::string plugin = call.arguments["plugin"].get<std::string>();
+            bool bypass = call.arguments["bypass"].get<bool>();
+            sendDawCmd("bypassPlugin", {{"track", track}, {"plugin", plugin}, {"bypass", bypass}});
+            result.success = true;
+            result.output = plugin + (bypass ? " bypassed" : " enabled");
+        }
+        // Markers
+        else if (call.name == "daw.marker.goto") {
+            std::string marker = call.arguments["marker"].get<std::string>();
+            sendDawCmd("gotoMarker", {{"marker", marker}});
+            result.success = true;
+            result.output = "Navigated to marker " + marker;
+        }
+        else if (call.name == "daw.marker.set") {
+            std::string name = call.arguments.contains("name") ? call.arguments["name"].get<std::string>() : "";
+            sendDawCmd("setMarker", {{"name", name}});
+            result.success = true;
+            result.output = name.empty() ? "Marker set" : "Marker '" + name + "' set";
+        }
+        // Widget controls (dynamic)
+        else if (call.name.startsWith("widget.set_")) {
+            juce::String widgetId = call.name.fromFirstOccurrenceOf("widget.set_", false, false);
+            float value = call.arguments["value"].get<float>();
+            nlohmann::json msg;
+            msg["type"] = "widget.update";
+            msg["payload"]["widgetId"] = widgetId.toStdString();
+            msg["payload"]["value"] = value;
+            wsServer->broadcast(msg);
+            result.success = true;
+            result.output = "Widget " + widgetId.toStdString() + " set to " + std::to_string(value);
+        }
+        else {
+            result.success = false;
+            result.output = "Unknown tool: " + call.name.toStdString();
+        }
+
+        return result;
+    });
 }
 
 void OscBridge::setMidiHandler(MidiHandler* mh) { midiHandler = mh; }
