@@ -5,7 +5,7 @@ import { BotFace } from './components/BotFace'
 import { SessionPanel } from './components/SessionPanel'
 import { SetupScreen } from './components/SetupScreen'
 import './index.css'
-import BoxChat from './boxes/BoxChat'
+import BoxChat from './panels/BoxChat'
 
 export default function App() {
   // ── setup state ───────────────────────────────────────────────────

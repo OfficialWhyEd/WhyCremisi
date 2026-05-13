@@ -117,6 +117,11 @@ public:
     void clearConversationContext();
     juce::String buildContextMessagesJson() const;
 
+    // Session persistence
+    bool saveSessionState();
+    bool loadSessionState();
+    static juce::File getSessionFilePath();
+
     // Config validation
     struct ConfigValidation {
         bool valid = true;

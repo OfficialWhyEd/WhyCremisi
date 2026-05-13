@@ -239,3 +239,31 @@ juce::String ContextManager::buildContextString(const juce::String& systemPrompt
     }
     return result;
 }
+
+nlohmann::json ContextManager::toJson() const
+{
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& msg : messages) {
+        nlohmann::json j;
+        j["role"] = static_cast<int>(msg.role);
+        j["content"] = msg.content.toStdString();
+        j["estimatedTokens"] = msg.estimatedTokens;
+        arr.push_back(j);
+    }
+    return arr;
+}
+
+void ContextManager::fromJson(const nlohmann::json& j)
+{
+    messages.clear();
+    totalTokens = 0;
+    if (!j.is_array()) return;
+    for (const auto& item : j) {
+        Message msg;
+        msg.role = static_cast<Message::Role>(item.value("role", 1));
+        msg.content = juce::String(item.value("content", ""));
+        msg.estimatedTokens = item.value("estimatedTokens", 0);
+        messages.push_back(msg);
+        totalTokens += msg.estimatedTokens;
+    }
+}

@@ -8,9 +8,101 @@ AiEngine::AiEngine()
     configured = false;
     toolRegistry = std::make_unique<ToolRegistry>();
     contextManager = std::make_unique<ContextManager>();
+    loadSessionState();
 }
 
-AiEngine::~AiEngine() {}
+AiEngine::~AiEngine()
+{
+    saveSessionState();
+}
+
+juce::File AiEngine::getSessionFilePath()
+{
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+        .getChildFile("WhyCremisi").getChildFile("session.json");
+}
+
+bool AiEngine::saveSessionState()
+{
+    auto file = getSessionFilePath();
+    file.getParentDirectory().createDirectory();
+
+    nlohmann::json j;
+
+    j["config"]["provider"] = static_cast<int>(config.provider);
+    j["config"]["model"] = config.model.toStdString();
+    j["config"]["baseUrl"] = config.baseUrl.toStdString();
+    j["config"]["timeoutMs"] = config.timeoutMs;
+    j["config"]["maxTokens"] = config.maxTokens;
+    j["config"]["temperature"] = config.temperature;
+    j["config"]["personalityStyle"] = static_cast<int>(config.personalityStyle);
+
+    if (contextManager)
+        j["conversation"] = contextManager->toJson();
+
+    j["toolsEnabled"] = toolsEnabled;
+
+    if (personalityContext.isNotEmpty())
+        j["personalityContext"] = personalityContext.toStdString();
+
+    if (agentWorkspaceContext.isNotEmpty())
+        j["agentWorkspaceContext"] = agentWorkspaceContext.toStdString();
+
+    if (dawName.isNotEmpty())
+        j["dawName"] = dawName.toStdString();
+
+    auto result = file.replaceWithText(juce::String(j.dump(2)));
+    return result;
+}
+
+bool AiEngine::loadSessionState()
+{
+    auto file = getSessionFilePath();
+    if (!file.existsAsFile()) return false;
+
+    try {
+        auto j = nlohmann::json::parse(file.loadFileAsString().toStdString());
+
+        if (j.contains("config")) {
+            auto& cfg = j["config"];
+            if (cfg.contains("provider"))
+                config.provider = static_cast<Provider>(cfg["provider"].get<int>());
+            if (cfg.contains("model"))
+                config.model = juce::String(cfg["model"].get<std::string>());
+            if (cfg.contains("baseUrl"))
+                config.baseUrl = juce::String(cfg["baseUrl"].get<std::string>());
+            if (cfg.contains("timeoutMs"))
+                config.timeoutMs = cfg["timeoutMs"].get<int>();
+            if (cfg.contains("maxTokens"))
+                config.maxTokens = cfg["maxTokens"].get<int>();
+            if (cfg.contains("temperature"))
+                config.temperature = cfg["temperature"].get<float>();
+            if (cfg.contains("personalityStyle"))
+                config.personalityStyle = static_cast<AiPersonalityStyle>(cfg["personalityStyle"].get<int>());
+        }
+
+        if (j.contains("conversation") && contextManager)
+            contextManager->fromJson(j["conversation"]);
+
+        if (j.contains("toolsEnabled"))
+            toolsEnabled = j["toolsEnabled"].get<bool>();
+
+        if (j.contains("personalityContext"))
+            personalityContext = juce::String(j["personalityContext"].get<std::string>());
+
+        if (j.contains("agentWorkspaceContext"))
+            agentWorkspaceContext = juce::String(j["agentWorkspaceContext"].get<std::string>());
+
+        if (j.contains("dawName"))
+            dawName = juce::String(j["dawName"].get<std::string>());
+
+        configured = true;
+        return true;
+    } catch (const std::exception& e) {
+        juce::ignoreUnused(e);
+        return false;
+    }
+}
 
 void AiEngine::configure(const Config& cfg)
 {
@@ -159,12 +251,14 @@ void AiEngine::addConversationMessage(const juce::String& role, const juce::Stri
     msg.estimatedTokens = ContextManager::estimateTokens(content);
     contextManager->addMessage(msg);
     contextManager->trimToBudget();
+    saveSessionState();
 }
 
 void AiEngine::clearConversationContext()
 {
     if (contextManager)
         contextManager = std::make_unique<ContextManager>();
+    saveSessionState();
 }
 
 AiEngine::ConfigValidation AiEngine::validateConfig() const

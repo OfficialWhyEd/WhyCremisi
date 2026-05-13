@@ -71,10 +71,10 @@ target_sources(WhyCremisiVSTPlugin
         src/core/PluginProcessor.cpp
         src/core/PluginEditor.cpp
         src/core/SessionManager.cpp
-        src/core/AgentIdentity.cpp
-        src/core/AgentSoul.cpp
-        src/core/AgentUser.cpp
-        src/core/AgentWorkspace.cpp
+        src/agent/AgentIdentity.cpp
+        src/agent/AgentSoul.cpp
+        src/agent/AgentUser.cpp
+        src/agent/AgentWorkspace.cpp
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
         src/ai/AIProvider.cpp
@@ -85,7 +85,7 @@ target_sources(WhyCremisiVSTPlugin
         src/midi/MidiHandler.cpp
         src/core/ParameterMapper.cpp
         src/core/PluginChain.cpp
-        src/core/PersonalityCore.cpp
+        src/agent/PersonalityCore.cpp
         src/dsp/EQBand.cpp
         src/dsp/Compressor.cpp
         src/dsp/Limiter.cpp

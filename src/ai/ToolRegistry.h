@@ -85,6 +85,10 @@ public:
 
     static int estimateTokens(const juce::String& text);
 
+    // Session persistence
+    nlohmann::json toJson() const;
+    void fromJson(const nlohmann::json& j);
+
 private:
     std::vector<Message> messages;
     int maxTokens;

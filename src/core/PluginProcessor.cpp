@@ -14,8 +14,8 @@
 #include "ParameterMapper.h"
 #include "PluginChain.h"
 #include "DSPEngine.h"
-#include "PersonalityCore.h"
-#include "AgentWorkspace.h"
+#include "../agent/PersonalityCore.h"
+#include "../agent/AgentWorkspace.h"
 #include <nlohmann/json.hpp>
 #include <signal.h>
 
