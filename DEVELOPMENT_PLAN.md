@@ -613,7 +613,10 @@ Legend: `[ ]` = pending, `[~]` = in progress, `[x]` = done, `[-]` = skipped/canc
 | 55 | 2026-05-13 | Claude | [x] | heartbroken-claude (chat message search ⌘F) |
 | 57 | 2026-05-13 | Claude | [x] | heartbroken-claude (session export/import JSON) |
 | 58 | 2026-05-13 | Claude | [x] | heartbroken-claude (aria-labels, accessibility) |
-| 66–100 | TBD | Claude | [ ] | — |
+| 75 | 2026-05-13 | Claude | [x] | heartbroken-claude (ToolRegistry→provider HTTP bodies + tool calls parsing) |
+| 76 | 2026-05-13 | Claude | [x] | heartbroken-claude (ContextManager integrated into AiEngine) |
+| 77 | 2026-05-13 | Claude | [x] | heartbroken-claude (ToolExecutor callback in OscBridge) |
+| 78–100 | TBD | Claude | [ ] | — |
 
 ---
 
