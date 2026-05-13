@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { whycremisi, ConnectionState } from './whycremisi-bridge'
 import { BotFace } from './components/BotFace'
+import { MaskLogo } from './components/MaskLogo'
 import { SessionPanel } from './components/SessionPanel'
 import { SetupScreen } from './components/SetupScreen'
 import './index.css'
@@ -66,117 +67,38 @@ export default function App() {
   const [midiLearnWidget, setMidiLearnWidget] = useState(null)
   const [midiMappings, setMidiMappings] = useState([])
   const [showMapPanel, setShowMapPanel] = useState(false)
+  const [sessionOpen, setSessionOpen] = useState(false)
 
-  // ── Personality (from PersonalityCore via plugin) ──────────────────
-  const [personality, setPersonality] = useState({
-    style: 'warm',
-    confidence: 0.5,
-    experienceLevel: 1,
-    userName: '',
-    sessionCount: 0,
-    totalActions: 0,
-    recentActions: [],
-    description: ''
-  })
+  const [showChainPanel, setShowChainPanel] = useState(false)
 
-  // ── Command history ────────────────────────────────────────────────
-  const [cmdHistory, setCmdHistory] = useState([])
-  const [historyIdx, setHistoryIdx] = useState(-1)
-  const inputRef = useRef(null)
+  // ── plugin stats (from prepareToPlay via WebSocket) ───────────────
+  const [pluginStats, setPluginStats] = useState({ sampleRate: null, bufferSize: null, latencyMs: null })
 
-  // ── Chat search ─────────────────────────────────────────────────────
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const searchRef = useRef(null)
+  // ── active tab ────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('COMMAND')
 
-  // ── Theme ───────────────────────────────────────────────────────────
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('whycremisi_theme') || 'dark'
-  })
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('whycremisi_theme', theme)
-  }, [theme])
+  // ── active side module ────────────────────────────────────────────
+  const [activeMod, setActiveMod] = useState('ai')
+  const [boxLayout, setBoxLayout] = useState('inline')
 
-  // ── global keyboard shortcuts ──────────────────────────────────────
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleKeyDown])
-  const toggleTheme = useCallback(() => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
-  }, [])
-
-  // ── AI Personality Style ────────────────────────────────────────────
-  const PERSONALITY_STYLES = [
-    { id: 'analytical',  label: 'AN', name: 'Analytical',  icon: '📊' },
-    { id: 'consultative',label: 'CS', name: 'Consultative',icon: '💬' },
-    { id: 'direct',      label: 'DR', name: 'Direct',      icon: '⚡' },
-    { id: 'creative',    label: 'CR', name: 'Creative',    icon: '🎨' },
-    { id: 'warm',        label: 'WA', name: 'Warm',        icon: '🔥' },
+  const sideModules = [
+    { id: 'ai',        icon: 'memory',                     label: 'AI' },
+    { id: 'transport', icon: 'play_arrow',                  label: 'TRANSPORT' },
+    { id: 'comp',      icon: 'settings_input_component',    label: 'COMP' },
+    { id: 'limit',     icon: 'linear_scale',                label: 'LIMIT' },
+    { id: 'eq',        icon: 'graphic_eq',                  label: 'EQ' },
+    { id: 'meters',    icon: 'analytics',                   label: 'METERS' },
+    { id: 'actions',   icon: 'history',                     label: 'ACTIONS' }
   ]
-  const [personalityStyle, setPersonalityStyle] = useState('analytical')
-  const [showStylePicker, setShowStylePicker] = useState(false)
 
-  const applyPersonalityStyle = useCallback((styleId) => {
-    setPersonalityStyle(styleId)
-    setShowStylePicker(false)
-    if (whycremisi.isConnected()) {
-      whycremisi.sendMessage('ai.personalityStyle', { style: styleId })
-    }
-    const styleNames = { analytical: 'Analytical', consultative: 'Consultative', direct: 'Direct', creative: 'Creative', warm: 'Warm' }
-    addSystemMessage(`Personality set to ${styleNames[styleId] || styleId}`)
+  // ── helpers ───────────────────────────────────────────────────────
+  const ts = () => new Date().toLocaleTimeString('en-US', { hour12: false })
+
+  const addMsg = useCallback((msg) => {
+    setMessages(prev => [...prev, { id: Date.now() + Math.random(), ...msg }])
   }, [])
 
-  // ── AI Action Log + Undo/Redo ──────────────────────────────────────
-  const [actionLog, setActionLog] = useState([])
-  const [actionHistory, setActionHistory] = useState([])
-  const [actionRedoStack, setActionRedoStack] = useState([])
-  const actionHistoryRef = useRef([])
-  const actionRedoRef = useRef([])
-
-  const addSystemMessage = useCallback((text) => {
-    setMessages(prev => [...prev, {
-      id: Date.now() + Math.random(),
-      type: 'system',
-      text: `[--:--:--] ${text}`
-    }])
-  }, [])
-
-  const pushAction = useCallback((action) => {
-    setActionLog(prev => [action, ...prev].slice(0, 100))
-    actionHistoryRef.current = [...actionHistoryRef.current, { ...action }]
-    actionRedoRef.current = []
-    setActionHistory(actionHistoryRef.current)
-    setActionRedoStack([])
-  }, [])
-
-  const undoLastAction = useCallback(() => {
-    const history = actionHistoryRef.current
-    if (history.length === 0) return
-    const last = history[history.length - 1]
-    const prevVal = last.previousValue !== undefined ? last.previousValue : 0
-    if (whycremisi.isConnected()) {
-      whycremisi.sendMessage('widget.valueChange', { widgetId: last.widgetId, value: prevVal })
-    }
-    actionRedoRef.current = [...actionRedoRef.current, { ...last }]
-    actionHistoryRef.current = history.slice(0, -1)
-    setActionHistory(actionHistoryRef.current)
-    setActionRedoStack(actionRedoRef.current)
-  }, [])
-
-  const redoLastAction = useCallback(() => {
-    const redoStack = actionRedoRef.current
-    if (redoStack.length === 0) return
-    const next = redoStack[redoStack.length - 1]
-    if (whycremisi.isConnected()) {
-      whycremisi.sendMessage('widget.valueChange', { widgetId: next.widgetId, value: next.value })
-    }
-    actionHistoryRef.current = [...actionHistoryRef.current, { ...next }]
-    actionRedoRef.current = redoStack.slice(0, -1)
-    setActionHistory(actionHistoryRef.current)
-    setActionRedoStack(actionRedoRef.current)
-  }, [])
+  const sysMsg = useCallback((text) => addMsg({ type: 'system', text }), [addMsg])
 
   // ── Export/Import session ─────────────────────────────────────────
   const exportSession = useCallback(() => {
@@ -227,39 +149,6 @@ export default function App() {
     input.click()
   }, [sysMsg])
 
-  // ── Plugin Chain ──────────────────────────────────────────────────
-  const [pluginChain, setPluginChain] = useState([])
-  const [showChainPanel, setShowChainPanel] = useState(false)
-
-  // ── plugin stats (from prepareToPlay via WebSocket) ───────────────
-  const [pluginStats, setPluginStats] = useState({ sampleRate: null, bufferSize: null, latencyMs: null })
-
-  // ── active tab ────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('COMMAND')
-
-  // ── active side module ────────────────────────────────────────────
-  const [activeMod, setActiveMod] = useState('ai')
-  const [boxLayout, setBoxLayout] = useState('inline')
-
-  const sideModules = [
-    { id: 'ai',        icon: 'memory',                     label: 'AI' },
-    { id: 'transport', icon: 'play_arrow',                  label: 'TRANSPORT' },
-    { id: 'comp',      icon: 'settings_input_component',    label: 'COMP' },
-    { id: 'limit',     icon: 'linear_scale',                label: 'LIMIT' },
-    { id: 'eq',        icon: 'graphic_eq',                  label: 'EQ' },
-    { id: 'meters',    icon: 'analytics',                   label: 'METERS' },
-    { id: 'actions',   icon: 'history',                     label: 'ACTIONS' }
-  ]
-
-  // ── helpers ───────────────────────────────────────────────────────
-  const ts = () => new Date().toLocaleTimeString('en-US', { hour12: false })
-
-  const addMsg = useCallback((msg) => {
-    setMessages(prev => [...prev, { id: Date.now() + Math.random(), ...msg }])
-  }, [])
-
-  const sysMsg = useCallback((text) => addMsg({ type: 'system', text }), [addMsg])
-
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   // ── bridge init ───────────────────────────────────────────────────
@@ -281,6 +170,10 @@ export default function App() {
       if (s === ConnectionState.DISCONNECTED || s === ConnectionState.ERROR) {
         sysMsg(`[${ts()}] CONNECTION LOST — RECONNECTING...`)
         setBotState('sad')
+        addToast('error', 'WebSocket connection lost — reconnecting...')
+      }
+      if (s === ConnectionState.CONNECTED) {
+        addToast('success', 'Connected to WhyCremisi plugin')
       }
       if (s === ConnectionState.RECONNECTING) {
         setBotState('loading')
@@ -385,6 +278,7 @@ export default function App() {
       setBotState('error')
       setTimeout(() => { if (mounted.current) setBotState('idle') }, 3000)
       sysMsg(`[${ts()}] [ERROR] ${payload.message || payload.code || 'Unknown error'}`)
+      addToast('error', payload.message || payload.code || 'Unknown plugin error')
     })
 
     // MIDI Learn: aggiorna stato UI
@@ -577,6 +471,13 @@ export default function App() {
       return
     }
 
+    // Cmd+Shift+D: toggle debug overlay
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'D') {
+      e.preventDefault()
+      setDebugOverlay(prev => !prev)
+      return
+    }
+
     // Escape: clear input or close modals
     if (e.key === 'Escape') {
       if (isInputFocused && inputVal) {
@@ -622,6 +523,12 @@ export default function App() {
       return
     }
   }, [inputVal, cmdHistory, showStylePicker, showChainPanel, showMapPanel, sessionOpen, handleCommand, searchOpen])
+
+  // ── global keyboard shortcuts (must be after handleKeyDown) ────────
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
 
   // ── DAW transport commands ────────────────────────────────────────
   const dawCmd = useCallback((action, params = {}) => {
@@ -792,6 +699,31 @@ export default function App() {
     <div className="select-none h-screen w-screen overflow-hidden font-['Space_Grotesk']" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
       <div className="crt-overlay" />
 
+      {/* ── Toast Container ────────────────────────────────────────── */}
+      <div className="toast-container">
+        <AnimatePresence>
+          {toasts.map(toast => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, x: 80, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 80, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+              className={`toast toast-${toast.type}`}
+              onClick={() => removeToast(toast.id)}
+            >
+              <span className="toast-icon">
+                {toast.type === 'error' && '✕'}
+                {toast.type === 'success' && '✓'}
+                {toast.type === 'warning' && '⚠'}
+                {toast.type === 'info' && 'ℹ'}
+              </span>
+              <span className="toast-message">{toast.message}</span>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       <AnimatePresence>
         {!setupComplete && (
           <SetupScreen 
@@ -822,7 +754,8 @@ export default function App() {
 
       {/* ── HEADER ─────────────────────────────────────────────────── */}
       <header className="flex justify-between items-center w-full px-4 py-1 border-b z-50 relative h-9" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)' }}>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <MaskLogo audioLevel={(meterL + meterR) / 2} className="w-8 h-8 flex-shrink-0" />
           <h1 className="text-sm font-black tracking-tighter uppercase leading-none" style={{ color: 'var(--cremisi)' }}>WHYCREMISI</h1>
           <nav className="flex gap-4 uppercase tracking-[0.1em] font-bold text-xs">
             {['COMMAND','MASTER','TELEMETRY','SESSIONS'].map(tab => (
@@ -1199,7 +1132,7 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex flex-col items-center justify-center h-full gap-4 pt-12"
               >
-                <BotFace state={botState} className="w-16 h-16" personality={personality} />
+                <BotFace state={botState} className="w-16 h-16" personality={personality} audioLevel={(meterL + meterR) / 2} />
                 <div className="text-center space-y-1">
                   <p className="text-sm font-mono uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>Pronto ad ascoltare</p>
                   <p className="text-xs font-mono" style={{ color: 'var(--text-faint)' }}>Scrivi qualcosa nel campo CMD qui sotto</p>
@@ -1322,7 +1255,7 @@ export default function App() {
                        className="flex gap-2 min-w-0"
                      >
                        <div className="flex-shrink-0 mt-0.5 w-8">
-                         {isLatest && <BotFace state={botState} className="w-8 h-8" personality={personality} />}
+                         {isLatest && <BotFace state={botState} className="w-8 h-8" personality={personality} audioLevel={(meterL + meterR) / 2} />}
                        </div>
                        <div className={`flex-1 min-w-0 p-3 relative overflow-hidden transition-colors duration-300 border ${
                          isLatest && msg.streaming
@@ -1851,6 +1784,39 @@ export default function App() {
            </div>
          </section>
        </main>
+
+{/* ── DEBUG OVERLAY ─────────────────────────────────────────── */}
+      <AnimatePresence>
+        {debugOverlay && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="fixed top-9 right-2 z-[300] border rounded text-[9px] font-mono leading-relaxed p-2 min-w-[160px]"
+            style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+          >
+            <div className="font-bold text-[10px] mb-1 uppercase tracking-wider" style={{ color: 'var(--amber)' }}>Debug</div>
+            <div className="flex justify-between"><span>FPS</span><span style={{ color: fps < 30 ? 'var(--cremisi)' : fps < 50 ? 'var(--amber)' : 'var(--green)' }}>{fps}</span></div>
+            <div className="flex justify-between"><span>Latency</span><span style={{ color: 'var(--cyan)' }}>{whycremisi.getLatencyMs ? whycremisi.getLatencyMs() : 0}ms</span></div>
+            <div className="flex justify-between"><span>Avg Lat</span><span style={{ color: 'var(--text-faint)' }}>{whycremisi.getAvgLatencyMs ? whycremisi.getAvgLatencyMs().toFixed(0) : 0}ms</span></div>
+            <div className="flex justify-between"><span>Max Lat</span><span style={{ color: 'var(--text-faint)' }}>{whycremisi.getMaxLatencyMs ? whycremisi.getMaxLatencyMs() : 0}ms</span></div>
+            <div className="flex justify-between"><span>Queue</span><span style={{ color: 'var(--amber)' }}>{whycremisi.getConnectionInfo ? whycremisi.getConnectionInfo().queueSize : 0}</span></div>
+            <div className="flex justify-between"><span>Retries</span><span style={{ color: 'var(--text-faint)' }}>{whycremisi.getConnectionInfo ? `${whycremisi.getConnectionInfo().reconnectAttempts}/${whycremisi.getConnectionInfo().maxReconnectAttempts}` : '0/0'}</span></div>
+            <div className="flex justify-between"><span>Uptime</span><span style={{ color: 'var(--text-faint)' }}>
+              {(() => {
+                const info = whycremisi.getConnectionInfo ? whycremisi.getConnectionInfo() : {}
+                const s = Math.floor((info.uptime || 0) / 1000)
+                return `${Math.floor(s / 60)}m ${s % 60}s`
+              })()}
+            </span></div>
+            <div className="flex justify-between"><span>Messages</span><span style={{ color: 'var(--text-muted)' }}>{messages.length}</span></div>
+            <div className="flex justify-between"><span>Conn</span><span style={{ color: connStatus === 'connected' ? 'var(--green)' : 'var(--cremisi)' }}>{connStatus}</span></div>
+            <div className="mt-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+              <div className="text-[8px] text-center" style={{ color: 'var(--text-muted)' }}>Shift+D to close</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
 {/* ── FOOTER ─────────────────────────────────────────────────── */}
        <footer className="fixed bottom-0 left-0 w-full z-50 flex justify-between items-center h-9 border-t px-5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-primary)' }}>

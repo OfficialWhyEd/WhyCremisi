@@ -55,6 +55,8 @@ juce_add_plugin(WhyCremisiVSTPlugin
     PRODUCT_NAME "WhyCremisi"
     BUNDLE_ID "com.whycremisi.plugin"
     AU_MAIN_TYPE "kAudioUnitType_Effect"
+    ICON_BIG   "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/macos/icon_512x512.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/macos/icon_32x32.png"
 )
 
 # Disabilita VST2 fallback
