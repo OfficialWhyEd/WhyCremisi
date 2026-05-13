@@ -99,9 +99,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
         <div className="px-5 py-4">
           <header className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-7 h-7 border border-[#DC143C] flex items-center justify-center">
-                <span className="text-[10px] font-black text-[#DC143C] tracking-tighter">W</span>
-              </div>
+              <img src="/whycremisi-mask.png" className="w-7 h-7 flex-shrink-0" alt="WhyCremisi" />
               <div>
                 <h2 className="text-xs font-black tracking-tighter text-white uppercase leading-none">
                   Neural <span className="text-[#DC143C]">Link</span>

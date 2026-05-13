@@ -180,6 +180,18 @@ if(APPLE)
     )
 endif()
 
+# DAW thumbnail — copied into VST3 bundle for plugin browser display
+if(APPLE)
+    add_custom_command(TARGET WhyCremisiVSTPlugin POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/$<CONFIG>/VST3/WhyCremisi.vst3/Contents/Resources"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/daw/daw-thumb-256.png"
+            "${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/$<CONFIG>/VST3/WhyCremisi.vst3/Contents/Resources/plugin.png"
+        COMMENT "Copying DAW thumbnail to VST3 bundle"
+    )
+endif()
+
 if(NOT WIN32 AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK REQUIRED gtk+-3.0)
