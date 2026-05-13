@@ -609,6 +609,10 @@ Legend: `[ ]` = pending, `[~]` = in progress, `[x]` = done, `[-]` = skipped/canc
 | 63 | 2026-05-13 | Claude | [x] | heartbroken-claude (WebSocket error recovery + ping) |
 | 64 | 2026-05-13 | Claude | [x] | heartbroken-claude (exponential backoff + jitter reconnect) |
 | 65 | 2026-05-13 | Claude | [x] | heartbroken-claude (message queue with retry) |
+| 52 | 2026-05-13 | Claude | [x] | heartbroken-claude (hardcoded→CSS var light theme ×120+) |
+| 55 | 2026-05-13 | Claude | [x] | heartbroken-claude (chat message search ⌘F) |
+| 57 | 2026-05-13 | Claude | [x] | heartbroken-claude (session export/import JSON) |
+| 58 | 2026-05-13 | Claude | [x] | heartbroken-claude (aria-labels, accessibility) |
 | 66–100 | TBD | Claude | [ ] | — |
 
 ---

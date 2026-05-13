@@ -84,6 +84,11 @@ export default function App() {
   const [historyIdx, setHistoryIdx] = useState(-1)
   const inputRef = useRef(null)
 
+  // ── Chat search ─────────────────────────────────────────────────────
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchRef = useRef(null)
+
   // ── Theme ───────────────────────────────────────────────────────────
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('whycremisi_theme') || 'dark'
@@ -172,6 +177,55 @@ export default function App() {
     setActionHistory(actionHistoryRef.current)
     setActionRedoStack(actionRedoRef.current)
   }, [])
+
+  // ── Export/Import session ─────────────────────────────────────────
+  const exportSession = useCallback(() => {
+    const data = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      messages: messages.map(m => ({ type: m.type, text: m.text, time: m.time })),
+      config,
+      personality,
+      personalityStyle
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `whycremisi-session-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    sysMsg(`[${ts()}] Session exported (${messages.length} messages)`)
+  }, [messages, config, personality, personalityStyle, sysMsg])
+
+  const importSession = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = (e) => {
+      const file = e.target.files[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target.result)
+          if (!data.messages || !Array.isArray(data.messages)) {
+            sysMsg(`[${ts()}] Invalid session file`)
+            return
+          }
+          setMessages(prev => [...prev, { id: Date.now(), type: 'system', text: `[${ts()}] SESSION IMPORTED (${data.messages.length} messages)` },
+            ...data.messages.map((m, i) => ({ ...m, id: Date.now() + i + 1 }))])
+          if (data.config) setConfig(data.config)
+          if (data.personalityStyle) setPersonalityStyle(data.personalityStyle)
+          sysMsg(`[${ts()}] Imported ${data.messages.length} messages from session file`)
+        } catch (err) {
+          sysMsg(`[${ts()}] Import failed: ${err.message}`)
+        }
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  }, [sysMsg])
 
   // ── Plugin Chain ──────────────────────────────────────────────────
   const [pluginChain, setPluginChain] = useState([])
@@ -503,6 +557,17 @@ export default function App() {
   const handleKeyDown = useCallback((e) => {
     const isInputFocused = document.activeElement === inputRef.current
 
+    // Cmd+F: toggle message search
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      e.preventDefault()
+      setSearchOpen(prev => {
+        if (!prev) setTimeout(() => searchRef.current?.focus(), 50)
+        return !prev
+      })
+      if (searchOpen) setSearchQuery('')
+      return
+    }
+
     // Cmd+K: clear messages (globale)
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault()
@@ -556,7 +621,7 @@ export default function App() {
       }
       return
     }
-  }, [inputVal, cmdHistory, showStylePicker, showChainPanel, showMapPanel, sessionOpen, handleCommand])
+  }, [inputVal, cmdHistory, showStylePicker, showChainPanel, showMapPanel, sessionOpen, handleCommand, searchOpen])
 
   // ── DAW transport commands ────────────────────────────────────────
   const dawCmd = useCallback((action, params = {}) => {
@@ -761,11 +826,13 @@ export default function App() {
           <h1 className="text-sm font-black tracking-tighter uppercase leading-none" style={{ color: 'var(--cremisi)' }}>WHYCREMISI</h1>
           <nav className="flex gap-4 uppercase tracking-[0.1em] font-bold text-xs">
             {['COMMAND','MASTER','TELEMETRY','SESSIONS'].map(tab => (
-              <a key={tab}
+              <a key={tab} role="tab" aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
-                className={activeTab === tab
-                  ? 'text-[#FFB000] border-b border-[#FFB000] pb-0.5 cursor-pointer'
-                  : 'text-[#888888] hover:text-[#FFB000] transition-colors cursor-pointer'}
+                className={`border-b pb-0.5 cursor-pointer hover:text-[#FFB000] transition-colors`}
+                style={{ 
+                  color: activeTab === tab ? 'var(--amber)' : 'var(--text-secondary)',
+                  borderColor: activeTab === tab ? 'var(--amber)' : 'transparent'
+                }}
               >{tab}</a>
             ))}
           </nav>
@@ -781,9 +848,10 @@ export default function App() {
             <motion.div
               className={`px-1.5 py-px text-xs font-black uppercase tracking-widest border ${
                 transport.isPlaying
-                  ? 'border-[#00FFaa]/40 text-[#00FFaa] bg-[#00FFaa]/10'
-                  : 'border-[#555]/40 text-[#aaa] bg-transparent'
+                  ? 'border-[#00FFaa]/40 bg-[#00FFaa]/10'
+                  : 'border-[#555]/40 bg-transparent'
               }`}
+              style={{ color: transport.isPlaying ? 'var(--green)' : 'var(--text-secondary)' }}
               animate={transport.isPlaying ? { opacity:[1,0.7,1] } : {}}
               transition={{ repeat: Infinity, duration: 1.2 }}
             >
@@ -830,7 +898,10 @@ export default function App() {
             {/* Health tooltip */}
             <div className="absolute top-full right-0 mt-1 border rounded shadow-lg z-50 min-w-[160px] hidden group-hover:block p-2" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
               <div className="text-[9px] font-mono space-y-1" style={{ color: 'var(--text-secondary)' }}>
-                <div className="flex justify-between"><span>Status:</span><span className={connStatus === 'connected' ? 'text-[#00FFaa]' : connStatus === 'reconnecting' ? 'text-[#FFB000]' : 'text-[#DC143C]'}>{connStatus.toUpperCase()}</span></div>
+                <div className="flex justify-between"><span>Status:</span><span style={{ 
+                  color: connStatus === 'connected' ? 'var(--green)' : 
+                         connStatus === 'reconnecting' ? 'var(--amber)' : 'var(--cremisi)'
+                }}>{connStatus.toUpperCase()}</span></div>
                 <div className="flex justify-between"><span>Queued:</span><span style={{ color: 'var(--amber)' }}>{whycremisi.getConnectionInfo ? whycremisi.getConnectionInfo().queueSize : 0}</span></div>
                 {connStatus === ConnectionState.RECONNECTING && (
                   <div className="flex justify-between"><span>Retry:</span><span style={{ color: 'var(--amber)' }}>{whycremisi.getConnectionInfo ? `${whycremisi.getConnectionInfo().reconnectAttempts}/${whycremisi.getConnectionInfo().maxReconnectAttempts}` : '0/0'}</span></div>
@@ -844,6 +915,7 @@ export default function App() {
           {/* Personality style picker */}
           <div className="relative">
             <button
+              aria-label={`Personality style: ${PERSONALITY_STYLES.find(s => s.id === personalityStyle)?.name || 'Analytical'}`}
               className="text-xs font-mono hover:text-[#FFB000] transition-colors cursor-pointer px-1.5 py-0.5 border rounded"
               style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
               onClick={() => setShowStylePicker(!showStylePicker)}
@@ -868,14 +940,16 @@ export default function App() {
 
           {/* Action icons */}
           <div className="flex gap-1.5 items-center">
-            <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
+            <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
               {theme === 'dark' ? '☀' : '☾'}
             </button>
             <span className="material-symbols-outlined text-base hover:text-[#FFB000] cursor-pointer transition-colors"
               style={{ color: 'var(--text-secondary)' }}
+              role="button" aria-label="Open setup"
               onClick={() => { setSetupComplete(false); localStorage.removeItem('whycremisi_setup_done') }}>settings</span>
             <span className="material-symbols-outlined text-base hover:text-[#DC143C] cursor-pointer transition-colors"
               style={{ color: 'var(--text-secondary)' }}
+              role="button" aria-label="Disconnect"
               onClick={() => whycremisi.disconnect()}>power_settings_new</span>
           </div>
         </div>
@@ -889,6 +963,7 @@ export default function App() {
         {sideModules.map(mod => (
           <motion.button
             key={mod.id}
+            aria-label={mod.label}
             className={`w-full py-2 flex flex-col items-center gap-0.5 transition-colors border-l-2 ${
               activeMod === mod.id ? 'border-[#DC143C]' : 'border-transparent hover:text-[#FFB000]'
             }`}
@@ -1088,6 +1163,32 @@ export default function App() {
             </div>
           </div>
 
+          {/* Search bar */}
+          <AnimatePresence>
+            {searchOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 32, opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden flex items-center gap-2 px-4 border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-surface)' }}
+              >
+                <span className="material-symbols-outlined text-sm" style={{ color: 'var(--text-secondary)' }}>search</span>
+                <input
+                  ref={searchRef}
+                  className="flex-1 bg-transparent border-none text-xs font-mono outline-none focus:ring-0" style={{ color: 'var(--text-primary)' }}
+                  placeholder="Search messages..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Escape' && (setSearchOpen(false), setSearchQuery(''))}
+                />
+                <span className="text-[9px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                  {searchQuery ? messages.filter(m => m.text?.toLowerCase().includes(searchQuery.toLowerCase())).length : 0} matches
+                </span>
+                <button onClick={() => { setSearchOpen(false); setSearchQuery('') }} className="text-xs" style={{ color: 'var(--text-secondary)' }}>✕</button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Messages */}
           <div className="flex-1 px-4 py-3 font-mono overflow-y-auto overflow-x-hidden custom-scrollbar space-y-3">
 
@@ -1126,7 +1227,7 @@ export default function App() {
                 </motion.div>
               )}
 
-              {messages.map((msg) => {
+              {messages.filter(msg => !searchQuery || msg.text?.toLowerCase().includes(searchQuery.toLowerCase())).map((msg) => {
                 if (msg.type === 'system') return (
                   <motion.div key={msg.id}
                     initial={{ opacity: 0, x: -6 }}
@@ -1294,17 +1395,18 @@ export default function App() {
 <div className="flex gap-1.5" style={{ color: 'var(--text-secondary)' }}>
               <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
                 className="material-symbols-outlined text-base cursor-pointer hover:text-[#FFB000] transition-colors"
-                onClick={() => dawCmd('play')}>play_arrow</motion.button>
+                aria-label="Play" onClick={() => dawCmd('play')}>play_arrow</motion.button>
               <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
                 className="material-symbols-outlined text-base cursor-pointer hover:text-[#FFB000] transition-colors"
-                onClick={() => dawCmd('stop')}>stop</motion.button>
+                aria-label="Stop" onClick={() => dawCmd('stop')}>stop</motion.button>
               <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
-                className={`material-symbols-outlined text-base cursor-pointer transition-colors ${transport.isRecording ? 'led-red-active' : ''}`
+                className={`material-symbols-outlined text-base cursor-pointer transition-colors ${transport.isRecording ? 'led-red-active' : ''}`}
                 style={{ color: transport.isRecording ? 'var(--cremisi)' : 'inherit' }}
+                aria-label={transport.isRecording ? 'Stop recording' : 'Record'}
                 onClick={() => dawCmd('record')}>fiber_manual_record</motion.button>
             </div>
           </div>
-        </section>
+         </section>
 
         {/* ── MASTERING RACK (3/12 × 4/6) ───────────────────────── */}
         <section className="col-span-3 row-span-4 border flex flex-col" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)' }}>
@@ -1315,13 +1417,13 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2">
               <motion.button
-                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showMapPanel ? 'bg-[#00E5FF] text-black border-[#00E5FF]' : 'hover:border-[#00E5FF] hover:text-[#00E5FF]'}`
+                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showMapPanel ? 'bg-[#00E5FF] text-black border-[#00E5FF]' : 'hover:border-[#00E5FF] hover:text-[#00E5FF]'}`}
                 style={{ color: showMapPanel ? '#000' : 'var(--text-secondary)', borderColor: showMapPanel ? 'var(--cyan)' : 'var(--border-light)' }}
                 onClick={() => setShowMapPanel(p => !p)}
                 whileTap={{ scale: 0.95 }}
               >MAP</motion.button>
               <motion.button
-                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showChainPanel ? 'bg-[#FF6B35] text-black border-[#FF6B35]' : 'hover:border-[#FF6B35] hover:text-[#FF6B35]'}`
+                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showChainPanel ? 'bg-[#FF6B35] text-black border-[#FF6B35]' : 'hover:border-[#FF6B35] hover:text-[#FF6B35]'}`}
                 style={{ color: showChainPanel ? '#000' : 'var(--text-secondary)', borderColor: showChainPanel ? 'var(--orange)' : 'var(--border-light)' }}
                 onClick={() => setShowChainPanel(p => !p)}
                 whileTap={{ scale: 0.95 }}
@@ -1329,61 +1431,39 @@ export default function App() {
               <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>STEREO MASTER</span>
             </div>
           </div>
-          </div>
-        </section>
 
-        {/* ── MASTERING RACK (3/12 × 4/6) ───────────────────────── */}
-        <section className="col-span-3 row-span-4 bg-[#131313] border border-[#222222] flex flex-col">
-          <div className="bg-[#1a1a1a] px-3 py-1 border-b border-[#222222] flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#DC143C] led-red-active" />
-              <span className="text-xs font-bold text-[#DC143C] tracking-widest uppercase">Mastering Rack</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <motion.button
-                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showMapPanel ? 'bg-[#00E5FF] text-black border-[#00E5FF]' : 'text-[#888] border-[#333] hover:border-[#00E5FF] hover:text-[#00E5FF]'}`}
-                onClick={() => setShowMapPanel(p => !p)}
-                whileTap={{ scale: 0.95 }}
-              >MAP</motion.button>
-              <motion.button
-                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showChainPanel ? 'bg-[#FF6B35] text-black border-[#FF6B35]' : 'text-[#888] border-[#333] hover:border-[#FF6B35] hover:text-[#FF6B35]'}`}
-                onClick={() => setShowChainPanel(p => !p)}
-                whileTap={{ scale: 0.95 }}
-              >CHAIN</motion.button>
-              <span className="text-xs font-mono text-[#888888]">STEREO MASTER</span>
-            </div>
-          </div>
-
-          {/* Plugin Chain Panel */}
-          {showChainPanel && (
-            <div className="bg-[#0d0d0d] border-b border-[#222] px-3 py-2 space-y-1 max-h-40 overflow-y-auto">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-[#FF6B35]">Plugin Chain</span>
-                <span className="text-[9px] text-[#666]">{pluginChain.length} plugins</span>
-              </div>
-              {pluginChain.length === 0 ? (
-                <div className="text-[9px] text-[#555] italic">No plugins configured. Add your DAW plugins here so the AI knows what's in your chain.</div>
-              ) : (
-                pluginChain.map((p, i) => (
-                  <div key={p.id || i} className="flex justify-between items-center text-[10px] font-mono">
-                    <span className="text-[#aaa]">{i+1}. {p.name}</span>
-                    <span className="text-[#888] text-[8px]">{p.manufacturer} {p.format}</span>
-                    <motion.button
-                      className="text-[#DC143C] hover:text-[#ff6b6b] text-[9px]"
-                      onClick={() => {
-                        const updated = pluginChain.filter(x => x.id !== p.id)
-                        setPluginChain(updated)
-                        if (whycremisi.isConnected()) whycremisi.setPluginChain(updated)
-                      }}
-                      whileTap={{ scale: 0.9 }}
-                    >REMOVE</motion.button>
-                  </div>
-                ))
-              )}
-              {/* Add plugin form */}
-              <div className="flex gap-1 pt-1 border-t border-[#222]">
-                <input
-                  className="flex-1 bg-[#0e0e0e] border border-[#333] text-[10px] text-[#e5e2e1] px-1 py-0.5 outline-none font-mono"
+{/* Plugin Chain Panel */}
+           {showChainPanel && (
+             <div className="border-b px-3 py-2 space-y-1 max-h-40 overflow-y-auto" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border)' }}>
+               <div className="flex justify-between items-center mb-1">
+                 <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--orange)' }}>Plugin Chain</span>
+                 <span className="text-[9px]" style={{ color: 'var(--text-faint)' }}>{pluginChain.length} plugins</span>
+               </div>
+               {pluginChain.length === 0 ? (
+                 <div className="text-[9px] italic" style={{ color: 'var(--text-dim)' }}>No plugins configured. Add your DAW plugins here so the AI knows what's in your chain.</div>
+               ) : (
+                 pluginChain.map((p, i) => (
+                   <div key={p.id || i} className="flex justify-between items-center text-[10px] font-mono">
+                     <span style={{ color: 'var(--text-secondary)' }}>{i+1}. {p.name}</span>
+                     <span className="text-[8px]" style={{ color: 'var(--text-secondary)' }}>{p.manufacturer} {p.format}</span>
+                     <motion.button
+                       className="hover:text-[#ff6b6b] text-[9px]"
+                       style={{ color: 'var(--cremisi)' }}
+                       onClick={() => {
+                         const updated = pluginChain.filter(x => x.id !== p.id)
+                         setPluginChain(updated)
+                         if (whycremisi.isConnected()) whycremisi.setPluginChain(updated)
+                       }}
+                       whileTap={{ scale: 0.9 }}
+                     >REMOVE</motion.button>
+                   </div>
+                 ))
+               )}
+               {/* Add plugin form */}
+               <div className="flex gap-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+                 <input
+                   className="flex-1 text-[10px] px-1 py-0.5 outline-none font-mono"
+                   style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}
                   placeholder="Plugin name..."
                   id="chainPluginName"
                   onKeyDown={(e) => {
@@ -1416,42 +1496,44 @@ export default function App() {
             </div>
           )}
 
-          {/* Parameter Mapping Panel */}
-          {showMapPanel && (
-            <div className="bg-[#0d0d0d] border-b border-[#222] px-3 py-2 space-y-1 max-h-40 overflow-y-auto">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-[#00E5FF]">Parameter Mapping</span>
-                <span className="text-[9px] text-[#666]">{midiMappings.length} bindings</span>
-              </div>
-              {midiMappings.length === 0 ? (
-                <div className="text-[9px] text-[#555] italic">No MIDI mappings. Click LEARN on a widget and move a hardware controller.</div>
-              ) : (
-                midiMappings.map(m => (
-                  <div key={m.widgetId} className="flex justify-between items-center text-[10px] font-mono">
-                    <span className="text-[#aaa]">{m.widgetId}</span>
-                    <span className="text-[#FF6B35]">CC#{m.cc} Ch.{m.channel}</span>
-                    <motion.button
-                      className="text-[#DC143C] hover:text-[#ff6b6b] text-[9px]"
-                      onClick={() => {
-                        setMidiMappings(prev => prev.filter(x => x.widgetId !== m.widgetId))
-                        if (whycremisi.isConnected()) {
-                          whycremisi.sendMessage('config.set', { key: `midi.unmap.${m.widgetId}`, value: '' })
-                        }
-                      }}
-                      whileTap={{ scale: 0.9 }}
-                    >REMOVE</motion.button>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+{/* Parameter Mapping Panel */}
+           {showMapPanel && (
+             <div className="border-b px-3 py-2 space-y-1 max-h-40 overflow-y-auto" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border)' }}>
+               <div className="flex justify-between items-center mb-1">
+                 <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--cyan)' }}>Parameter Mapping</span>
+                 <span className="text-[9px]" style={{ color: 'var(--text-faint)' }}>{midiMappings.length} bindings</span>
+               </div>
+               {midiMappings.length === 0 ? (
+                 <div className="text-[9px] italic" style={{ color: 'var(--text-dim)' }}>No MIDI mappings. Click LEARN on a widget and move a hardware controller.</div>
+               ) : (
+                 midiMappings.map(m => (
+                   <div key={m.widgetId} className="flex justify-between items-center text-[10px] font-mono">
+                     <span style={{ color: 'var(--text-secondary)' }}>{m.widgetId}</span>
+                     <span style={{ color: 'var(--orange)' }}>CC#{m.cc} Ch.{m.channel}</span>
+                     <motion.button
+                       className="hover:text-[#ff6b6b] text-[9px]"
+                       style={{ color: 'var(--cremisi)' }}
+                       onClick={() => {
+                         setMidiMappings(prev => prev.filter(x => x.widgetId !== m.widgetId))
+                         if (whycremisi.isConnected()) {
+                           whycremisi.sendMessage('config.set', { key: `midi.unmap.${m.widgetId}`, value: '' })
+                         }
+                       }}
+                       whileTap={{ scale: 0.9 }}
+                     >REMOVE</motion.button>
+                   </div>
+                 ))
+               )}
+             </div>
+           )}
 
-          <div className="flex-1 flex p-3 gap-4 overflow-hidden">
-            {/* Gain fader */}
-            <div className="w-14 flex flex-col items-center gap-1">
-              <span className="text-xs font-mono text-[#FFB000]">+12</span>
-              <div
-                className="flex-1 w-8 bg-[#0e0e0e] border border-[#222222] relative flex flex-col justify-end p-1 cursor-ns-resize"
+           <div className="flex-1 flex p-3 gap-4 overflow-hidden">
+             {/* Gain fader */}
+             <div className="w-14 flex flex-col items-center gap-1">
+               <span className="text-xs font-mono" style={{ color: 'var(--amber)' }}>+12</span>
+               <div
+                 className="flex-1 w-8 border relative flex flex-col justify-end p-1 cursor-ns-resize"
+                 style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}
                 onMouseMove={(e) => {
                   if (e.buttons !== 1) return
                   const now = Date.now()
@@ -1474,47 +1556,49 @@ export default function App() {
                   transition={{ duration:0.1 }}
                 />
               </div>
-              <span className="text-xs font-mono text-[#FFB000]">-INF</span>
-              <span className="text-xs font-bold text-[#e5e2e1] mt-1">{gainDb > 0 ? `+${gainDb}` : gainDb}dB</span>
-              <span className="text-xs font-mono text-[#888888]">GAIN</span>
-              {/* MIDI Learn button */}
-              <motion.button
-                className={`w-full mt-1 py-0.5 text-[9px] font-bold uppercase tracking-wider border rounded-sm ${midiLearnWidget === 'masterGain' ? 'bg-[#FF6B35] text-black border-[#FF6B35] pulse-glow' : 'text-[#888] border-[#333] hover:border-[#FF6B35] hover:text-[#FF6B35]'}`}
-                onClick={() => {
-                  if (midiLearnWidget === 'masterGain') {
-                    whycremisi.midiLearnStop()
-                  } else {
-                    whycremisi.midiLearnStart('masterGain')
-                  }
-                }}
-                whileTap={{ scale: 0.95 }}
-              >{midiLearnWidget === 'masterGain' ? 'LEARNING...' : 'LEARN'}</motion.button>
-            </div>
+<span className="text-xs font-mono" style={{ color: 'var(--amber)' }}>-INF</span>
+               <span className="text-xs font-bold mt-1" style={{ color: 'var(--text-primary)' }}>{gainDb > 0 ? `+${gainDb}` : gainDb}dB</span>
+               <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>GAIN</span>
+               {/* MIDI Learn button */}
+               <motion.button
+                 className={`w-full mt-1 py-0.5 text-[9px] font-bold uppercase tracking-wider border rounded-sm ${midiLearnWidget === 'masterGain' ? 'bg-[#FF6B35] text-black border-[#FF6B35] pulse-glow' : 'hover:border-[#FF6B35] hover:text-[#FF6B35]'}`}
+                 style={{ color: midiLearnWidget === 'masterGain' ? '#000' : 'var(--text-secondary)', borderColor: midiLearnWidget === 'masterGain' ? 'var(--orange)' : 'var(--border-light)' }}
+                 onClick={() => {
+                   if (midiLearnWidget === 'masterGain') {
+                     whycremisi.midiLearnStop()
+                   } else {
+                     whycremisi.midiLearnStart('masterGain')
+                   }
+                 }}
+                 whileTap={{ scale: 0.95 }}
+               >{midiLearnWidget === 'masterGain' ? 'LEARNING...' : 'LEARN'}</motion.button>
+             </div>
 
-            {/* Controls cluster */}
-            <div className="flex-1 flex flex-col gap-4 min-w-0">
-              {/* Toggles */}
-              <div className="space-y-3">
-                {[
-                  { label:'Deep Neural', state: botState !== 'idle' },
-                  { label:'Master Chain', state: dawConnected }
-                ].map(({ label, state: on }) => (
-                  <div key={label} className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase text-[#888888] truncate">{label}</span>
-                    <motion.div
-                      className={`w-4 h-4 border flex items-center justify-center cursor-pointer flex-shrink-0 ${on ? 'border-[#DC143C]/60' : 'border-[#4d4d4d]'}`}
-                      whileHover={{ scale:1.1 }}
-                    >
-                      <div className={`w-2 h-2 rounded-full ${on ? 'bg-[#DC143C] led-red-active' : 'bg-[#222222]'}`} />
-                    </motion.div>
-                  </div>
-                ))}
-              </div>
+             {/* Controls cluster */}
+             <div className="flex-1 flex flex-col gap-4 min-w-0">
+               {/* Toggles */}
+               <div className="space-y-3">
+                 {[
+                   { label:'Deep Neural', state: botState !== 'idle' },
+                   { label:'Master Chain', state: dawConnected }
+                 ].map(({ label, state: on }) => (
+                   <div key={label} className="flex items-center justify-between">
+                     <span className="text-xs font-bold uppercase truncate" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+                     <motion.div
+                       className={`w-4 h-4 border flex items-center justify-center cursor-pointer flex-shrink-0`}
+                       style={{ borderColor: on ? 'color-mix(in srgb, var(--cremisi) 60%, transparent)' : 'var(--text-muted)' }}
+                       whileHover={{ scale:1.1 }}
+                     >
+                       <div className={`w-2 h-2 rounded-full ${on ? 'bg-[#DC143C] led-red-active' : ''}`} style={{ backgroundColor: on ? undefined : 'var(--bg-elevated)' }} />
+                     </motion.div>
+                   </div>
+                 ))}
+               </div>
 
-              {/* Sat type */}
-              <div className="border-t border-[#222222] pt-3">
-                <span className="text-xs text-[#FFB000] uppercase opacity-60 block mb-1">Saturation</span>
-                <div className="bg-[#0e0e0e] border border-[#222222] px-2 py-1 text-xs text-[#FFB000] flex justify-between items-center">
+               {/* Sat type */}
+               <div className="border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+                 <span className="text-xs uppercase opacity-60 block mb-1" style={{ color: 'var(--amber)' }}>Saturation</span>
+                 <div className="px-2 py-1 text-xs flex justify-between items-center border" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--amber)' }}>
                   <span>CRIMSON_TUBE</span>
                   <span className="material-symbols-outlined text-[9px]">expand_more</span>
                 </div>
@@ -1546,113 +1630,115 @@ export default function App() {
                     style={{ filter:'drop-shadow(0 0 4px #DC143C)' }}
                   />
                 </svg>
-                <div className="absolute flex flex-col items-center pointer-events-none">
-                  <span className="text-[9px] font-bold text-[#e5e2e1]">{driveVal.toFixed(1)}</span>
-                  <span className="text-xs text-[#FFB000] uppercase font-mono">DRIVE</span>
-                </div>
-              </div>
-            </div>
-          </div>
+<div className="absolute flex flex-col items-center pointer-events-none">
+                   <span className="text-[9px] font-bold" style={{ color: 'var(--text-primary)' }}>{driveVal.toFixed(1)}</span>
+                   <span className="text-xs uppercase font-mono" style={{ color: 'var(--amber)' }}>DRIVE</span>
+                 </div>
+               </div>
+             </div>
+           </div>
 
-          {/* Peak meter strip */}
-          <div className="h-10 bg-[#0e0e0e] border-t border-[#222222] flex items-center px-3 gap-2">
-            <div className="flex-1 h-2 bg-[#1a1a1a] flex gap-[1px]">
-              {meterBars.map((bar, i) => (
-                <motion.div key={i} className="flex-1 h-full"
-                  animate={{ opacity: bar.active ? 1 : 0.12, scaleY: bar.active ? [1,1.15,1] : 1 }}
-                  transition={{ scaleY: { repeat:Infinity, duration:0.4+i*0.05, delay:i*0.04 } }}
-                  style={{ backgroundColor: bar.color }}
-                />
-              ))}
-            </div>
-            <span className={`text-xs font-mono font-bold ${peak > -1 ? 'text-[#DC143C]' : 'text-[#888888]'}`}>
-              {peak > -1 ? 'PEAK!' : 'OK'}
-            </span>
-          </div>
-        </section>
+           {/* Peak meter strip */}
+           <div className="h-10 border-t flex items-center px-3 gap-2" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+             <div className="flex-1 h-2 flex gap-[1px]" style={{ backgroundColor: 'var(--bg-card)' }}>
+               {meterBars.map((bar, i) => (
+                 <motion.div key={i} className="flex-1 h-full"
+                   animate={{ opacity: bar.active ? 1 : 0.12, scaleY: bar.active ? [1,1.15,1] : 1 }}
+                   transition={{ scaleY: { repeat:Infinity, duration:0.4+i*0.05, delay:i*0.04 } }}
+                   style={{ backgroundColor: bar.color }}
+                 />
+               ))}
+             </div>
+             <span className="text-xs font-mono font-bold" style={{ color: peak > -1 ? 'var(--cremisi)' : 'var(--text-secondary)' }}>
+               {peak > -1 ? 'PEAK!' : 'OK'}
+             </span>
+           </div>
+         </section>
 
-        {/* ── MASTER MONITOR (full width × 2/6) ──────────────────── */}
-        <section className="col-span-12 row-span-2 bg-[#0e0e0e] border border-[#222222] flex overflow-hidden">
+{/* ── MASTER MONITOR (full width × 2/6) ──────────────────── */}
+          <section className="col-span-12 row-span-2 border flex overflow-hidden" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
 
-          {/* ── L/R STEREO METERS ─────────────────────────────────── */}
-          <div className="w-52 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-1.5">
-            <div className="text-[11px] font-bold text-[#FFB000] uppercase tracking-widest mb-0.5">STEREO MASTER</div>
-            {[['L', meterL], ['R', meterR]].map(([ch, val]) => {
-              const pct = Math.max(0, Math.min(100, val * 100))
-              const db = (val * 72 - 60).toFixed(1)
-              const barColor = pct > 88 ? '#DC143C' : pct > 70 ? '#FFB000' : '#00FFaa'
-              return (
-                <div key={ch} className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#888888] w-3">{ch}</span>
-                  <div className="flex-1 h-3 bg-[#111] relative overflow-hidden rounded-sm">
-                    <motion.div
-                      className="h-full absolute left-0 top-0 rounded-sm"
-                      animate={{ width: `${pct}%`, backgroundColor: barColor }}
-                      transition={{ duration: 0.05 }}
-                      style={{ boxShadow: `0 0 6px ${barColor}60` }}
-                    />
-                    {[33, 58, 83].map(p => (
-                      <div key={p} className="absolute top-0 bottom-0 w-[0.5px] bg-[#333]" style={{ left: `${p}%` }} />
-                    ))}
-                  </div>
-                  <span className="text-xs font-mono text-[#aaa] w-10 text-right font-medium">{db}dB</span>
-                </div>
-              )
-            })}
-            <div className="flex justify-between mt-0.5 text-[10px] font-mono text-[#555]">
-              <span>-60</span><span>-12</span><span>-6</span><span>0</span>
-            </div>
-          </div>
+            {/* ── L/R STEREO METERS ─────────────────────────────────── */}
+           <div className="w-52 flex-shrink-0 border-r flex flex-col justify-center px-4 py-2 gap-1.5" style={{ borderColor: 'var(--border)' }}>
+             <div className="text-[11px] font-bold uppercase tracking-widest mb-0.5" style={{ color: 'var(--amber)' }}>STEREO MASTER</div>
+             {[['L', meterL], ['R', meterR]].map(([ch, val]) => {
+               const pct = Math.max(0, Math.min(100, val * 100))
+               const db = (val * 72 - 60).toFixed(1)
+               const barColor = pct > 88 ? '#DC143C' : pct > 70 ? '#FFB000' : '#00FFaa'
+               return (
+                 <div key={ch} className="flex items-center gap-2">
+                   <span className="text-xs font-bold w-3" style={{ color: 'var(--text-secondary)' }}>{ch}</span>
+                   <div className="flex-1 h-3 bg-[#111] relative overflow-hidden rounded-sm">
+                     <motion.div
+                       className="h-full absolute left-0 top-0 rounded-sm"
+                       animate={{ width: `${pct}%`, backgroundColor: barColor }}
+                       transition={{ duration: 0.05 }}
+                       style={{ boxShadow: `0 0 6px ${barColor}60` }}
+                     />
+                     {[33, 58, 83].map(p => (
+                       <div key={p} className="absolute top-0 bottom-0 w-[0.5px]" style={{ left: `${p}%`, backgroundColor: 'var(--border-light)' }} />
+                     ))}
+                   </div>
+                   <span className="text-xs font-mono w-10 text-right font-medium" style={{ color: 'var(--text-secondary)' }}>{db}dB</span>
+                 </div>
+               )
+             })}
+             <div className="flex justify-between mt-0.5 text-[10px] font-mono" style={{ color: 'var(--text-dim)' }}>
+               <span>-60</span><span>-12</span><span>-6</span><span>0</span>
+             </div>
+           </div>
 
-          {/* ── TRANSPORT + STATS ─────────────────────────────────── */}
-          <div className="w-44 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-4 py-2 gap-1.5">
-            <div className="flex items-center justify-between">
-              <motion.div
-                className={`text-xl font-black tracking-tighter ${transport.isPlaying ? 'text-[#00FFaa]' : 'text-[#555]'}`}
-                animate={transport.isPlaying ? { opacity:[1,0.6,1] } : {}}
-                transition={{ repeat: Infinity, duration: 1.2 }}
-              >
-                {transport.isPlaying ? '▶' : '■'}
-              </motion.div>
-              <div className="text-right">
-                <div className="font-mono text-base font-bold text-[#FFB000] tracking-tight leading-none">
-                  {transport.bpm.toFixed(1)}
-                </div>
-                <div className="text-[9px] text-[#888] font-mono uppercase tracking-wider">BPM</div>
-              </div>
-            </div>
-            {transport.isRecording && (
-              <motion.div className="text-[10px] text-[#DC143C] font-bold uppercase tracking-widest"
-                animate={{ opacity:[1,0.3,1] }} transition={{ repeat: Infinity, duration: 0.8 }}
-              >● RECORDING</motion.div>
-            )}
-            <div className="flex items-center justify-between text-xs font-mono">
-              <span className="text-[#888]">POS</span>
-              <span className="text-white font-medium">
-                {Math.floor(transport.position / 60).toString().padStart(2,'0')}:{(transport.position % 60).toFixed(0).toString().padStart(2,'0')}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] font-mono">
-              {[
-                ['SR', pluginStats.sampleRate ? `${(pluginStats.sampleRate / 1000).toFixed(0)}k` : '—'],
-                ['BUF', pluginStats.bufferSize ? `${pluginStats.bufferSize}` : '—'],
-                ['LAT', pluginStats.latencyMs ? `${pluginStats.latencyMs.toFixed(0)}ms` : '—'],
-                ['CORR', correlation.toFixed(2)],
-              ].map(([k, v]) => (
-                <div key={k} className="flex items-center gap-1">
-                  <span className="text-[#555]">{k}</span>
-                  <span className="text-white font-medium">{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+           {/* ── TRANSPORT + STATS ─────────────────────────────────── */}
+           <div className="w-44 flex-shrink-0 border-r flex flex-col justify-center px-4 py-2 gap-1.5" style={{ borderColor: 'var(--border)' }}>
+             <div className="flex items-center justify-between">
+               <motion.div
+                 className="text-xl font-black tracking-tighter"
+                 style={{ color: transport.isPlaying ? 'var(--green)' : 'var(--text-dim)' }}
+                 animate={transport.isPlaying ? { opacity:[1,0.6,1] } : {}}
+                 transition={{ repeat: Infinity, duration: 1.2 }}
+               >
+                 {transport.isPlaying ? '▶' : '■'}
+               </motion.div>
+               <div className="text-right">
+                 <div className="font-mono text-base font-bold tracking-tight leading-none" style={{ color: 'var(--amber)' }}>
+                   {transport.bpm.toFixed(1)}
+                 </div>
+                 <div className="text-[9px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>BPM</div>
+               </div>
+             </div>
+             {transport.isRecording && (
+               <motion.div className="text-[10px] font-bold uppercase tracking-widest"
+                 style={{ color: 'var(--cremisi)' }}
+                 animate={{ opacity:[1,0.3,1] }} transition={{ repeat: Infinity, duration: 0.8 }}
+               >● RECORDING</motion.div>
+             )}
+             <div className="flex items-center justify-between text-xs font-mono">
+               <span style={{ color: 'var(--text-secondary)' }}>POS</span>
+               <span className="text-white font-medium">
+                 {Math.floor(transport.position / 60).toString().padStart(2,'0')}:{(transport.position % 60).toFixed(0).toString().padStart(2,'0')}
+               </span>
+             </div>
+             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] font-mono">
+               {[
+                 ['SR', pluginStats.sampleRate ? `${(pluginStats.sampleRate / 1000).toFixed(0)}k` : '—'],
+                 ['BUF', pluginStats.bufferSize ? `${pluginStats.bufferSize}` : '—'],
+                 ['LAT', pluginStats.latencyMs ? `${pluginStats.latencyMs.toFixed(0)}ms` : '—'],
+                 ['CORR', correlation.toFixed(2)],
+               ].map(([k, v]) => (
+                 <div key={k} className="flex items-center gap-1">
+                   <span style={{ color: 'var(--text-dim)' }}>{k}</span>
+                   <span className="text-white font-medium">{v}</span>
+                 </div>
+               ))}
+             </div>
+           </div>
 
-          {/* ── REAL-TIME SPECTRUM ANALYZER ─────────────────────────── */}
-          <div className="w-60 flex-shrink-0 border-r border-[#222222] flex flex-col justify-center px-3 py-2 gap-1">
-            <div className="flex justify-between items-center mb-0.5">
-              <span className="text-[10px] font-bold text-[#00E5FF] uppercase tracking-widest">SPECTRUM</span>
-              <span className="text-[9px] font-mono text-[#777]">φ {correlation.toFixed(2)}</span>
-            </div>
+           {/* ── REAL-TIME SPECTRUM ANALYZER ─────────────────────────── */}
+           <div className="w-60 flex-shrink-0 border-r flex flex-col justify-center px-3 py-2 gap-1" style={{ borderColor: 'var(--border)' }}>
+             <div className="flex justify-between items-center mb-0.5">
+               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--cyan)' }}>SPECTRUM</span>
+               <span className="text-[9px] font-mono" style={{ color: 'var(--text-tertiary)' }}>φ {correlation.toFixed(2)}</span>
+             </div>
             <div className="h-10 flex items-end gap-[1px] rounded-sm overflow-hidden">
               {(spectrum.length > 0 ? spectrum.slice(0, 96) : Array.from({ length: 96 }, (_, i) => 0.1 + Math.sin(i * 0.2 + Date.now() * 0.0005) * 0.05)).map((mag, i) => (
                 <motion.div
@@ -1666,23 +1752,23 @@ export default function App() {
                 />
               ))}
             </div>
-            <div className="flex justify-between text-[8px] font-mono text-[#555] mt-0.5">
-              <span>20Hz</span><span>200Hz</span><span>2kHz</span><span>20kHz</span>
-            </div>
-          </div>
+<div className="flex justify-between text-[8px] font-mono mt-0.5" style={{ color: 'var(--text-dim)' }}>
+               <span>20Hz</span><span>200Hz</span><span>2kHz</span><span>20kHz</span>
+             </div>
+           </div>
 
-          {/* ── FLIGHT RECORDER ────────────────────────────────────── */}
-          <div className="flex-[2] flex flex-col overflow-hidden border-r border-[#222222] min-w-[200px]">
-            <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#1a1a1a] bg-[#0d0d0d]">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#DC143C]" />
-                <span className="text-[11px] font-bold text-[#DC143C] uppercase tracking-widest">FLIGHT RECORDER</span>
-              </div>
-              <button onClick={() => setActiveTab('SESSIONS')}
-                className="text-[10px] text-[#888888] hover:text-[#FFB000] transition-colors uppercase tracking-wider font-medium">
-                FULL LOG →
-              </button>
-            </div>
+           {/* ── FLIGHT RECORDER ────────────────────────────────────── */}
+           <div className="flex-[2] flex flex-col overflow-hidden border-r min-w-[200px]" style={{ borderColor: 'var(--border)' }}>
+             <div className="flex items-center justify-between px-4 py-1.5 border-b" style={{ borderColor: 'var(--border-subtle)', backgroundColor: 'var(--bg-primary)' }}>
+               <div className="flex items-center gap-2">
+                 <div className="w-1.5 h-1.5 rounded-full bg-[#DC143C]" />
+                 <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--cremisi)' }}>FLIGHT RECORDER</span>
+               </div>
+               <button onClick={() => setActiveTab('SESSIONS')}
+                 className="text-[10px] hover:text-[#FFB000] transition-colors uppercase tracking-wider font-medium" style={{ color: 'var(--text-secondary)' }}>
+                 FULL LOG →
+               </button>
+             </div>
             <div className="flex-1 overflow-y-auto flex flex-col-reverse px-3 py-2 gap-1.5 custom-scrollbar">
               {[...messages].reverse().filter(m => m.type !== 'advisory').slice(0, 6).map(m => (
                 <div key={m.id}
@@ -1695,99 +1781,121 @@ export default function App() {
                     }`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-[#aaaaaa] leading-tight truncate">
-                        {m.text?.slice(0, 80)}
-                      </span>
-                      {m.time && (
-                        <span className="text-[9px] text-[#555] flex-shrink-0 font-medium">{m.time}</span>
-                      )}
-                    </div>
-                    <div className="flex gap-2 text-[8px] text-[#444] uppercase tracking-wider mt-0.5">
-                      <span className={
-                        m.type === 'system' ? 'text-[#555]' :
-                        m.type === 'user' ? 'text-[#FFB000]/60' : 'text-[#00CFFF]/60'
-                      }>{m.type}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {messages.filter(m => m.type !== 'advisory').length === 0 && (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <div className="text-[10px] text-[#555] font-mono italic">No events recorded</div>
-                    <div className="text-[8px] text-[#444] font-mono mt-1">Interact with the AI to begin logging</div>
-                  </div>
-                </div>
-              )}
-            </div>
+<div className="flex items-center gap-2">
+                       <span className="text-[10px] leading-tight truncate" style={{ color: 'var(--text-secondary)' }}>
+                         {m.text?.slice(0, 80)}
+                       </span>
+                       {m.time && (
+                         <span className="text-[9px] flex-shrink-0 font-medium" style={{ color: 'var(--text-dim)' }}>{m.time}</span>
+                       )}
+                     </div>
+                     <div className="flex gap-2 text-[8px] uppercase tracking-wider mt-0.5" style={{ color: '#444' }}>
+                       <span className={
+                         m.type === 'system' ? 'text-[#555]' :
+                         m.type === 'user' ? 'text-[#FFB000]/60' : 'text-[#00CFFF]/60'
+                       }>{m.type}</span>
+                     </div>
+                   </div>
+                 </div>
+               ))}
+               {messages.filter(m => m.type !== 'advisory').length === 0 && (
+                 <div className="flex items-center justify-center h-full">
+                   <div className="text-center">
+                     <div className="text-[10px] font-mono italic" style={{ color: 'var(--text-dim)' }}>No events recorded</div>
+                     <div className="text-[8px] font-mono mt-1" style={{ color: '#444' }}>Interact with the AI to begin logging</div>
+                   </div>
+                 </div>
+               )}
+             </div>
+           </div>
+
+           {/* ── AI ACTION LOG + UNDO/REDO ────────────────────────── */}
+           <div className="w-40 flex-shrink-0 flex flex-col justify-center px-3 py-2 gap-1 overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
+             <div className="flex items-center justify-between mb-1">
+               <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--green)' }}>ACTIONS</span>
+               <div className="flex gap-0.5">
+                 <motion.button
+                   className="text-[11px] px-1.5 py-0.5 border"
+                   style={{ 
+                     color: actionHistory.length > 0 ? 'var(--text-primary)' : '#333',
+                     borderColor: actionHistory.length > 0 ? '#444' : 'var(--border)'
+                   }}
+                   onClick={undoLastAction}
+                   disabled={actionHistory.length === 0}
+                   whileTap={{ scale: 0.9 }}
+                 >↩</motion.button>
+                 <motion.button
+                   className="text-[11px] px-1.5 py-0.5 border"
+                   style={{ 
+                     color: actionRedoStack.length > 0 ? 'var(--text-primary)' : '#333',
+                     borderColor: actionRedoStack.length > 0 ? '#444' : 'var(--border)'
+                   }}
+                   onClick={redoLastAction}
+                   disabled={actionRedoStack.length === 0}
+                   whileTap={{ scale: 0.9 }}
+                 >↪</motion.button>
+               </div>
+             </div>
+             <div className="flex-1 overflow-y-auto max-h-24 space-y-0.5 custom-scrollbar">
+               {actionLog.length === 0 ? (
+                 <div className="text-[8px] italic" style={{ color: 'var(--text-dim)' }}>No AI actions yet</div>
+               ) : (
+                 actionLog.slice(0, 6).map((a, i) => (
+                   <div key={a.timestamp + '-' + i} className="text-[9px] font-mono flex justify-between items-center group px-1 -mx-1 rounded-sm transition-colors">
+                     <span className="truncate mr-1 max-w-[70%]" style={{ color: 'var(--text-secondary)' }}>{a.description || a.widgetId}</span>
+                     <span className="flex-shrink-0 font-bold" style={{ color: 'var(--amber)' }}>{a.value?.toFixed(2)}</span>
+                   </div>
+                 ))
+               )}
+             </div>
+           </div>
+         </section>
+       </main>
+
+{/* ── FOOTER ─────────────────────────────────────────────────── */}
+       <footer className="fixed bottom-0 left-0 w-full z-50 flex justify-between items-center h-9 border-t px-5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-primary)' }}>
+         <div className="flex items-center gap-5 text-xs font-mono">
+           {[
+             { icon:'equalizer', label:`LUFS: ${lufs.toFixed(1)}`, color:'var(--amber)' },
+             { icon:'priority_high', label:`PEAK: ${peak.toFixed(1)}dB`, color: peak>-1?'var(--cremisi)':'var(--text-muted)' },
+             { icon:'speed', label:`L: ${(meterL*100).toFixed(0)}%  R: ${(meterR*100).toFixed(0)}%`, color:'var(--text-muted)' }
+           ].map(({ icon, label, color }) => (
+             <div key={label} className="flex items-center gap-1.5" style={{ color }}>
+               <span className="material-symbols-outlined text-sm">{icon}</span>
+               <span>{label}</span>
+             </div>
+           ))}
+         </div>
+
+          <div className="flex items-center gap-2">
+            <button onClick={exportSession}
+              className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 border rounded-sm transition-colors"
+              style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}
+              title="Export session as JSON"
+            >EXPORT</button>
+            <button onClick={importSession}
+              className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 border rounded-sm transition-colors"
+              style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}
+              title="Import session from JSON"
+            >IMPORT</button>
           </div>
-
-          {/* ── AI ACTION LOG + UNDO/REDO ────────────────────────── */}
-          <div className="w-40 flex-shrink-0 flex flex-col justify-center px-3 py-2 gap-1 overflow-hidden bg-[#0d0d0d]">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-[#00FFaa]">ACTIONS</span>
-              <div className="flex gap-0.5">
-                <motion.button
-                  className={`text-[11px] px-1.5 py-0.5 border ${actionHistory.length > 0 ? 'text-[#e5e2e1] border-[#444] hover:border-[#00FFaa]' : 'text-[#333] border-[#222]'}`}
-                  onClick={undoLastAction}
-                  disabled={actionHistory.length === 0}
-                  whileTap={{ scale: 0.9 }}
-                >↩</motion.button>
-                <motion.button
-                  className={`text-[11px] px-1.5 py-0.5 border ${actionRedoStack.length > 0 ? 'text-[#e5e2e1] border-[#444] hover:border-[#00FFaa]' : 'text-[#333] border-[#222]'}`}
-                  onClick={redoLastAction}
-                  disabled={actionRedoStack.length === 0}
-                  whileTap={{ scale: 0.9 }}
-                >↪</motion.button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto max-h-24 space-y-0.5 custom-scrollbar">
-              {actionLog.length === 0 ? (
-                <div className="text-[8px] text-[#555] italic">No AI actions yet</div>
-              ) : (
-                actionLog.slice(0, 6).map((a, i) => (
-                  <div key={a.timestamp + '-' + i} className="text-[9px] font-mono flex justify-between items-center group hover:bg-[#1a1a1a] px-1 -mx-1 rounded-sm transition-colors">
-                    <span className="text-[#aaa] truncate mr-1 max-w-[70%]">{a.description || a.widgetId}</span>
-                    <span className="text-[#FFB000] flex-shrink-0 font-bold">{a.value?.toFixed(2)}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </section>
-      </main>
-
-      {/* ── FOOTER ─────────────────────────────────────────────────── */}
-      <footer className="fixed bottom-0 left-0 w-full z-50 flex justify-between items-center h-9 border-t border-[#222222] bg-[#0d0d0d] px-5">
-        <div className="flex items-center gap-5 text-xs font-mono">
-          {[
-            { icon:'equalizer', label:`LUFS: ${lufs.toFixed(1)}`, color:'#FFB000' },
-            { icon:'priority_high', label:`PEAK: ${peak.toFixed(1)}dB`, color: peak>-1?'#DC143C':'#4d4d4d' },
-            { icon:'speed', label:`L: ${(meterL*100).toFixed(0)}%  R: ${(meterR*100).toFixed(0)}%`, color:'#4d4d4d' }
-          ].map(({ icon, label, color }) => (
-            <div key={label} className="flex items-center gap-1.5" style={{ color }}>
-              <span className="material-symbols-outlined text-sm">{icon}</span>
-              <span>{label}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-4">
-          <motion.span className="text-xs font-mono text-[#FFB000] uppercase tracking-widest"
-            animate={{ opacity:[0.7,1,0.7] }}
-            transition={{ repeat:Infinity, duration:2.5 }}
-          >
-            {connStatus === ConnectionState.CONNECTED ? '◉ CONNECTED // READY' : '◌ OFFLINE // AWAITING SIGNAL'}
-          </motion.span>
-          <motion.div
-            className={`h-3 w-3 ${connStatus === ConnectionState.CONNECTED ? 'bg-[#FFB000] led-amber-active' : 'bg-[#4d4d4d]'}`}
-            animate={connStatus === ConnectionState.CONNECTED
-              ? { boxShadow:['0 0 6px #FFB000','0 0 14px #FFB000','0 0 6px #FFB000'] } : {}}
-            transition={{ repeat:Infinity, duration:1.8 }}
-          />
-        </div>
-      </footer>
+          <div className="flex items-center gap-4">
+            <motion.span className="text-xs font-mono uppercase tracking-widest"
+              style={{ color: 'var(--amber)' }}
+              animate={{ opacity:[0.7,1,0.7] }}
+              transition={{ repeat:Infinity, duration:2.5 }}
+            >
+              {connStatus === ConnectionState.CONNECTED ? '◉ CONNECTED // READY' : '◌ OFFLINE // AWAITING SIGNAL'}
+            </motion.span>
+           <motion.div
+             className="h-3 w-3"
+             style={{ backgroundColor: connStatus === ConnectionState.CONNECTED ? '#FFB000' : 'var(--text-muted)' }}
+             animate={connStatus === ConnectionState.CONNECTED
+               ? { boxShadow:['0 0 6px #FFB000','0 0 14px #FFB000','0 0 6px #FFB000'] } : {}}
+             transition={{ repeat:Infinity, duration:1.8 }}
+           />
+         </div>
+       </footer>
     </div>
   )
 }
