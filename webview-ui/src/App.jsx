@@ -79,6 +79,11 @@ export default function App() {
     description: ''
   })
 
+  // ── Command history ────────────────────────────────────────────────
+  const [cmdHistory, setCmdHistory] = useState([])
+  const [historyIdx, setHistoryIdx] = useState(-1)
+  const inputRef = useRef(null)
+
   // ── Theme ───────────────────────────────────────────────────────────
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('whycremisi_theme') || 'dark'
@@ -87,6 +92,12 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('whycremisi_theme', theme)
   }, [theme])
+
+  // ── global keyboard shortcuts ──────────────────────────────────────
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark')
   }, [])
@@ -451,6 +462,11 @@ export default function App() {
     const t = ts()
     lastPromptRef.current = cmd
     addMsg({ type: 'user', text: cmd, time: t })
+
+    // Store in history, reset index
+    setCmdHistory(prev => [cmd, ...prev].slice(0, 50))
+    setHistoryIdx(-1)
+
     setInputVal('')
     setBotState('thinking')
 
@@ -482,6 +498,65 @@ export default function App() {
       }, 600)
     }
   }
+
+  // ── keyboard shortcuts ─────────────────────────────────────────────
+  const handleKeyDown = useCallback((e) => {
+    const isInputFocused = document.activeElement === inputRef.current
+
+    // Cmd+K: clear messages (globale)
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault()
+      setMessages([
+        { id: 1, type: 'system', text: `[${ts()}] BOARD CLEARED` },
+      ])
+      return
+    }
+
+    // Escape: clear input or close modals
+    if (e.key === 'Escape') {
+      if (isInputFocused && inputVal) {
+        setInputVal('')
+        e.preventDefault()
+        return
+      }
+      if (showStylePicker) { setShowStylePicker(false); e.preventDefault(); return }
+      if (showChainPanel) { setShowChainPanel(false); e.preventDefault(); return }
+      if (showMapPanel) { setShowMapPanel(false); e.preventDefault(); return }
+      if (sessionOpen) { setSessionOpen(false); e.preventDefault(); return }
+      return
+    }
+
+    // / (slash): focus input (globale)
+    if (e.key === '/' && !isInputFocused && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault()
+      inputRef.current?.focus()
+      return
+    }
+
+    // Up/Down: command history (solo quando input è focalizzato)
+    if (isInputFocused && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault()
+      if (cmdHistory.length === 0) return
+      setHistoryIdx(prev => {
+        const dir = e.key === 'ArrowUp' ? -1 : 1
+        let next = prev + dir
+        if (next < -1) next = -1
+        if (next >= cmdHistory.length) next = cmdHistory.length - 1
+        setInputVal(next === -1 ? '' : cmdHistory[next])
+        return next
+      })
+      return
+    }
+
+    // Cmd+Enter: send (quando input NON è focalizzato — es. textarea future)
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      if (inputVal.trim()) {
+        e.preventDefault()
+        handleCommand({ key: 'Enter' })
+      }
+      return
+    }
+  }, [inputVal, cmdHistory, showStylePicker, showChainPanel, showMapPanel, sessionOpen, handleCommand])
 
   // ── DAW transport commands ────────────────────────────────────────
   const dawCmd = useCallback((action, params = {}) => {
@@ -649,7 +724,7 @@ export default function App() {
 
   // ── render ────────────────────────────────────────────────────────
   return (
-    <div className="bg-[#0d0d0d] select-none h-screen w-screen overflow-hidden text-[#e5e2e1] font-['Space_Grotesk']">
+    <div className="select-none h-screen w-screen overflow-hidden font-['Space_Grotesk']" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
       <div className="crt-overlay" />
 
       <AnimatePresence>
@@ -683,7 +758,7 @@ export default function App() {
       {/* ── HEADER ─────────────────────────────────────────────────── */}
       <header className="flex justify-between items-center w-full px-4 py-1 border-b z-50 relative h-9" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-3">
-          <h1 className="text-sm font-black tracking-tighter text-[#DC143C] uppercase leading-none">WHYCREMISI</h1>
+          <h1 className="text-sm font-black tracking-tighter uppercase leading-none" style={{ color: 'var(--cremisi)' }}>WHYCREMISI</h1>
           <nav className="flex gap-4 uppercase tracking-[0.1em] font-bold text-xs">
             {['COMMAND','MASTER','TELEMETRY','SESSIONS'].map(tab => (
               <a key={tab}
@@ -700,8 +775,8 @@ export default function App() {
           {/* DAW transport */}
           <div className="flex items-center gap-2">
             <div className="flex flex-col items-center leading-none">
-              <span className="text-xs font-mono text-[#888] uppercase">BPM</span>
-              <span className="text-sm font-black text-[#FFB000] tracking-tight">{transport.bpm.toFixed(1)}</span>
+              <span className="text-xs font-mono uppercase" style={{ color: 'var(--text-secondary)' }}>BPM</span>
+              <span className="text-sm font-black tracking-tight" style={{ color: 'var(--amber)' }}>{transport.bpm.toFixed(1)}</span>
             </div>
             <motion.div
               className={`px-1.5 py-px text-xs font-black uppercase tracking-widest border ${
@@ -716,7 +791,7 @@ export default function App() {
             </motion.div>
           </div>
 
-          <div className="w-px h-4 bg-[#222222]" />
+          <div className="w-px h-4" style={{ backgroundColor: 'var(--bg-elevated)' }} />
 
           {/* Audio stats */}
           <div className="flex items-center gap-2">
@@ -727,16 +802,16 @@ export default function App() {
                 ['CPU', cpuUsage.cpuPercent ? `${cpuUsage.cpuPercent.toFixed(1)}%` : '—'],
               ].map(([k, v]) => (
               <div key={k} className="flex flex-col items-center leading-none">
-                <span className="text-xs font-mono text-[#888] uppercase">{k}</span>
+                <span className="text-xs font-mono uppercase" style={{ color: 'var(--text-secondary)' }}>{k}</span>
                 <span className="text-xs font-bold text-white tracking-tight">{v}</span>
               </div>
             ))}
           </div>
 
-          <div className="w-px h-4 bg-[#222222]" />
+          <div className="w-px h-4" style={{ backgroundColor: 'var(--bg-elevated)' }} />
 
-          {/* Connection LED */}
-          <div className="flex items-center gap-1.5">
+          {/* Connection LED + health */}
+          <div className="flex items-center gap-1.5 group relative">
             <motion.div
               className={`w-1.5 h-1.5 rounded-full ${
                 connStatus === ConnectionState.CONNECTED    ? 'bg-[#00FFaa]' :
@@ -747,29 +822,41 @@ export default function App() {
                 ? { opacity: [1,0.3,1] } : {}}
               transition={{ repeat: Infinity, duration: 0.8 }}
             />
-            <span className="text-xs uppercase tracking-wider text-[#888]">
+            <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
               {connStatus === ConnectionState.CONNECTED    ? 'LIVE' :
                connStatus === ConnectionState.CONNECTING   ? 'CONN' :
                connStatus === ConnectionState.RECONNECTING ? 'RECONN' : 'OFFLINE'}
             </span>
+            {/* Health tooltip */}
+            <div className="absolute top-full right-0 mt-1 border rounded shadow-lg z-50 min-w-[160px] hidden group-hover:block p-2" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+              <div className="text-[9px] font-mono space-y-1" style={{ color: 'var(--text-secondary)' }}>
+                <div className="flex justify-between"><span>Status:</span><span className={connStatus === 'connected' ? 'text-[#00FFaa]' : connStatus === 'reconnecting' ? 'text-[#FFB000]' : 'text-[#DC143C]'}>{connStatus.toUpperCase()}</span></div>
+                <div className="flex justify-between"><span>Queued:</span><span style={{ color: 'var(--amber)' }}>{whycremisi.getConnectionInfo ? whycremisi.getConnectionInfo().queueSize : 0}</span></div>
+                {connStatus === ConnectionState.RECONNECTING && (
+                  <div className="flex justify-between"><span>Retry:</span><span style={{ color: 'var(--amber)' }}>{whycremisi.getConnectionInfo ? `${whycremisi.getConnectionInfo().reconnectAttempts}/${whycremisi.getConnectionInfo().maxReconnectAttempts}` : '0/0'}</span></div>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="w-px h-4 bg-[#222222]" />
+          <div className="w-px h-4" style={{ backgroundColor: 'var(--bg-elevated)' }} />
 
           {/* Personality style picker */}
           <div className="relative">
             <button
-              className="text-xs font-mono text-[#888888] hover:text-[#FFB000] transition-colors cursor-pointer px-1.5 py-0.5 border border-[#222222] rounded"
+              className="text-xs font-mono hover:text-[#FFB000] transition-colors cursor-pointer px-1.5 py-0.5 border rounded"
+              style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
               onClick={() => setShowStylePicker(!showStylePicker)}
               title={`Style: ${PERSONALITY_STYLES.find(s => s.id === personalityStyle)?.name || 'Analytical'}`}
             >
               {PERSONALITY_STYLES.find(s => s.id === personalityStyle)?.label || 'AN'}
             </button>
             {showStylePicker && (
-              <div className="absolute top-full right-0 mt-1 bg-[#1a1a1a] border border-[#222222] rounded shadow-lg z-50 min-w-[140px]">
+              <div className="absolute top-full right-0 mt-1 border rounded shadow-lg z-50 min-w-[140px]" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
                 {PERSONALITY_STYLES.map(s => (
                   <button key={s.id}
-                    className={`block w-full text-left px-3 py-1.5 text-xs font-mono transition-colors hover:bg-[#2a2a2a] ${personalityStyle === s.id ? 'text-[#FFB000]' : 'text-[#888888]'}`}
+                    className={`block w-full text-left px-3 py-1.5 text-xs font-mono transition-colors`}
+                    style={{ color: personalityStyle === s.id ? 'var(--amber)' : 'var(--text-secondary)' }}
                     onClick={() => applyPersonalityStyle(s.id)}
                   >
                     {s.label} — {s.name}
@@ -784,9 +871,11 @@ export default function App() {
             <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
               {theme === 'dark' ? '☀' : '☾'}
             </button>
-            <span className="material-symbols-outlined text-base text-[#888888] hover:text-[#FFB000] cursor-pointer transition-colors"
+            <span className="material-symbols-outlined text-base hover:text-[#FFB000] cursor-pointer transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
               onClick={() => { setSetupComplete(false); localStorage.removeItem('whycremisi_setup_done') }}>settings</span>
-            <span className="material-symbols-outlined text-base text-[#888888] hover:text-[#DC143C] cursor-pointer transition-colors"
+            <span className="material-symbols-outlined text-base hover:text-[#DC143C] cursor-pointer transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
               onClick={() => whycremisi.disconnect()}>power_settings_new</span>
           </div>
         </div>
@@ -794,17 +883,19 @@ export default function App() {
 
       {/* ── SIDEBAR ────────────────────────────────────────────────── */}
       <aside className="fixed left-0 top-9 h-[calc(100vh-2.25rem)] w-12 flex flex-col items-center py-2 z-40" style={{ backgroundColor: 'var(--bg-panel)', borderRight: '1px solid var(--border)' }}>
-        <div className="text-xs font-mono text-[#888888] uppercase mb-4 rotate-180 select-none" style={{ writingMode:'vertical-lr' }}>
+        <div className="text-xs font-mono uppercase mb-4 rotate-180 select-none" style={{ color: 'var(--text-secondary)', writingMode:'vertical-lr' }}>
           MOD
         </div>
         {sideModules.map(mod => (
           <motion.button
             key={mod.id}
-            className={`w-full py-2 flex flex-col items-center gap-0.5 transition-colors ${
-              activeMod === mod.id
-                ? 'text-[#DC143C] bg-[#1a1a1a] border-l-2 border-[#DC143C]'
-                : 'text-[#888888] hover:text-[#FFB000] hover:bg-[#1a1a1a] border-l-2 border-transparent'
+            className={`w-full py-2 flex flex-col items-center gap-0.5 transition-colors border-l-2 ${
+              activeMod === mod.id ? 'border-[#DC143C]' : 'border-transparent hover:text-[#FFB000]'
             }`}
+            style={{
+              color: activeMod === mod.id ? 'var(--cremisi)' : 'var(--text-secondary)',
+              backgroundColor: activeMod === mod.id ? 'var(--bg-card)' : 'transparent'
+            }}
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.94 }}
             onClick={() => setActiveMod(mod.id)}
@@ -824,7 +915,8 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="fixed top-9 left-12 right-0 bottom-0 z-30 bg-[#0d0d0d]"
+            className="fixed top-9 left-12 right-0 bottom-0 z-30"
+            style={{ backgroundColor: 'var(--bg-primary)' }}
           >
             <SessionPanel />
           </motion.div>
@@ -840,21 +932,22 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="fixed top-9 left-12 right-0 bottom-9 z-30 bg-[#0d0d0d] overflow-y-auto custom-scrollbar p-4"
+            className="fixed top-9 left-12 right-0 bottom-9 z-30 overflow-y-auto custom-scrollbar p-4"
+            style={{ backgroundColor: 'var(--bg-primary)' }}
           >
             <div className="max-w-full space-y-4">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#FFB000] led-amber-active" />
-                <span className="text-xs font-bold text-[#FFB000] tracking-widest uppercase">Telemetry Dashboard — Live Analysis</span>
-                <div className="flex-1 h-px bg-[#222]" />
-                <span className="text-xs font-mono text-[#666]">REALTIME</span>
+                <span className="text-xs font-bold tracking-widest uppercase" style={{ color: 'var(--amber)' }}>Telemetry Dashboard — Live Analysis</span>
+                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
+                <span className="text-xs font-mono" style={{ color: 'var(--text-faint)' }}>REALTIME</span>
               </div>
 
               {/* ── STEREO ANALYSIS ─────────────────────────────── */}
-              <div className="border border-[#222] bg-[#0e0e0e]">
-                <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center gap-2">
+              <div className="border bg-[#0e0e0e]" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+                <div className="px-3 py-1.5 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-subtle)' }}>
                   <div className="w-1 h-1 rounded-full bg-[#DC143C]" />
-                  <span className="text-xs font-bold text-[#DC143C] uppercase tracking-widest">Stereo Field Analysis</span>
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--cremisi)' }}>Stereo Field Analysis</span>
                 </div>
                 <div className="p-3 grid grid-cols-3 gap-3">
                   {[
@@ -864,7 +957,7 @@ export default function App() {
                   ].map(({ label, val, color, pct }) => (
                     <div key={label} className="space-y-1.5">
                       <div className="flex justify-between text-xs uppercase font-bold">
-                        <span className="text-[#aaa]">{label}</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
                         <span style={{ color }}>{val}</span>
                       </div>
                       <div className="h-1.5 bg-[#111] w-full">
@@ -879,10 +972,10 @@ export default function App() {
               </div>
 
               {/* ── LOUDNESS ────────────────────────────────────── */}
-              <div className="border border-[#222] bg-[#0e0e0e]">
-                <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center gap-2">
+              <div className="border" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+                <div className="px-3 py-1.5 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-subtle)' }}>
                   <div className="w-1 h-1 rounded-full bg-[#00E5FF]" />
-                  <span className="text-xs font-bold text-[#00E5FF] uppercase tracking-widest">Loudness & Dynamics</span>
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--cyan)' }}>Loudness & Dynamics</span>
                 </div>
                 <div className="p-3 grid grid-cols-3 gap-3">
                   {[
@@ -895,7 +988,7 @@ export default function App() {
                   ].map(({ label, val, color, pct }) => (
                     <div key={label} className="space-y-1.5">
                       <div className="flex justify-between text-xs uppercase font-bold">
-                        <span className="text-[#aaa]">{label}</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
                         <span style={{ color }}>{val}</span>
                       </div>
                       <div className="h-1.5 bg-[#111] w-full">
@@ -910,10 +1003,10 @@ export default function App() {
               </div>
 
               {/* ── FREQUENCY CONTENT ───────────────────────────── */}
-              <div className="border border-[#222] bg-[#0e0e0e]">
-                <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center gap-2">
+              <div className="border" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+                <div className="px-3 py-1.5 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-subtle)' }}>
                   <div className="w-1 h-1 rounded-full bg-[#FFB000]" />
-                  <span className="text-xs font-bold text-[#FFB000] uppercase tracking-widest">Frequency Content</span>
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--amber)' }}>Frequency Content</span>
                 </div>
                 <div className="p-3 grid grid-cols-3 gap-3">
                   {[
@@ -926,7 +1019,7 @@ export default function App() {
                   ].map(({ label, val, color, pct }) => (
                     <div key={label} className="space-y-1.5">
                       <div className="flex justify-between text-xs uppercase font-bold">
-                        <span className="text-[#aaa]">{label}</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
                         <span style={{ color }}>{val}</span>
                       </div>
                       <div className="h-1.5 bg-[#111] w-full">
@@ -941,10 +1034,10 @@ export default function App() {
               </div>
 
               {/* ── TRANSPORT ───────────────────────────────────── */}
-              <div className="border border-[#222] bg-[#0e0e0e]">
-                <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center gap-2">
+              <div className="border" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+                <div className="px-3 py-1.5 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-subtle)' }}>
                   <div className="w-1 h-1 rounded-full bg-[#00FFaa]" />
-                  <span className="text-xs font-bold text-[#00FFaa] uppercase tracking-widest">Transport & Plugin Info</span>
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--green)' }}>Transport & Plugin Info</span>
                 </div>
                 <div className="p-3 grid grid-cols-4 gap-3">
                   {[
@@ -957,8 +1050,8 @@ export default function App() {
                     { label: 'DAW Link', val: dawConnected ? 'SYNC' : 'OFFLINE', color: dawConnected ? '#00FFaa' : '#DC143C' },
                     { label: 'Connection', val: connStatus === 'connected' ? 'LIVE' : 'OFFLINE', color: connStatus === 'connected' ? '#00FFaa' : '#DC143C' },
                   ].map(({ label, val, color }) => (
-                    <div key={label} className="bg-[#111] border border-[#1a1a1a] p-2 flex flex-col gap-0.5">
-                      <span className="text-xs font-mono text-[#666] uppercase">{label}</span>
+                    <div key={label} className="p-2 flex flex-col gap-0.5">
+                      <span className="text-xs font-mono uppercase" style={{ color: 'var(--text-faint)' }}>{label}</span>
                       <span className="text-xs font-bold font-mono" style={{ color }}>{val}</span>
                     </div>
                   ))}
@@ -970,25 +1063,26 @@ export default function App() {
       </AnimatePresence>
 
       {/* ── MAIN GRID — sempre nel DOM, mai mosso ──────────────────── */}
-      <main className="ml-12 mt-0 h-[calc(100vh-2.25rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden bg-[#0d0d0d] relative z-10">
+      <main className="ml-12 mt-0 h-[calc(100vh-2.25rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden relative z-10" style={{ backgroundColor: 'var(--bg-primary)' }}>
 
         {/* ── AI CHAT CONSOLE (9/12 × 4/6) ──────────────────────── */}
-        <section className="col-span-9 row-span-4 bg-[#0e0e0e] border border-[#222222] flex flex-col overflow-hidden">
-          <div className="bg-[#1a1a1a] px-3 py-1 flex justify-between items-center border-b border-[#222222]">
+        <section className="col-span-9 row-span-4 border flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
+          <div className="px-3 py-1 flex justify-between items-center border-b" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-[#FFB000] led-amber-active" />
-              <span className="text-xs font-bold text-[#FFB000] tracking-widest uppercase">AI Command Console</span>
+              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: 'var(--amber)' }}>AI Command Console</span>
             </div>
-            <div className="flex items-center gap-3 text-xs font-mono text-[#888888]">
+            <div className="flex items-center gap-3 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
               <span>v4.2.0</span>
               {['inline','grid','popover'].map(l => (
-                <span key={l} className={`text-[9px] uppercase tracking-widest cursor-pointer px-1 ${boxLayout === l ? 'text-[#FFB000] border-b border-[#FFB000]' : 'text-[#666] hover:text-[#FFB000]'}`}
+                <span key={l} className={`text-[9px] uppercase tracking-widest cursor-pointer px-1 border-b ${boxLayout === l ? 'border-[#FFB000]' : 'border-transparent hover:text-[#FFB000]'}`}
+                  style={{ color: boxLayout === l ? 'var(--amber)' : 'var(--text-faint)' }}
                   onClick={() => setBoxLayout(l)}>{l}</span>
               ))}
-              {dawConnected && <span className="text-[#00FFaa]">● DAW SYNC</span>}
+              {dawConnected && <span style={{ color: 'var(--green)' }}>● DAW SYNC</span>}
               {personality?.style && personality.style !== 'warm' && (
                 <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-px border"
-                  style={{ color: personality.style === 'direct' ? '#DC143C' : personality.style === 'consultative' ? '#FFB000' : personality.style === 'analytical' ? '#00E5FF' : personality.style === 'creative' ? '#AA44FF' : '#888', borderColor: 'currentColor' }}
+                  style={{ color: personality.style === 'direct' ? 'var(--cremisi)' : personality.style === 'consultative' ? 'var(--amber)' : personality.style === 'analytical' ? 'var(--cyan)' : personality.style === 'creative' ? '#AA44FF' : 'var(--text-secondary)', borderColor: 'currentColor' }}
                 >{personality.style}</span>
               )}
             </div>
@@ -1006,13 +1100,32 @@ export default function App() {
               >
                 <BotFace state={botState} className="w-16 h-16" personality={personality} />
                 <div className="text-center space-y-1">
-                  <p className="text-sm text-[#888888] font-mono uppercase tracking-widest">Pronto ad ascoltare</p>
-                  <p className="text-xs text-[#666] font-mono">Scrivi qualcosa nel campo CMD qui sotto</p>
+                  <p className="text-sm font-mono uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>Pronto ad ascoltare</p>
+                  <p className="text-xs font-mono" style={{ color: 'var(--text-faint)' }}>Scrivi qualcosa nel campo CMD qui sotto</p>
                 </div>
               </motion.div>
             )}
 
+            {/* Loading skeleton for slow AI responses */}
             <AnimatePresence>
+              {botState === 'thinking' && !messages.some(m => m.streaming) && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.3 }}
+                  className="skeleton-message"
+                >
+                  <div className="skeleton-avatar" />
+                  <div className="skeleton-content">
+                    <div className="skeleton-line amber" style={{ width: '35%' }} />
+                    <div className="skeleton-line" />
+                    <div className="skeleton-line" />
+                    <div className="skeleton-line" style={{ width: '55%' }} />
+                  </div>
+                </motion.div>
+              )}
+
               {messages.map((msg) => {
                 if (msg.type === 'system') return (
                   <motion.div key={msg.id}
@@ -1021,8 +1134,8 @@ export default function App() {
                     transition={{ duration: 0.3 }}
                     className="flex items-center gap-2"
                   >
-                    <div className="w-1 h-full min-h-[10px] bg-[#333] flex-shrink-0" />
-                    <span className="text-[10px] font-mono text-[#bbb] tracking-wide">{msg.text}</span>
+                    <div className="w-1 h-full min-h-[10px] flex-shrink-0" style={{ backgroundColor: 'var(--border-light)' }} />
+                    <span className="text-[10px] font-mono tracking-wide" style={{ color: 'var(--text-secondary)' }}>{msg.text}</span>
                   </motion.div>
                 )
 
@@ -1041,19 +1154,19 @@ export default function App() {
                           <div key={i} className="w-[2px] bg-[#DC143C]" style={{ height:`${h}%` }} />
                         ))}
                       </div>
-                      <div className="flex items-start gap-3 mb-3 border-b border-[#222222] pb-2">
-                        <div className="w-1 h-6 bg-[#DC143C] relative overflow-hidden flex-shrink-0 mt-0.5">
-                          <motion.div className="absolute inset-0 bg-white/20"
-                            animate={{ y:['0%','100%','0%'] }}
-                            transition={{ repeat:Infinity, duration:2 }}
-                          />
-                        </div>
-                        <div>
-                          <span className="text-[#DC143C] text-xs font-bold tracking-tighter uppercase block">AI MASTERING ADVISORY</span>
-                          <span className="text-xs text-[#888888] tracking-[0.2em]">NODE: CREMISI_X9 · PRIORITY: HIGH</span>
-                        </div>
-                      </div>
-                      <p className="text-sm text-[#FFB000] leading-relaxed mb-4 break-words">
+<div className="flex items-start gap-3 mb-3 border-b pb-2" style={{ borderColor: 'var(--border)' }}>
+                         <div className="w-1 h-6 bg-[#DC143C] relative overflow-hidden flex-shrink-0 mt-0.5">
+                           <motion.div className="absolute inset-0 bg-white/20"
+                             animate={{ y:['0%','100%','0%'] }}
+                             transition={{ repeat:Infinity, duration:2 }}
+                           />
+                         </div>
+                         <div>
+                           <span className="text-xs font-bold tracking-tighter uppercase block" style={{ color: 'var(--cremisi)' }}>AI MASTERING ADVISORY</span>
+                           <span className="text-xs tracking-[0.2em]" style={{ color: 'var(--text-secondary)' }}>NODE: CREMISI_X9 · PRIORITY: HIGH</span>
+                         </div>
+                       </div>
+                       <p className="text-sm leading-relaxed mb-4 break-words" style={{ color: 'var(--amber)' }}>
                         Detected harmonic crowding in <span className="text-white font-bold border-b border-[#DC143C]/40 px-1">200Hz–400Hz</span> range.{' '}
                         Suggesting dynamic dip of <span className="bg-[#DC143C] text-white px-1.5 font-bold">-2.4dB</span>.{' '}
                         Transient preservation at <span className="text-white underline decoration-dotted">84%</span>.
@@ -1068,13 +1181,15 @@ export default function App() {
                           <span className="material-symbols-outlined text-[9px] align-middle mr-1">bolt</span>
                           EXECUTE CHAIN
                         </motion.button>
-                        <motion.button
-                          className="border border-[#4d4d4d] text-[#888888] px-4 py-1.5 text-xs font-bold uppercase hover:border-[#FFB000] hover:text-[#FFB000] transition-colors tracking-widest"
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => analyzeFurther(personality?.style)}
-                        >ANALYZE FURTHER</motion.button>
-                        <button className="text-[#888888] hover:text-white text-xs font-bold uppercase self-center transition-colors"
-                          onClick={dismissAdvisory}>DISMISS</button>
+<motion.button
+                           className="border px-4 py-1.5 text-xs font-bold uppercase hover:border-[#FFB000] hover:text-[#FFB000] transition-colors tracking-widest"
+                           style={{ borderColor: 'var(--text-muted)', color: 'var(--text-secondary)' }}
+                           whileTap={{ scale: 0.95 }}
+                           onClick={() => analyzeFurther(personality?.style)}
+                         >ANALYZE FURTHER</motion.button>
+                         <button className="hover:text-white text-xs font-bold uppercase self-center transition-colors"
+                           style={{ color: 'var(--text-secondary)' }}
+                           onClick={dismissAdvisory}>DISMISS</button>
                       </div>
                     </div>
                   </motion.div>
@@ -1087,48 +1202,52 @@ export default function App() {
                     transition={{ duration:0.3 }}
                     className="flex flex-col items-end gap-0.5"
                   >
-                    <div className="bg-[#222222]/50 border border-[#FFB000]/20 px-3 py-1.5 max-w-[80%] text-[9px] text-white font-mono italic">
-                      {msg.text}
-                    </div>
-                    <span className="text-xs text-[#888888] mr-1 uppercase font-bold tracking-widest">
-                      User // {msg.time}
-                    </span>
-                  </motion.div>
-                )
+<div className="border px-3 py-1.5 max-w-[80%] text-[9px] text-white font-mono italic" style={{ backgroundColor: 'color-mix(in srgb, var(--bg-elevated) 50%, transparent)', borderColor: 'color-mix(in srgb, var(--amber) 20%, transparent)' }}>
+                       {msg.text}
+                     </div>
+                     <span className="text-xs mr-1 uppercase font-bold tracking-widest" style={{ color: 'var(--text-secondary)' }}>
+                       User // {msg.time}
+                     </span>
+                   </motion.div>
+                 )
 
-                if (msg.type === 'bot') {
-                  const isLatest = msg.id === lastBotId
-                  return (
-                    <motion.div key={msg.id}
-                      initial={{ opacity:0, y:6 }}
-                      animate={{ opacity:1, y:0 }}
-                      transition={{ duration:0.35 }}
-                      className="flex gap-2 min-w-0"
-                    >
-                      <div className="flex-shrink-0 mt-0.5 w-8">
-                        {isLatest && <BotFace state={botState} className="w-8 h-8" personality={personality} />}
-                      </div>
-                      <div className={`flex-1 min-w-0 p-3 relative overflow-hidden transition-colors duration-300 ${
-                        isLatest && msg.streaming
-                          ? 'bg-[#1c1c1c] border border-[#FFB000]/25 shadow-[0_0_10px_rgba(255,176,0,0.06)]'
-                          : 'bg-[#191919] border border-[#2a2a2a]'
-                      }`}>
-                        {/* left accent bar */}
-                        <div className={`absolute top-0 left-0 w-[2px] h-full transition-colors duration-300 ${isLatest ? 'bg-[#FFB000]' : 'bg-[#2e2e2e]'}`} />
-                        {/* streaming scan */}
-                        {isLatest && msg.streaming && (
-                          <motion.div className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#FFB000]/30 to-transparent pointer-events-none"
-                            animate={{ top: ['0%','100%','0%'] }}
-                            transition={{ repeat: Infinity, duration: 2.5, ease: 'linear' }}
-                          />
-                        )}
-                        <div className="flex justify-between items-center mb-1">
-                          <span className={`text-xs font-bold tracking-widest uppercase ${isLatest ? 'text-[#FFB000]' : 'text-[#777]'}`}>
-                            WHYCREMISI AI
-                          </span>
-                          <span className="text-xs text-[#777] font-mono">{msg.time}</span>
-                        </div>
-                        <p className="text-[11px] text-[#e5e2e1] leading-5 whitespace-pre-wrap">
+                 if (msg.type === 'bot') {
+                   const isLatest = msg.id === lastBotId
+                   return (
+                     <motion.div key={msg.id}
+                       initial={{ opacity:0, y:6 }}
+                       animate={{ opacity:1, y:0 }}
+                       transition={{ duration:0.35 }}
+                       className="flex gap-2 min-w-0"
+                     >
+                       <div className="flex-shrink-0 mt-0.5 w-8">
+                         {isLatest && <BotFace state={botState} className="w-8 h-8" personality={personality} />}
+                       </div>
+                       <div className={`flex-1 min-w-0 p-3 relative overflow-hidden transition-colors duration-300 border ${
+                         isLatest && msg.streaming
+                           ? 'shadow-[0_0_10px_rgba(255,176,0,0.06)]'
+                           : ''
+                       }`}
+                       style={{
+                         backgroundColor: isLatest && msg.streaming ? 'var(--bg-active)' : 'var(--bg-hover-card)',
+                         borderColor: isLatest && msg.streaming ? 'color-mix(in srgb, var(--amber) 25%, transparent)' : 'var(--border-subtle)'
+                       }}>
+                         {/* left accent bar */}
+                         <div className={`absolute top-0 left-0 w-[2px] h-full transition-colors duration-300 ${isLatest ? 'bg-[#FFB000]' : 'bg-[#2e2e2e]'}`} />
+                         {/* streaming scan */}
+                         {isLatest && msg.streaming && (
+                           <motion.div className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#FFB000]/30 to-transparent pointer-events-none"
+                             animate={{ top: ['0%','100%','0%'] }}
+                             transition={{ repeat: Infinity, duration: 2.5, ease: 'linear' }}
+                           />
+                         )}
+                         <div className="flex justify-between items-center mb-1">
+                           <span className="text-xs font-bold tracking-widest uppercase" style={{ color: isLatest ? 'var(--amber)' : 'var(--text-tertiary)' }}>
+                             WHYCREMISI AI
+                           </span>
+                           <span className="text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>{msg.time}</span>
+                         </div>
+                         <p className="text-[11px] leading-5 whitespace-pre-wrap" style={{ color: 'var(--text-primary)' }}>
                           {msg.text}
                           {msg.streaming && (
                             <motion.span className="inline-block w-1 h-3 bg-[#FFB000] ml-1 align-middle"
@@ -1147,11 +1266,12 @@ export default function App() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Terminal input */}
-          <div className="h-10 bg-[#131313] border-t border-[#222222] flex items-center px-3 gap-2">
-            <span className="text-[#FFB000] font-bold text-xs tracking-widest shrink-0">CMD&gt;</span>
+{/* Terminal input */}
+           <div className="h-10 border-t flex items-center px-3 gap-2" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)' }}>
+             <span className="font-bold text-xs tracking-widest shrink-0" style={{ color: 'var(--amber)' }}>CMD&gt;</span>
             <div className="flex-1 relative flex items-center">
               <input
+                ref={inputRef}
                 className="w-full bg-transparent border-none text-white font-mono text-xs focus:ring-0 focus:outline-none placeholder-[#4d4d4d] p-0 disabled:opacity-40"
                 placeholder={botState === 'thinking' || botState === 'typing' ? 'PROCESSING...' : 'Ask the AI anything about your mix...'}
                 value={inputVal}
@@ -1161,7 +1281,17 @@ export default function App() {
               />
               {(botState === 'idle' || botState === 'sad' || botState === 'loading') && <div className="terminal-cursor" />}
             </div>
-            <div className="flex gap-1.5 text-[#888888]">
+            <div className="kbd-hint mr-2 hidden md:flex">
+              <kbd>&#8984;</kbd><kbd>K</kbd> clear
+              <span className="mx-1">·</span>
+              <kbd>Esc</kbd> clear
+              <span className="mx-1">·</span>
+              <kbd>&#8593;</kbd><kbd>&#8595;</kbd> history
+            </div>
+            {connStatus !== ConnectionState.CONNECTED && connStatus !== ConnectionState.DISCONNECTED && (
+              <span className="queued-indicator text-[9px]">QUEUED</span>
+            )}
+<div className="flex gap-1.5" style={{ color: 'var(--text-secondary)' }}>
               <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
                 className="material-symbols-outlined text-base cursor-pointer hover:text-[#FFB000] transition-colors"
                 onClick={() => dawCmd('play')}>play_arrow</motion.button>
@@ -1169,9 +1299,36 @@ export default function App() {
                 className="material-symbols-outlined text-base cursor-pointer hover:text-[#FFB000] transition-colors"
                 onClick={() => dawCmd('stop')}>stop</motion.button>
               <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
-                className={`material-symbols-outlined text-base cursor-pointer transition-colors ${transport.isRecording ? 'text-[#DC143C] led-red-active' : 'hover:text-[#DC143C]'}`}
+                className={`material-symbols-outlined text-base cursor-pointer transition-colors ${transport.isRecording ? 'led-red-active' : ''}`
+                style={{ color: transport.isRecording ? 'var(--cremisi)' : 'inherit' }}
                 onClick={() => dawCmd('record')}>fiber_manual_record</motion.button>
             </div>
+          </div>
+        </section>
+
+        {/* ── MASTERING RACK (3/12 × 4/6) ───────────────────────── */}
+        <section className="col-span-3 row-span-4 border flex flex-col" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)' }}>
+          <div className="px-3 py-1 border-b flex justify-between items-center" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#DC143C] led-red-active" />
+              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: 'var(--cremisi)' }}>Mastering Rack</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <motion.button
+                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showMapPanel ? 'bg-[#00E5FF] text-black border-[#00E5FF]' : 'hover:border-[#00E5FF] hover:text-[#00E5FF]'}`
+                style={{ color: showMapPanel ? '#000' : 'var(--text-secondary)', borderColor: showMapPanel ? 'var(--cyan)' : 'var(--border-light)' }}
+                onClick={() => setShowMapPanel(p => !p)}
+                whileTap={{ scale: 0.95 }}
+              >MAP</motion.button>
+              <motion.button
+                className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm border ${showChainPanel ? 'bg-[#FF6B35] text-black border-[#FF6B35]' : 'hover:border-[#FF6B35] hover:text-[#FF6B35]'}`
+                style={{ color: showChainPanel ? '#000' : 'var(--text-secondary)', borderColor: showChainPanel ? 'var(--orange)' : 'var(--border-light)' }}
+                onClick={() => setShowChainPanel(p => !p)}
+                whileTap={{ scale: 0.95 }}
+              >CHAIN</motion.button>
+              <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>STEREO MASTER</span>
+            </div>
+          </div>
           </div>
         </section>
 

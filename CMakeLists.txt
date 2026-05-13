@@ -77,6 +77,8 @@ target_sources(WhyCremisiVSTPlugin
         src/core/AgentWorkspace.cpp
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
+        src/ai/AIProvider.cpp
+        src/ai/ToolRegistry.cpp
         src/ui/WebViewBridge.cpp
         src/bridge/WebSocketServer.cpp
         src/bridge/OscBridge.cpp

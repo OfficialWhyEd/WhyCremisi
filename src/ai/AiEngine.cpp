@@ -1,36 +1,137 @@
 #include "AiEngine.h"
+#include "AIProvider.h"
 #include <nlohmann/json.hpp>
 
 AiEngine::AiEngine() { configured = false; }
-
 AiEngine::~AiEngine() {}
 
-void AiEngine::configure(const Config& cfg) { config = cfg; configured = true; }
-
-void AiEngine::updateConfig(std::function<void(Config&)> updater) { updater(config); configured = true; }
-
-// ── Widget/Context ─────────────────────────────────────────────
-
-void AiEngine::setWidgetList(const std::vector<WidgetInfo>& w)
+void AiEngine::configure(const Config& cfg)
 {
-    widgets = w;
+    config = cfg;
+    configured = true;
+    ensureProvider();
 }
 
-void AiEngine::setContext(const juce::String& meterData, const juce::String& transportData)
+void AiEngine::updateConfig(std::function<void(Config&)> updater)
 {
-    lastMeterData = meterData;
-    lastTransportData = transportData;
+    updater(config);
+    configured = true;
+    ensureProvider();
 }
 
-void AiEngine::setPersonalityContext(const juce::String& context)
+void AiEngine::setPersonalityStyle(AiPersonalityStyle style)
 {
-    personalityContext = context;
+    config.personalityStyle = style;
 }
 
-void AiEngine::setAgentWorkspaceContext(const juce::String& context)
+// ── Personality Style Helpers ──────────────────────────────
+
+juce::StringArray AiEngine::getPersonalityStyleNames()
 {
-    agentWorkspaceContext = context;
+    return {"Analytical", "Consultative", "Direct", "Creative", "Warm"};
 }
+
+juce::String AiEngine::getPersonalityStyleName(AiPersonalityStyle style)
+{
+    switch (style) {
+        case AiPersonalityStyle::Analytical:   return "Analytical";
+        case AiPersonalityStyle::Consultative: return "Consultative";
+        case AiPersonalityStyle::Direct:       return "Direct";
+        case AiPersonalityStyle::Creative:     return "Creative";
+        case AiPersonalityStyle::Warm:         return "Warm";
+    }
+    return "Analytical";
+}
+
+juce::String AiEngine::getPersonalityStyleDescription(AiPersonalityStyle style)
+{
+    switch (style) {
+        case AiPersonalityStyle::Analytical:
+            return "Precise, data-driven, technical. Shows numbers, spectrum analysis, and exact parameter values.";
+        case AiPersonalityStyle::Consultative:
+            return "Collaborative, explanatory, educational. Explains why each change helps the mix.";
+        case AiPersonalityStyle::Direct:
+            return "Concise, action-oriented, efficient. Gets straight to the point with minimal explanation.";
+        case AiPersonalityStyle::Creative:
+            return "Experimental, bold, artistic. Suggests unconventional approaches and creative chains.";
+        case AiPersonalityStyle::Warm:
+            return "Supportive, encouraging, human. Builds rapport and celebrates progress.";
+    }
+    return "";
+}
+
+// ── Provider Factory ───────────────────────────────────────
+
+std::unique_ptr<AIProvider> AiEngine::createProvider(Provider type)
+{
+    AIProvider::Config pcfg;
+    pcfg.apiKey = config.apiKey;
+    pcfg.model = config.model;
+    pcfg.baseUrl = config.baseUrl;
+    pcfg.timeoutMs = config.timeoutMs;
+    pcfg.maxTokens = config.maxTokens;
+    pcfg.temperature = config.temperature;
+
+    switch (type) {
+        case Provider::OpenAI:     return std::make_unique<OpenAIProvider>(pcfg);
+        case Provider::OpenRouter: return std::make_unique<OpenRouterProvider>(pcfg);
+        case Provider::Groq:       return std::make_unique<GroqProvider>(pcfg);
+        case Provider::Anthropic:  return std::make_unique<AnthropicProvider>(pcfg);
+        case Provider::Ollama:     return std::make_unique<OllamaProvider>(pcfg);
+        case Provider::Gemini:     return std::make_unique<GeminiProvider>(pcfg);
+    }
+    return nullptr;
+}
+
+void AiEngine::ensureProvider()
+{
+    if (!configured) return;
+    currentProvider = createProvider(config.provider);
+}
+
+// ── Personality Prefix Builder ─────────────────────────────
+
+juce::String AiEngine::buildPersonalityPrefix() const
+{
+    juce::String prefix;
+    prefix += "## Personality: " + getPersonalityStyleName(config.personalityStyle) + "\n";
+    prefix += getPersonalityStyleDescription(config.personalityStyle) + "\n\n";
+
+    switch (config.personalityStyle) {
+        case AiPersonalityStyle::Analytical:
+            prefix += "Always include specific numbers (gain in dB, frequency in Hz, ratio values). ";
+            prefix += "Reference the spectrum analyzer and correlation meter data in your reasoning. ";
+            prefix += "Format suggestions as: [Parameter] → [value] (reason: [technical justification])\n";
+            break;
+        case AiPersonalityStyle::Consultative:
+            prefix += "Present options with pros and cons. ";
+            prefix += "Ask the user for their preference before making changes. ";
+            prefix += "Explain the sonic impact of each suggestion in musical terms. ";
+            prefix += "Use phrases like 'We could try...' and 'One approach would be...'\n";
+            break;
+        case AiPersonalityStyle::Direct:
+            prefix += "Be brief and actionable. Use bullet points. ";
+            prefix += "State the problem, the fix, and the expected result in one sentence each. ";
+            prefix += "Skip explanations unless the user asks for them.\n";
+            break;
+        case AiPersonalityStyle::Creative:
+            prefix += "Think outside the box. Suggest routing, parallel processing, and modulation. ";
+            prefix += "Reference classic gear and unconventional techniques. ";
+            prefix += "Use vivid sonic descriptions. ";
+            prefix += "Label suggestions as: [Safe] → standard approach, [Bold] → creative approach\n";
+            break;
+        case AiPersonalityStyle::Warm:
+            prefix += "Use a friendly, conversational tone. Start with a positive observation. ";
+            prefix += "Encourage experimentation. Celebrate good mix decisions. ";
+            prefix += "Use analogies and relatable language. ";
+            prefix += "Ask how the user feels about each suggestion.\n";
+            break;
+    }
+
+    return prefix;
+}
+
+// ── System Prompt Builder ──────────────────────────────────
 
 juce::String AiEngine::buildSystemPrompt() const
 {
@@ -44,14 +145,21 @@ juce::String AiEngine::buildSystemPrompt() const
     prompt += "    { \"widgetId\": \"<id>\", \"value\": <0.0-1.0>, \"description\": \"what this does\" }\n";
     prompt += "  ]\n";
     prompt += "}\n\n";
+
+    prompt += buildPersonalityPrefix();
+    prompt += "\n";
+
+    if (dawName.isNotEmpty())
+        prompt += "Connected DAW: " + dawName + "\n\n";
+
     prompt += "Available controls:\n";
-    for (const auto& w : widgets)
-    {
+    for (const auto& w : widgets) {
         prompt += "- " + w.widgetId + " (" + w.label + "): range " + juce::String(w.min) + "-" + juce::String(w.max);
         if (w.unit.isNotEmpty()) prompt += " " + w.unit;
         prompt += ", current: " + juce::String(w.currentValue);
         prompt += "\n";
     }
+
     if (lastMeterData.isNotEmpty())
         prompt += "\nPlugin chain:\n" + lastMeterData + "\n";
     if (lastTransportData.isNotEmpty())
@@ -60,44 +168,51 @@ juce::String AiEngine::buildSystemPrompt() const
         prompt += "\n=== AGENT WORKSPACE ===\n" + agentWorkspaceContext + "\n";
     if (personalityContext.isNotEmpty())
         prompt += "\n=== PERSONALITY (session memory) ===\n" + personalityContext + "\n";
+
     prompt += "\nIMPORTANT: values must be in 0.0-1.0 normalized range.\n";
     prompt += "Only output valid JSON, no other text outside the JSON block.\n";
     return prompt;
 }
 
-// ── Structured Prompt ──────────────────────────────────────────
+// ── Widget / Context Setters ───────────────────────────────
+
+void AiEngine::setWidgetList(const std::vector<WidgetInfo>& w) { widgets = w; }
+void AiEngine::setContext(const juce::String& meterData, const juce::String& transportData)
+{
+    lastMeterData = meterData;
+    lastTransportData = transportData;
+}
+void AiEngine::setPersonalityContext(const juce::String& context) { personalityContext = context; }
+void AiEngine::setAgentWorkspaceContext(const juce::String& context) { agentWorkspaceContext = context; }
+
+// ── Structured Prompt (sync) ───────────────────────────────
 
 AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& prompt)
 {
-    juce::String systemPrompt = buildSystemPrompt();
-    juce::String fullPrompt = "Context:\n" + systemPrompt + "\n\nUser request:\n" + prompt;
-
-    juce::String raw;
-    if (!configured) {
+    if (!configured || !currentProvider) {
         StructuredResponse r;
         r.text = "[AI] Not configured.";
         r.success = false;
         return r;
     }
 
-    switch (config.provider) {
-        case Provider::Ollama: raw = callOllama(fullPrompt); break;
-        case Provider::Gemini: raw = callGemini(prompt, systemPrompt); break;
-        case Provider::Anthropic: raw = callAnthropic(prompt, systemPrompt); break;
-        case Provider::OpenAI: raw = callOpenAI(prompt); break;
-        case Provider::OpenRouter: raw = callOpenRouter(prompt); break;
-        case Provider::Groq: raw = callGroq(prompt); break;
+    juce::String systemPrompt = buildSystemPrompt();
+    juce::String fullPrompt = "Context:\n" + systemPrompt + "\n\nUser request:\n" + prompt;
+    auto result = currentProvider->sendPrompt(systemPrompt, prompt);
+
+    if (!result.success) {
+        StructuredResponse r;
+        r.text = "[ERROR] " + result.error;
+        r.success = false;
+        lastError = result.error;
+        return r;
     }
 
-    auto response = parseStructuredResponse(raw);
-
-    // Execute actions
-    if (response.success && actionCallback)
-    {
+    auto response = parseStructuredResponse(result.text);
+    if (response.success && actionCallback) {
         for (const auto& action : response.actions)
             actionCallback(action);
     }
-
     return response;
 }
 
@@ -107,57 +222,56 @@ void AiEngine::sendPromptAsyncStructured(const juce::String& prompt, StructuredC
     if (callback) callback(result);
 }
 
-AiEngine::StructuredResponse AiEngine::parseStructuredResponse(const juce::String& raw) const
+// ── Streaming ──────────────────────────────────────────────
+
+void AiEngine::sendPromptStreaming(const juce::String& prompt, StreamCallback onChunk)
 {
-    StructuredResponse response;
-    response.success = false;
-
-    if (raw.isEmpty()) return response;
-
-    try {
-        auto j = nlohmann::json::parse(raw.toStdString());
-
-        if (j.contains("text"))
-            response.text = juce::String(j["text"].get<std::string>());
-
-        if (j.contains("actions") && j["actions"].is_array())
-        {
-            for (const auto& a : j["actions"])
-            {
-                AiAction action;
-                if (a.contains("widgetId"))
-                    action.widgetId = juce::String(a["widgetId"].get<std::string>());
-                if (a.contains("value"))
-                    action.value = a["value"].get<float>();
-                if (a.contains("description"))
-                    action.description = juce::String(a["description"].get<std::string>());
-
-                // Look up previous value for undo
-                for (const auto& w : widgets)
-                {
-                    if (w.widgetId == action.widgetId)
-                    {
-                        action.previousValue = w.currentValue;
-                        break;
-                    }
-                }
-
-                response.actions.push_back(action);
-            }
-        }
-        response.success = true;
-    }
-    catch (const std::exception& e)
-    {
-        // If JSON parse fails, treat entire response as text
-        response.text = raw;
-        response.success = true;
+    if (!configured || !currentProvider || !onChunk) {
+        if (onChunk) onChunk("", true);
+        return;
     }
 
-    return response;
+    juce::String systemPrompt = buildSystemPrompt();
+    currentProvider->sendPromptStreaming(systemPrompt, prompt, onChunk);
 }
 
-// ── Sync/Async passthrough ─────────────────────────────────────
+void AiEngine::sendStructuredStreaming(const juce::String& prompt, StreamCallback onChunk,
+                                        std::function<void(const StructuredResponse&)> onComplete)
+{
+    if (!configured || !currentProvider) {
+        if (onComplete) {
+            StructuredResponse r;
+            r.text = "[AI] Not configured.";
+            onComplete(r);
+        }
+        return;
+    }
+
+    juce::String systemPrompt = buildSystemPrompt();
+    juce::String accumulated;
+
+    currentProvider->sendPromptStreaming(systemPrompt, prompt,
+        [&](const juce::String& chunk, bool isDone) {
+            if (!chunk.isEmpty()) accumulated += chunk;
+            if (onChunk) onChunk(chunk, isDone);
+            if (isDone && onComplete) {
+                auto response = parseStructuredResponse(accumulated);
+                if (response.success && actionCallback) {
+                    for (const auto& action : response.actions)
+                        actionCallback(action);
+                }
+                onComplete(response);
+            }
+        });
+}
+
+void AiEngine::abortRequest()
+{
+    if (currentProvider)
+        currentProvider->abort();
+}
+
+// ── Sync passthrough ───────────────────────────────────────
 
 juce::String AiEngine::sendPrompt(const juce::String& prompt)
 {
@@ -171,24 +285,19 @@ void AiEngine::sendPromptAsync(const juce::String& prompt, ResponseCallback call
     if (callback) callback(r.text, r.success);
 }
 
-// ── getAvailableModels, getProviderName ───────────────────────
+// ── getAvailableModels, getProviderName ────────────────────
 
 juce::StringArray AiEngine::getAvailableModels()
 {
     if (!configured) return {"Not configured"};
-    switch (config.provider) {
-        case Provider::Ollama: return {"llama3.2", "llama3.1", "mistral", "codellama", "phi3", "gemma2"};
-        case Provider::Gemini: return {"gemini-1.5-flash", "gemini-1.5-pro"};
-        case Provider::Anthropic: return {"claude-3-5-sonnet", "claude-3-haiku", "claude-3-opus"};
-        case Provider::OpenAI: return {"gpt-4o", "gpt-4o-mini", "gpt-4-turbo"};
-        case Provider::OpenRouter: return {"openai/gpt-4o", "anthropic/claude-3.5-sonnet", "google/gemini-1.5-pro"};
-        case Provider::Groq: return {"llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b"};
-        default: return {"Unknown"};
-    }
+    ensureProvider();
+    if (currentProvider) return currentProvider->getAvailableModels();
+    return {"Unknown"};
 }
 
 juce::String AiEngine::getProviderName() const
 {
+    if (currentProvider) return currentProvider->getName();
     switch (config.provider) {
         case Provider::Ollama: return "Ollama";
         case Provider::Gemini: return "Google Gemini";
@@ -203,221 +312,45 @@ juce::String AiEngine::getProviderName() const
 bool AiEngine::testConnection()
 {
     if (!configured) return false;
-    lastError.clear();
+    ensureProvider();
+    if (currentProvider) return currentProvider->testConnection();
+    return false;
+}
 
-    if (config.provider == Provider::Ollama) {
-        juce::String url = config.baseUrl + "/api/tags";
-        juce::String response = makeHttpRequest(url, "GET", "", 5000);
-        return !response.isEmpty() && response.contains("models");
-    }
+// ── Response Parser ────────────────────────────────────────
 
-    if (config.provider == Provider::Gemini) {
-        if (config.apiKey.isEmpty()) { lastError = "No API key configured"; return false; }
-        juce::String url = "https://generativelanguage.googleapis.com/v1beta/models?key=" + config.apiKey;
-        juce::String response = makeHttpRequest(url, "GET", "", 10000);
-        if (response.isEmpty()) { lastError = "No response from Gemini API"; return false; }
-        if (response.contains("error")) {
-            try {
-                auto j = nlohmann::json::parse(response.toStdString());
-                lastError = juce::String(j.value("error", nlohmann::json::object()).value("message", "Unknown error"));
-            } catch (...) { lastError = "API error: " + response.substring(0, 200); }
-            return false;
+AiEngine::StructuredResponse AiEngine::parseStructuredResponse(const juce::String& raw) const
+{
+    StructuredResponse response;
+    response.success = false;
+    if (raw.isEmpty()) return response;
+
+    try {
+        auto j = nlohmann::json::parse(raw.toStdString());
+        if (j.contains("text"))
+            response.text = juce::String(j["text"].get<std::string>());
+        if (j.contains("actions") && j["actions"].is_array()) {
+            for (const auto& a : j["actions"]) {
+                AiAction action;
+                if (a.contains("widgetId"))
+                    action.widgetId = juce::String(a["widgetId"].get<std::string>());
+                if (a.contains("value"))
+                    action.value = a["value"].get<float>();
+                if (a.contains("description"))
+                    action.description = juce::String(a["description"].get<std::string>());
+                for (const auto& w : widgets) {
+                    if (w.widgetId == action.widgetId) {
+                        action.previousValue = w.currentValue;
+                        break;
+                    }
+                }
+                response.actions.push_back(action);
+            }
         }
-        return response.contains("models");
+        response.success = true;
+    } catch (const std::exception& e) {
+        response.text = raw;
+        response.success = true;
     }
-
-    if (config.provider == Provider::OpenAI || config.provider == Provider::OpenRouter || config.provider == Provider::Groq) {
-        if (config.apiKey.isEmpty()) { lastError = "No API key configured"; return false; }
-        return true;
-    }
-
-    if (config.provider == Provider::Anthropic) {
-        if (config.apiKey.isEmpty()) { lastError = "No API key configured"; return false; }
-        juce::String authHeaders = "x-api-key: " + config.apiKey + "\r\n" "anthropic-version: 2023-06-01\r\n";
-        juce::String response = makeHttpRequest("https://api.anthropic.com/v1/messages",
-            "POST", "{\"model\":\"claude-3-5-haiku-20241022\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}",
-            10000, authHeaders);
-        return !response.contains("error") && response.isNotEmpty();
-    }
-
-    return config.apiKey.isNotEmpty();
-}
-
-// ── HTTP Helper ────────────────────────────────────────────────
-
-juce::String AiEngine::makeHttpRequest(const juce::String& urlStr,
-                                        const juce::String& method,
-                                        const juce::String& jsonBody,
-                                        int timeoutMs,
-                                        const juce::String& extraHeaders)
-{
-    juce::URL url(urlStr);
-    juce::String headers = "Content-Type: application/json\r\n";
-    if (extraHeaders.isNotEmpty()) headers += extraHeaders;
-
-    std::unique_ptr<juce::InputStream> stream;
-    if (method == "GET") {
-        stream = url.createInputStream(
-            juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-            .withConnectionTimeoutMs(timeoutMs).withExtraHeaders(headers));
-    } else if (method == "POST") {
-        stream = url.withPOSTData(jsonBody.toRawUTF8()).createInputStream(
-            juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-            .withConnectionTimeoutMs(timeoutMs).withExtraHeaders(headers));
-    }
-
-    juce::String response;
-    char buffer[4096];
-    while (stream && !stream->isExhausted()) {
-        int bytesRead = stream->read(buffer, sizeof(buffer) - 1);
-        if (bytesRead > 0) { buffer[bytesRead] = '\0'; response += juce::String(buffer); }
-        else break;
-    }
-
-    if (!stream) { lastError = "Failed to create connection"; return {}; }
     return response;
-}
-
-static juce::String parseError(const juce::String& raw)
-{
-    try {
-        auto j = nlohmann::json::parse(raw.toStdString());
-        if (j.contains("error") && j["error"].is_object() && j["error"].contains("message"))
-            return juce::String(j["error"]["message"].get<std::string>());
-        if (j.contains("error") && j["error"].is_string())
-            return juce::String(j["error"].get<std::string>());
-    } catch (...) {}
-    return raw.substring(0, 200);
-}
-
-static nlohmann::json buildOpenAIBody(const juce::String& model, const juce::String& prompt,
-                                       float temperature, int maxTokens,
-                                       const juce::String& systemPrompt = {})
-{
-    nlohmann::json body;
-    body["model"] = model.toStdString();
-    body["messages"] = nlohmann::json::array();
-    if (systemPrompt.isNotEmpty())
-        body["messages"].push_back({{"role", "system"}, {"content", systemPrompt.toStdString()}});
-    body["messages"].push_back({{"role", "user"}, {"content", prompt.toStdString()}});
-    body["temperature"] = temperature;
-    if (maxTokens > 0) body["max_tokens"] = maxTokens;
-    return body;
-}
-
-// ── Ollama ─────────────────────────────────────────────────────
-
-juce::String AiEngine::callOllama(const juce::String& fullPrompt)
-{
-    nlohmann::json body;
-    body["model"] = config.model.toStdString();
-    body["prompt"] = fullPrompt.toStdString();
-    body["stream"] = false;
-    body["options"]["temperature"] = config.temperature;
-    if (config.maxTokens > 0) body["options"]["num_predict"] = config.maxTokens;
-
-    juce::String raw = makeHttpRequest(config.baseUrl + "/api/generate", "POST",
-                                        juce::String(body.dump()), config.timeoutMs);
-    if (raw.isEmpty()) {
-        if (lastError.isEmpty()) lastError = "Empty response from Ollama";
-        return "[ERROR] " + lastError;
-    }
-
-    try {
-        auto j = nlohmann::json::parse(raw.toStdString());
-        if (j.contains("response")) return juce::String(j["response"].get<std::string>());
-        if (j.contains("error")) { lastError = "Ollama: " + juce::String(j["error"].get<std::string>()); return "[ERROR] " + lastError; }
-    } catch (const std::exception& e) { lastError = juce::String("JSON parse: ") + e.what(); }
-    return "[ERROR] " + lastError;
-}
-
-// ── Gemini ─────────────────────────────────────────────────────
-
-juce::String AiEngine::callGemini(const juce::String& prompt, const juce::String& systemPrompt)
-{
-    if (config.apiKey.isEmpty()) { lastError = "Gemini API key not configured"; return "[ERROR] " + lastError; }
-
-    bool needsSearch = prompt.contains("search") || prompt.contains("internet") || prompt.contains("find") || prompt.contains("look up") || prompt.contains("web") || prompt.contains("google");
-
-    juce::String url = "https://generativelanguage.googleapis.com/v1beta/models/"
-                       + config.model + ":generateContent?key=" + config.apiKey;
-    nlohmann::json body;
-    if (systemPrompt.isNotEmpty())
-        body["system_instruction"]["parts"] = nlohmann::json::array({{{"text", systemPrompt.toStdString()}}});
-    body["contents"] = nlohmann::json::array({{{"parts", nlohmann::json::array({{{"text", prompt.toStdString()}}})}}});
-    body["generationConfig"]["temperature"] = config.temperature;
-    if (config.maxTokens > 0) body["generationConfig"]["maxOutputTokens"] = config.maxTokens;
-    if (needsSearch)
-        body["tools"] = nlohmann::json::array({{{"googleSearch", nlohmann::json::object()}}});
-
-    juce::String raw = makeHttpRequest(url, "POST", juce::String(body.dump()), config.timeoutMs);
-    if (raw.isEmpty()) { if (lastError.isEmpty()) lastError = "Empty response from Gemini"; return "[ERROR] " + lastError; }
-
-    try {
-        auto j = nlohmann::json::parse(raw.toStdString());
-        return juce::String(j.at("candidates").at(0).at("content").at("parts").at(0).at("text").get<std::string>());
-    } catch (const std::exception& e) { lastError = juce::String("Gemini parse: ") + e.what(); }
-    return "[ERROR] " + lastError;
-}
-
-// ── Anthropic ──────────────────────────────────────────────────
-
-juce::String AiEngine::callAnthropic(const juce::String& prompt, const juce::String& systemPrompt)
-{
-    if (config.apiKey.isEmpty()) { lastError = "Anthropic API key not configured"; return "[ERROR] " + lastError; }
-
-    nlohmann::json body;
-    body["model"] = config.model.toStdString();
-    body["max_tokens"] = (config.maxTokens > 0 ? config.maxTokens : 1024);
-    if (systemPrompt.isNotEmpty())
-        body["system"] = systemPrompt.toStdString();
-    body["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", prompt.toStdString()}}});
-    juce::String authHeaders = "x-api-key: " + config.apiKey + "\r\n" "anthropic-version: 2023-06-01\r\n";
-
-    juce::String raw = makeHttpRequest("https://api.anthropic.com/v1/messages", "POST",
-                                        juce::String(body.dump()), config.timeoutMs, authHeaders);
-    if (raw.isEmpty()) { if (lastError.isEmpty()) lastError = "Empty response from Anthropic"; return "[ERROR] " + lastError; }
-
-    try {
-        auto j = nlohmann::json::parse(raw.toStdString());
-        return juce::String(j.at("content").at(0).at("text").get<std::string>());
-    } catch (const std::exception& e) { lastError = juce::String("Anthropic parse: ") + e.what(); }
-    return "[ERROR] " + lastError;
-}
-
-// ── OpenAI-Compatible ──────────────────────────────────────────
-
-juce::String AiEngine::callOpenAICompatible(const juce::String& url, const juce::String& prompt,
-                                             const juce::String& systemPrompt)
-{
-    if (config.apiKey.isEmpty()) { lastError = "API key not configured"; return "[ERROR] " + lastError; }
-
-    auto body = buildOpenAIBody(config.model, prompt, config.temperature, config.maxTokens, systemPrompt);
-    juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n";
-    juce::String raw = makeHttpRequest(url, "POST", juce::String(body.dump()), config.timeoutMs, authHeader);
-    if (raw.isEmpty()) { if (lastError.isEmpty()) lastError = "Empty response"; return "[ERROR] " + lastError; }
-
-    try {
-        auto j = nlohmann::json::parse(raw.toStdString());
-        return juce::String(j.at("choices").at(0).at("message").at("content").get<std::string>());
-    } catch (const std::exception& e) { lastError = juce::String("Parse: ") + e.what() + " | " + parseError(raw); }
-    return "[ERROR] " + lastError;
-}
-
-juce::String AiEngine::callOpenAI(const juce::String& prompt)
-{
-    juce::String sys = buildSystemPrompt();
-    return callOpenAICompatible("https://api.openai.com/v1/chat/completions", prompt, sys);
-}
-
-juce::String AiEngine::callOpenRouter(const juce::String& prompt)
-{
-    juce::String sys = buildSystemPrompt();
-    return callOpenAICompatible("https://openrouter.ai/api/v1/chat/completions", prompt, sys);
-}
-
-juce::String AiEngine::callGroq(const juce::String& prompt)
-{
-    juce::String sys = buildSystemPrompt();
-    return callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", prompt, sys);
 }

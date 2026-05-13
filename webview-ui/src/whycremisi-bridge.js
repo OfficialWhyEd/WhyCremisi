@@ -14,8 +14,9 @@
  */
 
 const WS_DEFAULT_URL = 'ws://localhost:8080';
-const RECONNECT_INTERVAL_MS = 2000;
-const MAX_RECONNECT_ATTEMPTS = 10;
+const MAX_RECONNECT_ATTEMPTS = 20;
+const RECONNECT_BASE_MS = 500;
+const RECONNECT_MAX_MS = 30000;
 
 /**
  * Genera UUID v4
@@ -40,6 +41,15 @@ export const ConnectionState = {
 };
 
 /**
+ * Calcola intervallo di retry con exponential backoff + jitter
+ */
+function calculateBackoff(attempt) {
+  const exponential = Math.min(RECONNECT_BASE_MS * Math.pow(2, attempt), RECONNECT_MAX_MS);
+  const jitter = Math.random() * 1000;
+  return Math.round(exponential + jitter);
+}
+
+/**
  * Classe principale del bridge WhyCremisi
  */
 class WhyCremisiBridge {
@@ -55,6 +65,11 @@ class WhyCremisiBridge {
     this.reconnectTimer = null;
     this.lastConnectedAt = null;
     this.stateListeners = [];
+    this.messageQueue = [];
+    this.healthCheckTimer = null;
+    this.healthCheckIntervalMs = 15000;
+    this.lastMessageAt = null;
+    this.disconnectRequested = false;
 
     this.botState = 'idle';
 
@@ -63,6 +78,8 @@ class WhyCremisiBridge {
     this._handleOpen = this._handleOpen.bind(this);
     this._handleClose = this._handleClose.bind(this);
     this._handleError = this._handleError.bind(this);
+    this._runHealthCheck = this._runHealthCheck.bind(this);
+    this._flushQueue = this._flushQueue.bind(this);
   }
 
   onStateChange(callback) {
@@ -73,8 +90,11 @@ class WhyCremisiBridge {
   }
 
   _setState(newState) {
+    const prev = this.state;
     this.state = newState;
-    this.stateListeners.forEach(l => l(newState));
+    if (prev !== newState) {
+      this.stateListeners.forEach(l => l(newState, prev));
+    }
   }
 
   /**
@@ -89,6 +109,7 @@ class WhyCremisiBridge {
         return;
       }
 
+      this.disconnectRequested = false;
       this.url = url;
       this._setState(ConnectionState.CONNECTING);
       console.log('[WhyCremisi] Connessione a ' + url + '...');
@@ -126,11 +147,14 @@ class WhyCremisiBridge {
    * Disconnetti dal WebSocket server
    */
   disconnect() {
+    this.disconnectRequested = true;
     this._clearReconnectTimer();
+    this._stopHealthCheck();
+    this.messageQueue = [];
     this.reconnectAttempts = 0;
 
     if (this.ws) {
-      this.ws.onclose = null; // Prevent reconnect on intentional close
+      this.ws.onclose = null;
       this.ws.close(1000, 'Client disconnect');
       this.ws = null;
     }
@@ -151,14 +175,9 @@ class WhyCremisiBridge {
    * @param {string} type - Tipo messaggio
    * @param {object} payload - Payload JSON
    * @param {object} options - Opzioni {id, onResponse, timeout}
-   * @returns {string} - Message ID
+   * @returns {string} - Message ID (o null se in coda)
    */
   sendMessage(type, payload = {}, options = {}) {
-    if (!this.isConnected()) {
-      console.warn('[WhyCremisi] Non connesso, messaggio non inviato:', type);
-      return null;
-    }
-
     const id = options.id || generateUUID();
     const message = {
       type,
@@ -167,7 +186,16 @@ class WhyCremisiBridge {
       payload
     };
 
-    // Se c'è un callback per risposta, salva
+    if (!this.isConnected()) {
+      // Accoda il messaggio per reinvio quando riconnesso
+      this.messageQueue.push({ message, options });
+      console.log('[WhyCremisi] Accodato (offline):', type);
+      if (options.onResponse) {
+        options.onResponse({ error: 'Not connected', queued: true });
+      }
+      return id;
+    }
+
     if (options.onResponse) {
       this.pendingRequests.set(id, {
         callback: options.onResponse,
@@ -179,7 +207,6 @@ class WhyCremisiBridge {
       });
     }
 
-    // Invia via WebSocket
     try {
       this.ws.send(JSON.stringify(message));
       console.log('[WhyCremisi] Inviato:', type, id ? `(id=${id})` : '');
@@ -195,7 +222,8 @@ class WhyCremisiBridge {
    */
   send(jsonMessage) {
     if (!this.isConnected()) {
-      console.warn('[WhyCremisi] Non connesso');
+      this.messageQueue.push({ message: jsonMessage, options: {} });
+      console.log('[WhyCremisi] Accodato (offline):', jsonMessage.type || 'raw');
       return null;
     }
     try {
@@ -461,14 +489,18 @@ class WhyCremisiBridge {
   }
 
   /**
-   * Gets connection info
+   * Gets connection info (health)
    */
   getConnectionInfo() {
     return {
       state: this.state,
       url: this.url,
       reconnectAttempts: this.reconnectAttempts,
-      lastConnectedAt: this.lastConnectedAt
+      maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
+      lastConnectedAt: this.lastConnectedAt,
+      lastMessageAt: this.lastMessageAt,
+      queueSize: this.messageQueue.length,
+      uptime: this.lastConnectedAt ? Date.now() - this.lastConnectedAt : 0
     };
   }
 
@@ -480,9 +512,9 @@ class WhyCremisiBridge {
     this._setState(ConnectionState.CONNECTED);
     this.reconnectAttempts = 0;
     this.lastConnectedAt = Date.now();
+    this.lastMessageAt = Date.now();
     console.log('[WhyCremisi] Connesso a', this.url);
 
-    // Esponi globalmente per retrocompatibilita con prototipo di Edo e C++ WebView
     window.__whycremisiBridge = {
       receiveMessage: (jsonString) => {
         try {
@@ -496,7 +528,6 @@ class WhyCremisiBridge {
       isConnected: this.isConnected.bind(this)
     };
 
-    // Per C++ JUCE: callback globale ricevuta messaggi
     window.receiveFromPlugin = (jsonString) => {
       try {
         const msg = JSON.parse(jsonString);
@@ -505,6 +536,12 @@ class WhyCremisiBridge {
         console.error('[WhyCremisi] Errore parsing receiveFromPlugin:', e);
       }
     };
+
+    // Svuota coda messaggi pendenti
+    this._flushQueue();
+
+    // Avvia health check periodico
+    this._startHealthCheck();
 
     // Notifica plugin che siamo pronti
     this.sendMessage('plugin.init', {
@@ -518,13 +555,16 @@ class WhyCremisiBridge {
     this._setState(ConnectionState.DISCONNECTED);
     console.log('[WhyCremisi] Connessione chiusa:', event.code, event.reason);
 
-    // Cleanup
     this._clearPendingRequests();
+    this._stopHealthCheck();
     this.ws = null;
 
-    // Auto-reconnect se non era una chiusura intenzionale
-    if (wasConnected && event.code !== 1000 && this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+    // Auto-reconnect con backoff — unless intentional disconnect
+    if (!this.disconnectRequested && this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
       this._scheduleReconnect();
+    } else if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      this._setState(ConnectionState.ERROR);
+      console.error('[WhyCremisi] Raggiunto massimo tentativi di riconnessione (' + MAX_RECONNECT_ATTEMPTS + ')');
     }
   }
 
@@ -544,7 +584,8 @@ class WhyCremisiBridge {
 
     const { type, id, payload } = message;
 
-    // Log per debug
+    this.lastMessageAt = Date.now();
+
     console.log('[WhyCremisi] Ricevuto:', type, id ? `(id=${id})` : '', payload || '');
 
     // Auto-update bot state based on message type
@@ -597,13 +638,16 @@ class WhyCremisiBridge {
     this._clearReconnectTimer();
     this._setState(ConnectionState.RECONNECTING);
     this.reconnectAttempts++;
-    console.log('[WhyCremisi] Retry connessione tra ' + RECONNECT_INTERVAL_MS + 'ms (attempt ' + this.reconnectAttempts + '/' + MAX_RECONNECT_ATTEMPTS + ')');
+
+    const delay = calculateBackoff(this.reconnectAttempts - 1);
+    console.log('[WhyCremisi] Retry in ' + delay + 'ms (attempt ' + this.reconnectAttempts + '/' + MAX_RECONNECT_ATTEMPTS + ')');
 
     this.reconnectTimer = setTimeout(() => {
+      if (this.disconnectRequested) return;
       this.connect(this.url).catch(() => {
         // Will schedule another reconnect via _handleClose
       });
-    }, RECONNECT_INTERVAL_MS);
+    }, delay);
   }
 
   _clearReconnectTimer() {
@@ -620,13 +664,71 @@ class WhyCremisiBridge {
     });
     this.pendingRequests.clear();
   }
+
+  _flushQueue() {
+    if (this.messageQueue.length === 0) return;
+    const queue = [...this.messageQueue];
+    this.messageQueue = [];
+    console.log('[WhyCremisi] Svuoto coda messaggi:', queue.length, 'messaggi');
+    queue.forEach(({ message, options }) => {
+      if (options && options.onResponse) {
+        this.sendMessage(message.type || message.type, message.payload || message.payload, options);
+      } else {
+        try {
+          this.ws.send(JSON.stringify(message));
+        } catch (e) {
+          console.error('[WhyCremisi] Errore reinvio da coda:', e);
+        }
+      }
+    });
+  }
+
+  _startHealthCheck() {
+    this._stopHealthCheck();
+    this.healthCheckTimer = setInterval(() => {
+      this._runHealthCheck();
+    }, this.healthCheckIntervalMs);
+  }
+
+  _stopHealthCheck() {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
+    }
+  }
+
+  _runHealthCheck() {
+    if (this.state !== ConnectionState.CONNECTED) return;
+
+    const now = Date.now();
+    const idleTime = this.lastMessageAt ? now - this.lastMessageAt : 0;
+
+    // Se non riceviamo messaggi da troppo tempo, verifica connessione
+    if (idleTime > this.healthCheckIntervalMs * 4 && this.ws) {
+      console.log('[WhyCremisi] Health check: idle da ' + (idleTime / 1000).toFixed(0) + 's, invio ping...');
+      try {
+        this.ws.send(JSON.stringify({ type: 'ping', id: generateUUID(), timestamp: now }));
+      } catch (e) {
+        console.error('[WhyCremisi] Health check fallito, riconnessione...');
+        this._handleClose({ code: 4000, reason: 'Health check failed' });
+      }
+    }
+  }
+
+  /**
+   * Resetta il contatore tentativi (utile dopo riconnessione manuale)
+   */
+  resetReconnectAttempts() {
+    this.reconnectAttempts = 0;
+  }
 }
 
-// ========================
-// React Hook
 // ========================
 // Export singleton
 // ========================
 
 export const whycremisi = new WhyCremisiBridge();
 export default whycremisi;
+
+// Esponi globalmente per debug console
+window.__whycremisi = whycremisi;

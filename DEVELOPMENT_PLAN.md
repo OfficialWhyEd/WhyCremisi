@@ -1,7 +1,7 @@
 # WhyCremisi VST Bridge AI — Development Plan
 
 **Branch:** `heartbroken-claude`  
-**Last Updated:** 2026-05-12 (session 2)  
+**Last Updated:** 2026-05-12 (session 3)  
 **Commit:** `96db77e`  
 **Platform:** macOS 12.7.6 (Monterey), Intel x86_64, JUCE 8.0.12
 
@@ -593,11 +593,23 @@ Legend: `[ ]` = pending, `[~]` = in progress, `[x]` = done, `[-]` = skipped/canc
 | 36 | 2026-05-12 | Claude | [x] | heartbroken-claude (10Hz position sync) |
 | 37 | 2026-05-12 | Claude | [x] | heartbroken-claude (stats in analyzer) |
 | 38 | 2026-05-12 | Claude | [x] | heartbroken-claude (CPU monitoring) |
-| 39–50 | TBD | Claude | [ ] | — |
-| 51–62 | TBD | Claude | [ ] | — |
-| 63–74 | TBD | Claude | [ ] | — |
-| 75–85 | TBD | Claude | [ ] | — |
-| 86–100 | TBD | Claude | [ ] | — |
+| 39 | 2026-05-12 | Claude | [x] | heartbroken-claude (logo SVG + icon builder) |
+| 40 | 2026-05-12 | Claude | [x] | heartbroken-claude (papers 08–15 IT+EN ×32 files) |
+| 41 | 2026-05-12 | Claude | [x] | heartbroken-claude (PDFs ×32, 117 research files) |
+| 42 | 2026-05-12 | Claude | [x] | heartbroken-claude (Research/{IT,EN} alignment) |
+| 43 | 2026-05-12 | Claude | [x] | heartbroken-claude (AIProvider abstraction + streaming) |
+| 44 | 2026-05-12 | Claude | [x] | heartbroken-claude (personality-based prompt tuning) |
+| 45 | 2026-05-12 | Claude | [x] | heartbroken-claude (ToolRegistry + function calling) |
+| 46 | 2026-05-12 | Claude | [x] | heartbroken-claude (ContextManager token budget) |
+| 47 | 2026-05-12 | Claude | [x] | heartbroken-claude (dark/light theme toggle) |
+| 48 | 2026-05-12 | Claude | [x] | heartbroken-claude (personality style picker UI) |
+| 49 | 2026-05-13 | Claude | [x] | heartbroken-claude (connection health monitoring) |
+| 54 | 2026-05-13 | Claude | [x] | heartbroken-claude (keyboard shortcuts: Cmd+K/Esc///↑↓) |
+| 60 | 2026-05-13 | Claude | [x] | heartbroken-claude (loading skeleton for slow AI) |
+| 63 | 2026-05-13 | Claude | [x] | heartbroken-claude (WebSocket error recovery + ping) |
+| 64 | 2026-05-13 | Claude | [x] | heartbroken-claude (exponential backoff + jitter reconnect) |
+| 65 | 2026-05-13 | Claude | [x] | heartbroken-claude (message queue with retry) |
+| 66–100 | TBD | Claude | [ ] | — |
 
 ---
 

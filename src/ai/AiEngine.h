@@ -5,19 +5,25 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <memory>
 #include <vector>
+#include <map>
+
+class AIProvider;
+
+enum class AiPersonalityStyle {
+    Analytical,
+    Consultative,
+    Direct,
+    Creative,
+    Warm
+};
 
 class AiEngine
 {
 public:
-    enum class Provider { 
-        Ollama,
-        Gemini,
-        Anthropic,
-        OpenAI,
-        OpenRouter,
-        Groq
+    enum class Provider {
+        Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq
     };
-    
+
     struct Config {
         Provider provider = Provider::Ollama;
         juce::String apiKey;
@@ -26,6 +32,7 @@ public:
         int timeoutMs = 30000;
         int maxTokens = 2048;
         float temperature = 0.7f;
+        AiPersonalityStyle personalityStyle = AiPersonalityStyle::Analytical;
     };
 
     struct AiAction {
@@ -47,12 +54,12 @@ public:
         float min = 0.0f;
         float max = 1.0f;
         float currentValue = 0.0f;
-        juce::String unit = "";
+        juce::String unit;
     };
 
     AiEngine();
     ~AiEngine();
-    
+
     void configure(const Config& config);
     void updateConfig(std::function<void(Config&)> updater);
     const Config& getConfig() const { return config; }
@@ -63,9 +70,15 @@ public:
     void sendPromptAsync(const juce::String& prompt, ResponseCallback callback);
 
     StructuredResponse sendPromptStructured(const juce::String& prompt);
-    
+
     using StructuredCallback = std::function<void(const StructuredResponse& response)>;
     void sendPromptAsyncStructured(const juce::String& prompt, StructuredCallback callback);
+
+    using StreamCallback = std::function<void(const juce::String& chunk, bool isDone)>;
+    void sendPromptStreaming(const juce::String& prompt, StreamCallback onChunk);
+    void sendStructuredStreaming(const juce::String& prompt, StreamCallback onChunk,
+                                  std::function<void(const StructuredResponse&)> onComplete);
+    void abortRequest();
 
     juce::StringArray getAvailableModels();
     bool testConnection();
@@ -78,11 +91,17 @@ public:
     void setContext(const juce::String& meterData, const juce::String& transportData);
     void setPersonalityContext(const juce::String& context);
     void setAgentWorkspaceContext(const juce::String& context);
+    void setPersonalityStyle(AiPersonalityStyle style);
+    void setDawName(const juce::String& name) { dawName = name; }
+
     juce::String buildSystemPrompt() const;
-    const juce::String& getPersonalityContext() const { return personalityContext; }
 
     using ActionCallback = std::function<void(const AiAction& action)>;
     void setActionCallback(ActionCallback cb) { actionCallback = cb; }
+
+    static juce::StringArray getPersonalityStyleNames();
+    static juce::String getPersonalityStyleName(AiPersonalityStyle style);
+    static juce::String getPersonalityStyleDescription(AiPersonalityStyle style);
 
 private:
     Config config;
@@ -94,23 +113,15 @@ private:
     juce::String lastTransportData;
     juce::String personalityContext;
     juce::String agentWorkspaceContext;
+    juce::String dawName;
     ActionCallback actionCallback;
 
-    StructuredResponse parseStructuredResponse(const juce::String& raw) const;
+    std::unique_ptr<AIProvider> currentProvider;
+    std::unique_ptr<AIProvider> createProvider(Provider type);
+    void ensureProvider();
 
-    juce::String makeHttpRequest(const juce::String& url,
-                                  const juce::String& method,
-                                  const juce::String& jsonBody,
-                                  int timeoutMs,
-                                  const juce::String& extraHeaders = {});
-    
-    juce::String callOllama(const juce::String& prompt);
-    juce::String callGemini(const juce::String& prompt, const juce::String& systemPrompt = {});
-    juce::String callAnthropic(const juce::String& prompt, const juce::String& systemPrompt = {});
-    juce::String callOpenAI(const juce::String& prompt);
-    juce::String callOpenRouter(const juce::String& prompt);
-    juce::String callGroq(const juce::String& prompt);
-    juce::String callOpenAICompatible(const juce::String& url, const juce::String& prompt, const juce::String& systemPrompt = {});
+    StructuredResponse parseStructuredResponse(const juce::String& raw) const;
+    juce::String buildPersonalityPrefix() const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AiEngine)
 };
