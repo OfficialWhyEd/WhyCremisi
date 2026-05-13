@@ -202,6 +202,12 @@ private:
     int    cpuBroadcastEvery { 1024 };
     static constexpr double TIMING_HISTORY_SIZE = 100.0;
 
+    // CPU throttle detection
+    std::atomic<bool> cpuThrottled{false};
+    double cpuThrottleThreshold = 85.0;
+    int cpuHighCount = 0;
+    int cpuThrottleCooldown = 0;
+
     // VST3 Program/Preset management
     juce::StringArray programNames;
     std::atomic<int> currentProgramIndex { 0 };

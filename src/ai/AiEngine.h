@@ -117,6 +117,15 @@ public:
     void clearConversationContext();
     juce::String buildContextMessagesJson() const;
 
+    // Config validation
+    struct ConfigValidation {
+        bool valid = true;
+        juce::StringArray warnings;
+        juce::StringArray errors;
+    };
+    ConfigValidation validateConfig() const;
+    juce::String getConfigSummary() const;
+
 private:
     Config config;
     bool configured = false;

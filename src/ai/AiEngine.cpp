@@ -167,6 +167,49 @@ void AiEngine::clearConversationContext()
         contextManager = std::make_unique<ContextManager>();
 }
 
+AiEngine::ConfigValidation AiEngine::validateConfig() const
+{
+    ConfigValidation result;
+
+    if (config.provider == Provider::Ollama) {
+        if (config.baseUrl == "http://localhost:11434")
+            result.warnings.add("Ollama is using default localhost base URL — common dev setup");
+    } else {
+        if (config.apiKey.isEmpty())
+            result.errors.add("API key is empty for " + getProviderName());
+    }
+
+    if (config.provider == Provider::OpenAI
+        || config.provider == Provider::OpenRouter
+        || config.provider == Provider::Groq) {
+        if (!config.model.startsWith("gpt"))
+            result.warnings.add("Model \"" + config.model + "\" may not be compatible — expected \"gpt\" prefix");
+    }
+
+    if (config.maxTokens < 100)
+        result.warnings.add("maxTokens (" + juce::String(config.maxTokens) + ") is very low");
+
+    if (config.temperature < 0.0f || config.temperature > 2.0f)
+        result.warnings.add("temperature (" + juce::String(config.temperature) + ") outside recommended range 0.0–2.0");
+
+    if (config.timeoutMs < 1000)
+        result.warnings.add("timeoutMs (" + juce::String(config.timeoutMs) + ") is very low — may cause request failures");
+
+    result.valid = result.errors.isEmpty();
+    return result;
+}
+
+juce::String AiEngine::getConfigSummary() const
+{
+    juce::String summary;
+    summary += getProviderName();
+    summary += " (" + config.model + ")";
+    summary += " | temp: " + juce::String(config.temperature);
+    summary += " | tokens: " + juce::String(config.maxTokens);
+    summary += " | tools: " + juce::String(toolsEnabled ? "on" : "off");
+    return summary;
+}
+
 juce::String AiEngine::buildContextMessagesJson() const
 {
     if (!contextManager) return {};

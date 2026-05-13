@@ -22,6 +22,48 @@
 #include <chrono>
 #include <random>
 
+// ── Message validation helper ─────────────────────────────────
+struct MessageSchema {
+    std::vector<const char*> requiredFields;
+    std::vector<const char*> optionalFields;
+};
+
+static bool validateMessage(const nlohmann::json& msg, const MessageSchema& schema, juce::String& error)
+{
+    if (!msg.is_object()) {
+        error = "Message must be a JSON object";
+        return false;
+    }
+    if (!msg.contains("type") || !msg["type"].is_string()) {
+        error = "Message missing required field: type";
+        return false;
+    }
+    for (auto& field : schema.requiredFields) {
+        if (!msg.contains(field)) {
+            error = "Message missing required field: " + juce::String(field);
+            return false;
+        }
+    }
+    return true;
+}
+
+static MessageSchema getSchemaForType(const juce::String& type)
+{
+    if (type == "config.set")       return {{"payload"}, {}};
+    if (type == "config.get")       return {{"payload"}, {}};
+    if (type == "ai.prompt")        return {{"payload"}, {}};
+    if (type == "ai.personalityStyle") return {{"payload"}, {}};
+    if (type == "daw.command")      return {{"payload"}, {}};
+    if (type == "daw.request")      return {{"payload"}, {}};
+    if (type == "midi.learn.start") return {{"payload"}, {}};
+    if (type == "widget.update")    return {{"payload"}, {}};
+    if (type == "chain.get")        return {{}, {}};
+    if (type == "chain.set")        return {{"payload"}, {}};
+    if (type == "osc.send")         return {{"payload"}, {}};
+    if (type == "ping")             return {{}, {}};
+    return {{}, {}}; // unknown types pass through
+}
+
 //==============================================================================
 OscBridge::OscBridge(int oscReceivePort, int wsListenPort)
     : oscPort(oscReceivePort), wsPort(wsListenPort)
@@ -565,14 +607,19 @@ void OscBridge::broadcastDawInfo()
 //==============================================================================
 void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
 {
-    if (!message.contains("type"))
-    {
-        log("[ERROR] WebSocket message without 'type'");
+    juce::String validationError;
+    juce::String msgType = message.contains("type") ? juce::String(message["type"].get<std::string>()) : "";
+    auto schema = getSchemaForType(msgType);
+    if (!validateMessage(message, schema, validationError)) {
+        log("[WS] Validation failed: " + validationError + " (type: " + msgType + ")");
+        nlohmann::json err;
+        err["type"] = "error";
+        err["payload"]["code"] = "VALIDATION_ERROR";
+        err["payload"]["message"] = validationError.toStdString();
+        broadcastJson(err);
         return;
     }
 
-    std::string type = message["type"];
-    juce::String msgType(type.data(), type.size());
     juce::String reqId = message.contains("id") && !message["id"].is_null()
                          ? juce::String(message["id"].get<std::string>().data())
                          : "";

@@ -423,6 +423,25 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         oscBridge->broadcastPluginStats(currentSampleRate, currentBufferSize);
         oscBridge->broadcastCpuUsage(cpuPct, peakProcessTimeUs);
         peakProcessTimeUs = avgProcessTimeUs;  // reset peak to average for next window
+
+        // CPU throttle detection
+        if (cpuPct > cpuThrottleThreshold) {
+            cpuHighCount++;
+            if (cpuHighCount > 10 && !cpuThrottled) {
+                cpuThrottled = true;
+                cpuThrottleCooldown = 500;
+                cpuBroadcastEvery = juce::jmin(128, cpuBroadcastEvery * 2);
+            }
+        } else {
+            cpuHighCount = 0;
+            if (cpuThrottled) {
+                cpuThrottleCooldown--;
+                if (cpuThrottleCooldown <= 0) {
+                    cpuThrottled = false;
+                    cpuBroadcastEvery = juce::jmax(4, cpuBroadcastEvery / 2);
+                }
+            }
+        }
     }
 
     // ── Universal transport via getPlayHead() ───────────────────────
