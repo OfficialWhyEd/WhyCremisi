@@ -165,7 +165,7 @@ export function SessionPanel() {
         id: Date.now() + Math.random(),
         ...payload
       })
-      setEvents(prev => [...prev, ev])
+      setEvents(prev => [...prev, ev].slice(-500))
       setNewIds(prev => new Set([...prev, ev.id]))
       // clear "new" highlight after 2s
       setTimeout(() => setNewIds(prev => {

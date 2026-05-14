@@ -44,6 +44,12 @@ export default function App() {
   const mounted = useRef(true)
   const intervalsRef = useRef([])
   const throttleRef = useRef(0)
+  const MAX_MESSAGES = 200
+  useEffect(() => {
+    if (messages.length > MAX_MESSAGES) {
+      setMessages(prev => prev.slice(-MAX_MESSAGES))
+    }
+  }, [messages.length])
   const inputRef = useRef(null)
   const searchRef = useRef(null)
   const [personality, setPersonality] = useState({ style: 'analytical' })
@@ -59,6 +65,7 @@ export default function App() {
   const [actionRedoStack, setActionRedoStack] = useState([])
   const [actionLog, setActionLog] = useState([])
   const [toasts, setToasts] = useState([])
+  const [pluginChain, setPluginChain] = useState([])
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark')
   }, [])
@@ -1593,22 +1600,9 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Mask Logo — audio reactive, replaces drive knob */}
-              <div className="flex-1 flex flex-col items-center justify-center gap-1">
-                <div className="relative">
-                  <svg className="absolute inset-0 w-full h-full rotate-[-90deg] pointer-events-none" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="46" fill="none" stroke="#1a1a1a" strokeWidth="3" />
-                    <motion.circle
-                      cx="50" cy="50" r="46" fill="none" stroke="#DC143C" strokeWidth="3"
-                      strokeLinecap="round"
-                      animate={{ strokeDasharray:`${(meterL + meterR) / 2 * 289} 289` }}
-                      transition={{ duration:0.05 }}
-                      style={{ filter:'drop-shadow(0 0 3px #DC143C)' }}
-                    />
-                  </svg>
-                  <MaskLogo audioLevel={(meterL + meterR) / 2} className="w-20 h-20" />
-                </div>
-                <span className="text-[8px] uppercase font-mono tracking-widest" style={{ color: 'var(--cremisi)' }}>WHYCREMISI</span>
+              {/* Mask Logo — audio reactive */}
+              <div className="flex-1 flex items-center justify-center">
+                <MaskLogo audioLevel={(meterL + meterR) / 2} className="w-32 h-32" />
               </div>
              </div>
            </div>
