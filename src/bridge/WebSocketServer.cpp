@@ -42,17 +42,31 @@ bool WebSocketServer::start()
     if (running.load())
         return true;
 
-    // Create server socket using JUCE's server pattern: createListener + waitForNextConnection
-    serverSocket = std::make_unique<juce::StreamingSocket>();
-
-    if (!serverSocket->createListener(port))
+    int retries = 3;
+    int retryDelay = 500;
+    for (int attempt = 0; attempt <= retries; ++attempt)
     {
-        DBG("[WebSocketServer] ERROR: Cannot create listener on port " + juce::String(port));
-        return false;
+        serverSocket = std::make_unique<juce::StreamingSocket>();
+
+        if (serverSocket->createListener(port))
+            break;
+
+        serverSocket.reset();
+        juce::String msg = "[WebSocketServer] Cannot create listener on port " + juce::String(port)
+                           + " (attempt " + juce::String(attempt + 1) + "/" + juce::String(retries + 1) + ")";
+        DBG(msg);
+        fprintf(stderr, "%s\n", msg.toRawUTF8());
+
+        if (attempt < retries)
+            juce::Thread::sleep(retryDelay * (attempt + 1));
+        else
+            return false;
     }
 
     running.store(true);
-    DBG("[WebSocketServer] Listening on port " + juce::String(port) + ", starting accept thread");
+    juce::String msg = "[WebSocketServer] Listening on port " + juce::String(port) + ", starting accept thread";
+    DBG(msg);
+    fprintf(stderr, "%s\n", msg.toRawUTF8());
 
     // Start accept thread
     acceptThread = std::make_unique<std::thread>([this]() { acceptLoop(); });
@@ -80,15 +94,22 @@ void WebSocketServer::stop()
         acceptThread.reset();
     }
 
-    // Close all client connections
+    // Close all client connections and join their threads
     {
         std::lock_guard<std::mutex> lock(clientsMutex);
         for (auto& client : clients)
         {
             if (client->connected.load())
-            {
                 closeConnection(client.get());
-            }
+        }
+    }
+    // Join threads outside the lock to avoid deadlock with clientLoop
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex);
+        for (auto& client : clients)
+        {
+            if (client->thread && client->thread->joinable())
+                client->thread->join();
         }
         clients.clear();
     }
@@ -287,8 +308,6 @@ void WebSocketServer::stop()
     if (connectionCallback)
         connectionCallback(client->id, false);
 
-    // Remove this client from the vector (sets thread in destructor, safe since thread is about to end)
-    cleanupClients();
 }
 
 //==============================================================================
@@ -719,11 +738,18 @@ juce::String WebSocketServer::getServerURL() const
 void WebSocketServer::cleanupClients()
 {
     std::lock_guard<std::mutex> lock(clientsMutex);
-    clients.erase(
-        std::remove_if(clients.begin(), clients.end(),
-            [](const std::unique_ptr<ClientInfo>& c) { return !c->connected.load(); }),
-        clients.end()
-    );
+    for (auto it = clients.begin(); it != clients.end(); )
+    {
+        auto& c = *it;
+        if (!c->connected.load())
+        {
+            if (c->thread && c->thread->joinable())
+                c->thread->join();
+            it = clients.erase(it);
+        }
+        else
+            ++it;
+    }
 }
 
 juce::String WebSocketServer::getCurrentTimestamp() const
