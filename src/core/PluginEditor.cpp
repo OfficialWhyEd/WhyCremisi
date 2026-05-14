@@ -10,9 +10,53 @@
 #include "PluginProcessor.h"
 
 //==============================================================================
+static juce::String getMimeType (const juce::String& ext)
+{
+    if (ext == ".html") return "text/html";
+    if (ext == ".js")   return "application/javascript";
+    if (ext == ".css")  return "text/css";
+    if (ext == ".png")  return "image/png";
+    if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
+    if (ext == ".svg")  return "image/svg+xml";
+    if (ext == ".ico")  return "image/x-icon";
+    if (ext == ".json") return "application/json";
+    if (ext == ".woff2") return "font/woff2";
+    if (ext == ".woff")  return "font/woff";
+    return "application/octet-stream";
+}
+
 WhyCremisiBrowser::WhyCremisiBrowser()
     : juce::WebBrowserComponent (juce::WebBrowserComponent::Options{}
-                                      .withKeepPageLoadedWhenBrowserIsHidden())
+                                      .withKeepPageLoadedWhenBrowserIsHidden()
+                                      .withNativeIntegrationEnabled()
+                                      .withResourceProvider ([](const juce::String& url) -> std::optional<juce::WebBrowserComponent::Resource>
+                                      {
+                                          auto distDir = juce::File::getSpecialLocation (juce::File::currentApplicationFile)
+                                              .getChildFile ("Contents/Resources/webview-ui");
+
+                                          auto relativePath = url.isEmpty() ? "index.html"
+                                                                             : url.trimCharactersAtStart ("/");
+                                          auto file = distDir.getChildFile (relativePath);
+
+                                          if (! file.existsAsFile())
+                                              file = distDir.getChildFile ("index.html");
+
+                                          if (! file.existsAsFile())
+                                              return std::nullopt;
+
+                                          juce::MemoryBlock data;
+                                          if (! file.loadFileAsData (data))
+                                              return std::nullopt;
+                                          auto mime = getMimeType (file.getFileExtension());
+
+                                          std::vector<std::byte> bytes (data.getSize());
+                                          std::memcpy (bytes.data(), data.getData(), data.getSize());
+                                          juce::WebBrowserComponent::Resource res;
+                                          res.data     = std::move (bytes);
+                                          res.mimeType = mime;
+                                          return res;
+                                      })
+                                      .withBackend (juce::WebBrowserComponent::Options::Backend::defaultBackend))
 {}
 
 bool WhyCremisiBrowser::pageAboutToLoad(const juce::String& url)
@@ -141,18 +185,19 @@ void WhyCremisiProcessorEditor::setupFallbackUI()
 
 juce::String WhyCremisiProcessorEditor::getUIURL() const
 {
-    // Prova prima Vite dev (5173), poi Vite preview/bundle (4173)
-    // WKWebView su macOS blocca file:// URLs — usiamo sempre HTTP locale
+    // Dev server override: se Vite gira su 5173 o 4173 usalo (hot reload)
     auto tryPort = [](int port) -> bool {
         juce::StreamingSocket sock;
-        bool ok = sock.connect("127.0.0.1", port, 300);
+        bool ok = sock.connect ("127.0.0.1", port, 300);
         sock.close();
         return ok;
     };
 
-    if (tryPort(5173)) return "http://localhost:5173";
-    if (tryPort(4173)) return "http://localhost:4173";
-    return "http://localhost:5173"; // fallback (mostrerà errore di connessione, ma aspetta il server)
+    if (tryPort (5173)) return "http://localhost:5173";
+    if (tryPort (4173)) return "http://localhost:4173";
+
+    // Fallback: resource provider dal bundle (sempre disponibile)
+    return juce::WebBrowserComponent::getResourceProviderRoot();
 }
 
 //==============================================================================

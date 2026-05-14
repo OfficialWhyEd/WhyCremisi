@@ -127,7 +127,7 @@ public:
     void broadcastPluginStats(double sampleRate, int bufferSize);
 
     /** Called from processBlock to report CPU usage */
-    void broadcastCpuUsage(double cpuPct, double peakTimeUs);
+    void setCpuUsage(double cpuPct, double peakTimeUs);
 
     /** Called from processBlock to update analyzer data (thread-safe) */
     void updateAnalyzer(float correlation, float momentaryLoudness, float shortTermLoudness, float integratedLoudness, float truePeak, const std::vector<float>& spectrum, int clippingCount);
@@ -142,8 +142,8 @@ public:
     /** Called from processBlock to update position/bpm from getPlayHead() */
     void setPosition(float positionSeconds, float bpm)
     {
-        currentPosition = positionSeconds;
-        currentBpm      = bpm;
+        currentPosition.store(positionSeconds);
+        currentBpm.store(bpm);
     }
 
 private:
@@ -161,11 +161,11 @@ private:
     // Connection handler
     void handleClientConnection(int clientId, bool connected);
 
-    // DAW state (for broadcasting)
-    bool currentIsPlaying = false;
-    bool currentIsRecording = false;
-    float currentBpm = 120.0f;
-    float currentPosition = 0.0f;
+    // DAW state (for broadcasting) — atomics for cross-thread safety
+    std::atomic<bool> currentIsPlaying {false};
+    std::atomic<bool> currentIsRecording {false};
+    std::atomic<float> currentBpm {120.0f};
+    std::atomic<float> currentPosition {0.0f};
     juce::uint32 lastTimerTimeMs = 0;
 
     // Ableton Live track cache (trackId -> track info)
@@ -248,9 +248,13 @@ private:
     std::vector<float> lastSpectrum;
     juce::CriticalSection spectrumLock;
 
+    // CPU usage (set from processBlock via setCpuUsage, broadcast from timer)
+    std::atomic<double> lastCpuPct {0.0};
+    std::atomic<double> lastPeakTimeUs {0.0};
+
     // Audio device info (set from prepareToPlay via broadcastPluginStats)
-    double lastSampleRate { 44100.0 };
-    int    lastBufferSize  { 512 };
+    std::atomic<double> lastSampleRate { 44100.0 };
+    std::atomic<int>    lastBufferSize  { 512 };
 
     // JSON message builders
     nlohmann::json makeDawTransport();

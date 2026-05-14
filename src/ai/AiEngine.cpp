@@ -106,6 +106,7 @@ bool AiEngine::loadSessionState()
 
 void AiEngine::configure(const Config& cfg)
 {
+    std::lock_guard<std::mutex> lock(engineMutex);
     config = cfg;
     configured = true;
     ensureProvider();
@@ -438,6 +439,7 @@ void AiEngine::setAgentWorkspaceContext(const juce::String& context) { agentWork
 
 AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& prompt)
 {
+    std::lock_guard<std::mutex> lock(engineMutex);
     StructuredResponse response;
     if (!configured || !currentProvider) {
         response.text = "[AI] Not configured.";
@@ -457,9 +459,16 @@ AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& 
         return response;
     }
 
-    // Handle tool calls
-    if (!result.toolCalls.empty() && toolRegistry) {
-        // Convert ToolCallResults to ToolCalls for executeTools
+    // Handle tool calls — support up to 3 rounds
+    int toolRound = 0;
+    const int MAX_TOOL_ROUNDS = 3;
+    while (!result.toolCalls.empty() && toolRegistry && toolRound < MAX_TOOL_ROUNDS) {
+        toolRound++;
+
+        // Add assistant's response with tool calls to conversation context
+        addConversationMessage("assistant", result.text);
+
+        // Execute tool calls
         std::vector<ToolCall> calls;
         for (auto& tcr : result.toolCalls) {
             ToolCall tc;
@@ -469,6 +478,8 @@ AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& 
             calls.push_back(tc);
         }
         auto toolResults = toolRegistry->executeTools(calls);
+
+        // Store raw tool response for debugging
         nlohmann::json toolMessages = nlohmann::json::array();
         for (auto& tr : toolResults) {
             nlohmann::json tm;
@@ -476,11 +487,17 @@ AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& 
             tm["tool_call_id"] = tr.toolCallId.toStdString();
             tm["content"] = tr.output.toStdString();
             toolMessages.push_back(tm);
+
+            // Add tool results to conversation context
+            addConversationMessage("tool", tr.output);
         }
         response.rawToolResponse = juce::String(toolMessages.dump());
 
-        // Send follow-up with tool results
-        result = currentProvider->sendPrompt(systemPrompt, prompt);
+        // Re-sync provider config with updated context (now includes tool results)
+        syncProviderConfig();
+
+        // Send follow-up — let AI see tool results and decide next step
+        result = currentProvider->sendPrompt(systemPrompt, "Continue with the tool results above.");
         if (!result.success) {
             response.text = "[ERROR] " + result.error;
             return response;
@@ -514,6 +531,7 @@ void AiEngine::sendPromptAsyncStructured(const juce::String& prompt, StructuredC
 
 void AiEngine::sendPromptStreaming(const juce::String& prompt, StreamCallback onChunk)
 {
+    std::lock_guard<std::mutex> lock(engineMutex);
     if (!configured || !currentProvider || !onChunk) {
         if (onChunk) onChunk("", true);
         return;
@@ -530,6 +548,7 @@ void AiEngine::sendPromptStreaming(const juce::String& prompt, StreamCallback on
 void AiEngine::sendStructuredStreaming(const juce::String& prompt, StreamCallback onChunk,
                                         std::function<void(const StructuredResponse&)> onComplete)
 {
+    std::lock_guard<std::mutex> lock(engineMutex);
     if (!configured || !currentProvider) {
         if (onComplete) {
             StructuredResponse r;
@@ -560,6 +579,12 @@ void AiEngine::sendStructuredStreaming(const juce::String& prompt, StreamCallbac
                 onComplete(response);
             }
         });
+}
+
+void AiEngine::finalizeStreamingResponse(const juce::String& prompt, const juce::String& response)
+{
+    addConversationMessage("user", prompt);
+    addConversationMessage("assistant", response);
 }
 
 void AiEngine::abortRequest()

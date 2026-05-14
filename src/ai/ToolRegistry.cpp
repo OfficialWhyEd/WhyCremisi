@@ -202,17 +202,35 @@ void ContextManager::addMessage(const Message& msg)
 
 void ContextManager::trimToBudget()
 {
-    while ((totalTokens > maxTokens || (int)messages.size() > maxMessages) && messages.size() > 1)
+    if (messages.size() <= 1) return;
+
+    int targetCount = juce::jmin(maxMessages, (int)messages.size());
+    int overByTokens = totalTokens - maxTokens;
+    int overByCount = (int)messages.size() - targetCount;
+
+    if (overByTokens <= 0 && overByCount <= 0) return;
+
+    // Determine how many messages to remove — remove oldest non-system pairs
+    int removeCount = juce::jmax(overByCount, 1);
+    int removed = 0;
+
+    // Scan from index 1 onward (skip index 0 = system prompt)
+    for (size_t i = 1; i < messages.size() && removed < removeCount; )
     {
-        // Never remove the first message (system prompt)
-        if (messages.size() > 1 && messages[1].role != Message::System) {
-            totalTokens -= messages[1].estimatedTokens;
-            messages.erase(messages.begin() + 1);
-        } else if (messages.size() > 2) {
-            totalTokens -= messages[2].estimatedTokens;
-            messages.erase(messages.begin() + 2);
-        } else {
-            break;
+        // Prefer removing user+assistant pairs together
+        if (i + 1 < messages.size()
+            && messages[i].role == Message::User
+            && messages[i + 1].role == Message::Assistant)
+        {
+            totalTokens -= messages[i].estimatedTokens + messages[i + 1].estimatedTokens;
+            messages.erase(messages.begin() + i, messages.begin() + i + 2);
+            removed += 2;
+        }
+        else
+        {
+            totalTokens -= messages[i].estimatedTokens;
+            messages.erase(messages.begin() + i);
+            removed += 1;
         }
     }
 }

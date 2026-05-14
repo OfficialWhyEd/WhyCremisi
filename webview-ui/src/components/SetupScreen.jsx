@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { whycremisi } from '../whycremisi-bridge'
 
@@ -23,6 +23,15 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const [status, setStatus] = useState('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [showKey, setShowKey] = useState(false)
+  const unsubRef = useRef(null)
+  const timeoutsRef = useRef([])
+
+  useEffect(() => {
+    return () => {
+      if (unsubRef.current) unsubRef.current()
+      timeoutsRef.current.forEach(clearTimeout)
+    }
+  }, [])
 
   const providers = [
     { id: 'ollama',    icon: 'memory',       desc: 'Run AI locally on your Mac. No API key needed.', keyRequired: false },
@@ -47,29 +56,35 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
         setStatus('error')
         setErrorMsg('Timeout — no response from plugin.')
       }, 8000)
+      timeoutsRef.current.push(timeout)
 
       const unsub = whycremisi.on('config.response', (payload) => {
         if (payload?.key !== 'ai.testConnection') return
         clearTimeout(timeout); unsub()
+        unsubRef.current = null
         if (payload.connected) {
           setStatus('success')
-          setTimeout(() => onComplete({ provider, model, apiKey }), 1200)
+          const t = setTimeout(() => onComplete({ provider, model, apiKey }), 1200)
+          timeoutsRef.current.push(t)
         } else {
           setStatus('error')
           setErrorMsg(payload.error || 'Connection failed.')
         }
       })
+      unsubRef.current = unsub
       whycremisi.send({ type: 'config.set', payload: { key: 'ai.testConnection' } })
     } else {
-      setTimeout(() => {
+      const t = setTimeout(() => {
         if (provider === 'ollama' || apiKey.length > 10) {
           setStatus('success')
-          setTimeout(() => onComplete({ provider, model, apiKey }), 1200)
+          const t2 = setTimeout(() => onComplete({ provider, model, apiKey }), 1200)
+          timeoutsRef.current.push(t2)
         } else {
           setStatus('error')
           setErrorMsg('Plugin not connected. Launch Standalone and retry.')
         }
       }, 1000)
+      timeoutsRef.current.push(t)
     }
   }
 

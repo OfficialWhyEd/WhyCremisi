@@ -157,13 +157,18 @@ void OscBridge::timerCallback()
 
     // Advance position using real elapsed time to prevent drift
     auto now = juce::Time::getMillisecondCounter();
-    if (currentIsPlaying)
+    bool playing = currentIsPlaying.load();
+    if (playing)
     {
         if (lastTimerTimeMs != 0)
-            currentPosition += (now - lastTimerTimeMs) / 1000.0f;
+        {
+            float pos = currentPosition.load();
+            pos += (now - lastTimerTimeMs) / 1000.0f;
+            currentPosition.store(pos);
+        }
         // Broadcast transport at ~10Hz (every 3 ticks at 33ms = ~100ms)
         if (++meterTickCounter % 3 == 0)
-            broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
+            broadcastTransport(playing, currentIsRecording.load(), currentBpm.load(), currentPosition.load());
     }
     lastTimerTimeMs = now;
 
@@ -192,11 +197,13 @@ void OscBridge::timerCallback()
         ana["payload"]["clippingCount"] = clipCount;
 
         // Include device stats
-        double latencyMs = (lastBufferSize > 0 && lastSampleRate > 0)
-                           ? (lastBufferSize / lastSampleRate) * 1000.0
+        double bufSize = static_cast<double>(lastBufferSize.load());
+        double sampRate = lastSampleRate.load();
+        double latencyMs = (bufSize > 0.0 && sampRate > 0.0)
+                           ? (bufSize / sampRate) * 1000.0
                            : 0.0;
-        ana["payload"]["sampleRate"] = lastSampleRate;
-        ana["payload"]["bufferSize"] = lastBufferSize;
+        ana["payload"]["sampleRate"] = sampRate;
+        ana["payload"]["bufferSize"] = lastBufferSize.load();
         ana["payload"]["latencyMs"] = latencyMs;
 
         {
@@ -209,6 +216,15 @@ void OscBridge::timerCallback()
         }
 
         wsServer->broadcast(ana);
+
+        // Broadcast CPU usage at ~3Hz
+        nlohmann::json cpu;
+        cpu["type"] = "plugin.cpu";
+        cpu["id"]   = nullptr;
+        cpu["timestamp"] = juce::Time::currentTimeMillis();
+        cpu["payload"]["cpuPercent"] = lastCpuPct.load();
+        cpu["payload"]["peakTimeUs"] = lastPeakTimeUs.load();
+        wsServer->broadcast(cpu);
     }
 }
 
@@ -223,6 +239,12 @@ bool OscBridge::isRunning() const
 //==============================================================================
 void OscBridge::onOscReceived(const juce::String& address, float value)
 {
+    if (!juce::MessageManager::existsAndIsCurrentThread())
+    {
+        juce::MessageManager::callAsync([this, address, value] { onOscReceived(address, value); });
+        return;
+    }
+
     log("[OSC->WS] " + address + " = " + juce::String(value, 3));
 
     // Auto-detect DAW type from first incoming OSC address
@@ -245,7 +267,7 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
         currentIsPlaying = (value > 0.5f);
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         if (sessionManager) sessionManager->logTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-        broadcastSessionEvent("transport", {{"is_playing", currentIsPlaying}, {"bpm", currentBpm}});
+        broadcastSessionEvent("transport", {{"is_playing", currentIsPlaying.load()}, {"bpm", currentBpm.load()}});
     }
     else if (address == "/live/song/get/is_recording" || address == "/live/song/is_recording")
     {
@@ -404,6 +426,12 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
 //==============================================================================
 void OscBridge::onOscStringReceived(const juce::String& address, const juce::String& value)
 {
+    if (!juce::MessageManager::existsAndIsCurrentThread())
+    {
+        juce::MessageManager::callAsync([this, address, value] { onOscStringReceived(address, value); });
+        return;
+    }
+
     log("[OSC->WS][STR] " + address + " = \"" + value + "\"");
 
     if (sessionManager)
@@ -607,6 +635,12 @@ void OscBridge::broadcastDawInfo()
 //==============================================================================
 void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
 {
+    if (!juce::MessageManager::existsAndIsCurrentThread())
+    {
+        juce::MessageManager::callAsync([this, message] { handleWebSocketMessage(message); });
+        return;
+    }
+
     juce::String validationError;
     juce::String msgType = message.contains("type") ? juce::String(message["type"].get<std::string>()) : "";
     auto schema = getSchemaForType(msgType);
@@ -732,6 +766,12 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
 //==============================================================================
 void OscBridge::handleClientConnection(int clientId, bool connected)
 {
+    if (!juce::MessageManager::existsAndIsCurrentThread())
+    {
+        juce::MessageManager::callAsync([this, clientId, connected] { handleClientConnection(clientId, connected); });
+        return;
+    }
+
     if (connected)
     {
         log("[WS] Client " + juce::String(clientId) + " connected");
@@ -741,8 +781,21 @@ void OscBridge::handleClientConnection(int clientId, bool connected)
         // Push current state to the newly connected client
         broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
 
-        // Push real audio device stats (SR, buffer, latency)
-        broadcastPluginStats(lastSampleRate, lastBufferSize);
+        // Push real audio device stats (SR, buffer, latency) to new client
+        {
+            double bufSize = static_cast<double>(lastBufferSize.load());
+            double sampRate = lastSampleRate.load();
+            double latencyMs = (bufSize > 0.0 && sampRate > 0.0)
+                               ? (bufSize / sampRate) * 1000.0
+                               : 0.0;
+            nlohmann::json msg;
+            msg["type"] = "plugin.stats";
+            msg["timestamp"] = juce::Time::currentTimeMillis();
+            msg["payload"]["sampleRate"] = sampRate;
+            msg["payload"]["bufferSize"] = lastBufferSize.load();
+            msg["payload"]["latencyMs"] = latencyMs;
+            wsServer->broadcast(msg);
+        }
 
         // Request fresh transport + track state from Ableton
         sendOscToDaw("/live/song/get/is_playing", 0.0f);
@@ -1193,10 +1246,10 @@ void OscBridge::dispatchDawRequest(const nlohmann::json& payload, const juce::St
 
     if (request == "transport")
     {
-        response["payload"]["isPlaying"] = currentIsPlaying;
-        response["payload"]["isRecording"] = currentIsRecording;
-        response["payload"]["bpm"] = currentBpm;
-        response["payload"]["positionSeconds"] = currentPosition;
+        response["payload"]["isPlaying"] = currentIsPlaying.load();
+        response["payload"]["isRecording"] = currentIsRecording.load();
+        response["payload"]["bpm"] = currentBpm.load();
+        response["payload"]["positionSeconds"] = currentPosition.load();
     }
     else if (request == "trackInfo")
     {
@@ -1309,8 +1362,10 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
                         aiProcessing.store(false);
                         int durationMs = static_cast<int>(juce::Time::currentTimeMillis() - startMs);
 
-                        auto structured = aiEngine->sendPromptStructured(capturedPrompt);
-                        bool success = structured.success;
+                        // Parse accumulated streaming text — no second API call
+                        auto structured = aiEngine->parseStructuredResponse(accumulated);
+                        bool success = structured.success || !accumulated.isEmpty();
+                        aiEngine->finalizeStreamingResponse(capturedPrompt, structured.text);
 
                         if (sessionManager)
                             sessionManager->logAiResponse(structured.text, durationMs);
@@ -1477,10 +1532,10 @@ void OscBridge::dispatchMidiLearn(const juce::String& msgType,
 //==============================================================================
 void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String& reqId)
 {
-    if (!payload.contains("key"))
+    if (!payload.contains("key") || !payload["key"].is_string())
         return;
 
-    std::string key = payload["key"];
+    std::string key = payload["key"].get<std::string>();
     juce::String configKey(key.data(), key.size());
     bool isRead = !payload.contains("value");
 
@@ -1737,43 +1792,15 @@ void OscBridge::dispatchSessionGet(const juce::String& reqId)
 //==============================================================================
 void OscBridge::broadcastPluginStats(double sampleRate, int bufferSize)
 {
-    // Store for new clients that connect later
-    lastSampleRate = sampleRate;
-    lastBufferSize = bufferSize;
-
-    if (!wsServer || !wsServer->isRunning()) return;
-
-    double latencyMs = (bufferSize > 0 && sampleRate > 0)
-                       ? (bufferSize / sampleRate) * 1000.0
-                       : 0.0;
-
-    nlohmann::json msg;
-    msg["type"] = "plugin.stats";
-    msg["id"]   = nullptr;
-    msg["timestamp"] = juce::Time::currentTimeMillis();
-    msg["payload"]["sampleRate"]  = sampleRate;
-    msg["payload"]["bufferSize"]  = bufferSize;
-    msg["payload"]["latencyMs"]   = latencyMs;
-
-    wsServer->broadcast(msg);
-    log("[STATS] SR=" + juce::String(sampleRate, 0) +
-        " BUF=" + juce::String(bufferSize) +
-        " LAT=" + juce::String(latencyMs, 2) + "ms");
+    // Store for timer-based broadcast (safe from audio thread)
+    lastSampleRate.store(sampleRate);
+    lastBufferSize.store(bufferSize);
 }
 
-void OscBridge::broadcastCpuUsage(double cpuPct, double peakTimeUs)
+void OscBridge::setCpuUsage(double cpuPct, double peakTimeUs)
 {
-    if (!wsServer || !wsServer->isRunning() || wsServer->getConnectedClientsCount() == 0)
-        return;
-
-    nlohmann::json msg;
-    msg["type"] = "plugin.cpu";
-    msg["id"]   = nullptr;
-    msg["timestamp"] = juce::Time::currentTimeMillis();
-    msg["payload"]["cpuPercent"] = cpuPct;
-    msg["payload"]["peakTimeUs"] = peakTimeUs;
-
-    wsServer->broadcast(msg);
+    lastCpuPct.store(cpuPct);
+    lastPeakTimeUs.store(peakTimeUs);
 }
 
 void OscBridge::updateAnalyzer(float correlation, float momentaryLoudness, float shortTermLoudness, float integratedLoudness, float truePeak, const std::vector<float>& spectrum, int clippingCount)
@@ -1811,10 +1838,10 @@ nlohmann::json OscBridge::makeDawTransport()
     msg["type"] = "daw.transport";
     msg["id"] = nullptr;
     msg["timestamp"] = juce::Time::currentTimeMillis();
-    msg["payload"]["isPlaying"] = currentIsPlaying;
-    msg["payload"]["isRecording"] = currentIsRecording;
-    msg["payload"]["bpm"] = currentBpm;
-    msg["payload"]["positionSeconds"] = currentPosition;
+    msg["payload"]["isPlaying"] = currentIsPlaying.load();
+    msg["payload"]["isRecording"] = currentIsRecording.load();
+    msg["payload"]["bpm"] = currentBpm.load();
+    msg["payload"]["positionSeconds"] = currentPosition.load();
     msg["payload"]["timeSignature"] = nlohmann::json{{"numerator", 4}, {"denominator", 4}};
     return msg;
 }

@@ -70,6 +70,7 @@ class WhyCremisiBridge {
     this.healthCheckIntervalMs = 15000;
     this.lastMessageAt = null;
     this.disconnectRequested = false;
+    this.transport = 'ws'; // 'ws' | 'juce-ipc' | 'auto'
 
     this.botState = 'idle';
 
@@ -80,6 +81,43 @@ class WhyCremisiBridge {
     this._handleError = this._handleError.bind(this);
     this._runHealthCheck = this._runHealthCheck.bind(this);
     this._flushQueue = this._flushQueue.bind(this);
+
+    // Set up JUCE IPC bridge immediately so C++ can send messages
+    this._setupJuceBridge();
+  }
+
+  /**
+   * Set up window.__whycremisiBridge for JUCE WebView IPC (always available)
+   */
+  _setupJuceBridge() {
+    if (window.__whycremisiBridge) return;
+    const self = this;
+    window.__whycremisiBridge = {
+      receiveMessage: (jsonString) => {
+        try {
+          const msg = JSON.parse(jsonString);
+          self._handleMessage({ data: jsonString });
+        } catch (e) {
+          console.error('[WhyCremisi] Errore parsing JUCE IPC:', e);
+        }
+      },
+      sendMessage: (type, payload = {}, options = {}) => {
+        return self.sendMessage(type, payload, options);
+      },
+      isConnected: () => self.state === ConnectionState.CONNECTED
+    };
+  }
+
+  _onConnected() {
+    this.reconnectAttempts = 0;
+    this.lastConnectedAt = Date.now();
+    this.lastMessageAt = Date.now();
+    this._flushQueue();
+    this._startHealthCheck();
+    this.sendMessage('plugin.init', {
+      version: this.version,
+      capabilities: ['widgets', 'ai', 'osc', 'daw', 'midi']
+    });
   }
 
   onStateChange(callback) {
@@ -103,7 +141,7 @@ class WhyCremisiBridge {
    * @returns {Promise} - Resolves quando connesso
    */
   connect(url = WS_DEFAULT_URL) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (this.state === ConnectionState.CONNECTED) {
         resolve();
         return;
@@ -111,13 +149,16 @@ class WhyCremisiBridge {
 
       this.disconnectRequested = false;
       this.url = url;
+
+      // Try WebSocket first
       this._setState(ConnectionState.CONNECTING);
-      console.log('[WhyCremisi] Connessione a ' + url + '...');
+      console.log('[WhyCremisi] Connessione via WebSocket a ' + url + '...');
 
       try {
         this.ws = new WebSocket(url);
 
         this.ws.onopen = (event) => {
+          this.transport = 'ws';
           this._handleOpen(event);
           resolve();
         };
@@ -127,8 +168,12 @@ class WhyCremisiBridge {
         };
 
         this.ws.onerror = (event) => {
-          this._handleError(event);
-          reject(new Error('WebSocket error'));
+          console.warn('[WhyCremisi] WebSocket fallito, uso JUCE IPC');
+          this.ws = null;
+          this.transport = 'juce-ipc';
+          this._setState(ConnectionState.CONNECTED);
+          this._onConnected();
+          resolve();
         };
 
         this.ws.onmessage = (event) => {
@@ -136,9 +181,11 @@ class WhyCremisiBridge {
         };
 
       } catch (e) {
-        this._setState(ConnectionState.ERROR);
-        console.error('[WhyCremisi] Errore connessione:', e);
-        reject(e);
+        console.warn('[WhyCremisi] WebSocket eccezione, uso JUCE IPC:', e.message);
+        this.transport = 'juce-ipc';
+        this._setState(ConnectionState.CONNECTED);
+        this._onConnected();
+        resolve();
       }
     });
   }
@@ -167,7 +214,23 @@ class WhyCremisiBridge {
    * Verifica se connesso
    */
   isConnected() {
-    return this.state === ConnectionState.CONNECTED && this.ws && this.ws.readyState === WebSocket.OPEN;
+    if (this.state !== ConnectionState.CONNECTED) return false;
+    if (this.transport === 'juce-ipc') return true;
+    return this.ws && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * Send message via current transport (WS or JUCE IPC)
+   */
+  _sendViaTransport(message) {
+    if (this.transport === 'juce-ipc') {
+      const json = JSON.stringify(message);
+      window.location = 'app://message/' + encodeURIComponent(json);
+      return;
+    }
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(message));
+    }
   }
 
   /**
@@ -208,8 +271,8 @@ class WhyCremisiBridge {
     }
 
     try {
-      this.ws.send(JSON.stringify(message));
-      console.log('[WhyCremisi] Inviato:', type, id ? `(id=${id})` : '');
+      this._sendViaTransport(message);
+      console.log('[WhyCremisi] Inviato:', type, id ? `(id=${id})` : '', `(via ${this.transport})`);
     } catch (e) {
       console.error('[WhyCremisi] Errore invio:', e);
     }
@@ -227,9 +290,11 @@ class WhyCremisiBridge {
       return null;
     }
     try {
-      this.ws.send(JSON.stringify(jsonMessage));
+      this._sendViaTransport(jsonMessage);
+      return true;
     } catch (e) {
-      console.error('[WhyCremisi] Errore invio:', e);
+      console.error('[WhyCremisi] Errore invio raw:', e);
+      return false;
     }
   }
 
@@ -510,9 +575,6 @@ class WhyCremisiBridge {
 
   _handleOpen(event) {
     this._setState(ConnectionState.CONNECTED);
-    this.reconnectAttempts = 0;
-    this.lastConnectedAt = Date.now();
-    this.lastMessageAt = Date.now();
     console.log('[WhyCremisi] Connesso a', this.url);
 
     window.__whycremisiBridge = {
@@ -537,17 +599,7 @@ class WhyCremisiBridge {
       }
     };
 
-    // Svuota coda messaggi pendenti
-    this._flushQueue();
-
-    // Avvia health check periodico
-    this._startHealthCheck();
-
-    // Notifica plugin che siamo pronti
-    this.sendMessage('plugin.init', {
-      version: this.version,
-        capabilities: ['widgets', 'ai', 'osc', 'daw', 'midi']
-    });
+    this._onConnected();
   }
 
   _handleClose(event) {
@@ -672,10 +724,10 @@ class WhyCremisiBridge {
     console.log('[WhyCremisi] Svuoto coda messaggi:', queue.length, 'messaggi');
     queue.forEach(({ message, options }) => {
       if (options && options.onResponse) {
-        this.sendMessage(message.type || message.type, message.payload || message.payload, options);
+        this.sendMessage(message.type, message.payload, options);
       } else {
         try {
-          this.ws.send(JSON.stringify(message));
+          this._sendViaTransport(message);
         } catch (e) {
           console.error('[WhyCremisi] Errore reinvio da coda:', e);
         }

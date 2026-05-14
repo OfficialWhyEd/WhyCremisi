@@ -421,7 +421,7 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         double blockTimeUs = (static_cast<double>(currentBufferSize) / currentSampleRate) * 1e6;
         double cpuPct = juce::jmin(100.0, (avgProcessTimeUs / blockTimeUs) * 100.0);
         oscBridge->broadcastPluginStats(currentSampleRate, currentBufferSize);
-        oscBridge->broadcastCpuUsage(cpuPct, peakProcessTimeUs);
+        oscBridge->setCpuUsage(cpuPct, peakProcessTimeUs);
         peakProcessTimeUs = avgProcessTimeUs;  // reset peak to average for next window
 
         // CPU throttle detection

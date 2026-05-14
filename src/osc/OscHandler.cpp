@@ -38,12 +38,24 @@ void OscHandler::start()
         return;
 
     socket = std::make_unique<juce::DatagramSocket>();
+    socket->setEnablePortReuse(true);
     if (!socket->bindToPort(port))
     {
-        addToLog("[OSC] ERROR: Cannot bind to port " + juce::String(port));
-        connected.store(false);
-        running.store(false);
-        return;
+        juce::String err = "[OSC] ERROR: Cannot bind to port " + juce::String(port) + " — retrying in 1s";
+        addToLog(err);
+        fprintf(stderr, "%s\n", err.toRawUTF8());
+        juce::Thread::sleep(1000);
+        socket = std::make_unique<juce::DatagramSocket>();
+        socket->setEnablePortReuse(true);
+        if (!socket->bindToPort(port))
+        {
+            juce::String err2 = "[OSC] ERROR: Still cannot bind to port " + juce::String(port);
+            addToLog(err2);
+            fprintf(stderr, "%s\n", err2.toRawUTF8());
+            connected.store(false);
+            running.store(false);
+            return;
+        }
     }
 
     connected.store(true);

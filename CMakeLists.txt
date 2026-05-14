@@ -179,14 +179,30 @@ if(APPLE)
     add_custom_command(TARGET WhyCremisiVSTPlugin POST_BUILD
         # React UI (Release only)
         COMMAND ${CMAKE_COMMAND} -E echo "Copying React bundle to Standalone..."
-        COMMAND ${CMAKE_COMMAND} -E $<IF:$<CONFIG:Release>,copy_directory,true>
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${REACT_DIST_DIR}"
             "${STANDALONE_APP}/Contents/Resources/webview-ui"
-        # High-quality icns — replaces JUCE-generated icon in all bundles
+        # App Transport Security — allow HTTP to localhost so WKWebView can load the React dev server
+        COMMAND /usr/libexec/PlistBuddy -c
+            "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true"
+            "${STANDALONE_APP}/Contents/Info.plist" || true
+        COMMENT "Embedding React UI and ATS exceptions in app bundles"
+    )
+
+    # Icon copy runs on the Standalone target so it fires AFTER JUCE's own Icon.icns copy
+    add_custom_command(TARGET WhyCremisiVSTPlugin_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICNS_SRC}" "${STANDALONE_APP}/Contents/Resources/WhyCremisi.icns"
+        COMMAND ${CMAKE_COMMAND} -E copy "${ICNS_SRC}" "${STANDALONE_APP}/Contents/Resources/Icon.icns"
+        COMMENT "Overwriting JUCE Icon.icns with full 10-size WhyCremisi.icns"
+    )
+
+    # VST3 / AU icon copy (these don't have JUCE's own step overwriting them)
+    add_custom_command(TARGET WhyCremisiVSTPlugin POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICNS_SRC}" "${VST3_BUNDLE}/Contents/Resources/WhyCremisi.icns"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICNS_SRC}" "${VST3_BUNDLE}/Contents/Resources/Icon.icns"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICNS_SRC}" "${AU_BUNDLE}/Contents/Resources/WhyCremisi.icns"
-        COMMENT "Embedding React UI and high-quality icns in app bundles"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICNS_SRC}" "${AU_BUNDLE}/Contents/Resources/Icon.icns"
+        COMMENT "Copying high-quality icns to VST3 and AU bundles"
     )
 endif()
 

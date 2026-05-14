@@ -73,13 +73,14 @@ public:
         int estimatedTokens = 0;
     };
 
-    ContextManager(int maxTokens = 32000, int maxMessages = 100);
+    ContextManager(int maxTokens = 32000, int maxMessages = 500);
 
     void addMessage(const Message& msg);
     void trimToBudget();
     std::vector<Message> getMessages() const { return messages; }
     int getTotalTokens() const { return totalTokens; }
     void setMaxTokens(int max) { maxTokens = max; }
+    void setMaxMessages(int max) { maxMessages = max; }
 
     juce::String buildContextString(const juce::String& systemPrompt) const;
 

@@ -44,6 +44,24 @@ export default function App() {
   const mounted = useRef(true)
   const intervalsRef = useRef([])
   const throttleRef = useRef(0)
+  const fpsRef = useRef(0)
+  const [fps, setFps] = useState(0)
+  useEffect(() => {
+    let frames = 0, last = performance.now()
+    const tick = () => {
+      frames++
+      const now = performance.now()
+      if (now - last >= 1000) {
+        fpsRef.current = Math.round(frames * 1000 / (now - last))
+        setFps(fpsRef.current)
+        frames = 0
+        last = now
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    let raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
   const MAX_MESSAGES = 200
   useEffect(() => {
     if (messages.length > MAX_MESSAGES) {
@@ -226,17 +244,18 @@ export default function App() {
       if (s === ConnectionState.DISCONNECTED || s === ConnectionState.ERROR) {
         sysMsg(`[${ts()}] CONNECTION LOST — RECONNECTING...`)
         setBotState('sad')
-        addToast('error', 'WebSocket connection lost — reconnecting...')
+        addToast('WebSocket connection lost — reconnecting...', 'error')
       }
       if (s === ConnectionState.CONNECTED) {
-        addToast('success', 'Connected to WhyCremisi plugin')
+        addToast('Connected to WhyCremisi plugin', 'success')
       }
       if (s === ConnectionState.RECONNECTING) {
         setBotState('loading')
       }
     })
 
-    window.addEventListener('whycremisi-botstate', (e) => setBotState(e.detail))
+    const onBotState = (e) => setBotState(e.detail)
+    window.addEventListener('whycremisi-botstate', onBotState)
 
     // ── AI response (complete) ──
     const unsubAI = whycremisi.on('ai.response', (payload) => {
@@ -334,7 +353,7 @@ export default function App() {
       setBotState('error')
       setTimeout(() => { if (mounted.current) setBotState('idle') }, 3000)
       sysMsg(`[${ts()}] [ERROR] ${payload.message || payload.code || 'Unknown error'}`)
-      addToast('error', payload.message || payload.code || 'Unknown plugin error')
+      addToast(payload.message || payload.code || 'Unknown plugin error', 'error')
     })
 
     // MIDI Learn: aggiorna stato UI
@@ -445,6 +464,7 @@ export default function App() {
       mounted.current = false
       intervalsRef.current.forEach(clearInterval)
       intervalsRef.current = []
+      window.removeEventListener('whycremisi-botstate', onBotState)
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
       unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubCpu();       unsubActionLog(); unsubPersAction(); unsubPersContext()
@@ -1601,8 +1621,8 @@ export default function App() {
               </div>
 
               {/* Mask Logo — audio reactive */}
-              <div className="flex-1 flex items-center justify-center">
-                <MaskLogo audioLevel={(meterL + meterR) / 2} className="w-32 h-32" />
+              <div className="flex-1 flex items-center justify-start -ml-2">
+                <MaskLogo audioLevel={(meterL + meterR) / 2} className="w-44 h-44" />
               </div>
              </div>
            </div>

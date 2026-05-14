@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <map>
+#include <mutex>
 
 class AIProvider;
 class ToolRegistry;
@@ -131,6 +132,10 @@ public:
     ConfigValidation validateConfig() const;
     juce::String getConfigSummary() const;
 
+    // Public for use by OscBridge streaming path
+    StructuredResponse parseStructuredResponse(const juce::String& raw) const;
+    void finalizeStreamingResponse(const juce::String& prompt, const juce::String& response);
+
 private:
     Config config;
     bool configured = false;
@@ -153,9 +158,10 @@ private:
     std::unique_ptr<ToolRegistry> toolRegistry;
     std::unique_ptr<ContextManager> contextManager;
 
-    StructuredResponse parseStructuredResponse(const juce::String& raw) const;
     juce::String buildPersonalityPrefix() const;
     void syncWidgetTools();
+
+    mutable std::mutex engineMutex;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AiEngine)
 };
