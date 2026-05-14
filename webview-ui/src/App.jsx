@@ -44,6 +44,55 @@ export default function App() {
   const mounted = useRef(true)
   const intervalsRef = useRef([])
   const throttleRef = useRef(0)
+  const inputRef = useRef(null)
+  const searchRef = useRef(null)
+  const [personality, setPersonality] = useState({ style: 'analytical' })
+  const [personalityStyle, setPersonalityStyle] = useState('analytical')
+  const [cmdHistory, setCmdHistory] = useState([])
+  const [showStylePicker, setShowStylePicker] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [historyIdx, setHistoryIdx] = useState(-1)
+  const [debugOverlay, setDebugOverlay] = useState(false)
+  const [theme, setTheme] = useState(() => localStorage.getItem('whycremisi_theme') || 'dark')
+  const [actionHistory, setActionHistory] = useState([])
+  const [actionRedoStack, setActionRedoStack] = useState([])
+  const [actionLog, setActionLog] = useState([])
+  const [toasts, setToasts] = useState([])
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+  }, [])
+  const pushAction = (action) => {
+    setActionHistory(prev => [...prev, action])
+    setActionLog(prev => [action, ...prev].slice(0, 50))
+  }
+  const addToast = (message, type = 'info') => {
+    const id = Date.now()
+    setToasts(prev => [...prev, { id, message, type }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
+  }
+  const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id))
+  const undoLastAction = () => {
+    setActionHistory(prev => {
+      if (prev.length === 0) return prev
+      setActionRedoStack(r => [prev[prev.length-1], ...r])
+      return prev.slice(0, -1)
+    })
+  }
+  const redoLastAction = () => {
+    setActionRedoStack(prev => {
+      if (prev.length === 0) return prev
+      setActionHistory(h => [...h, prev[0]])
+      return prev.slice(1)
+    })
+  }
+  const PERSONALITY_STYLES = [
+    { id: 'analytical',  label: 'AN', name: 'Analytical',  icon: '📊' },
+    { id: 'consultative',label: 'CS', name: 'Consultative',icon: '💬' },
+    { id: 'direct',      label: 'DR', name: 'Direct',      icon: '⚡' },
+    { id: 'creative',    label: 'CR', name: 'Creative',    icon: '🎨' },
+    { id: 'warm',        label: 'WA', name: 'Warm',        icon: '🔥' },
+  ]
 
   // ── transport / DAW state ─────────────────────────────────────────
   const [transport, setTransport] = useState({ isPlaying: false, isRecording: false, bpm: 120.0, position: 0 })
@@ -580,6 +629,13 @@ export default function App() {
       whycremisi.sendAIPrompt(prompt)
     }
   }, [botState])
+
+  const applyPersonalityStyle = useCallback((styleId) => {
+    setPersonalityStyle(styleId)
+    setShowStylePicker(false)
+    if (whycremisi.isConnected())
+      whycremisi.send({ type: 'ai.personalityStyle', payload: { style: styleId } })
+  }, [setPersonalityStyle, setShowStylePicker])
 
   const dismissAdvisory = useCallback(() => {
     setMessages(prev => prev.filter(m => m.type !== 'advisory'))
@@ -1537,37 +1593,23 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Drive knob */}
-              <div className="flex-1 flex flex-col items-center justify-center relative">
-                <svg className="w-20 h-20 rotate-[-90deg] cursor-pointer" viewBox="0 0 100 100"
-                  onMouseMove={(e) => {
-                    if (e.buttons !== 1) return
-                    const now = Date.now()
-                    if (now - throttleRef.current < 50) return
-                    throttleRef.current = now
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2
-                    const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI
-                    const norm = Math.max(0, Math.min(100, ((angle + 180) / 360) * 100))
-                    setDriveVal(Math.round(norm * 10) / 10)
-                    if (whycremisi.isConnected()) whycremisi.sendDAWCommand('setDrive', { value: norm/100 })
-                  }}
-                >
-                  <circle cx="50" cy="50" r="38" fill="none" stroke="#222222" strokeWidth="4" />
-                  <motion.circle
-                    cx="50" cy="50" r="38" fill="none" stroke="#DC143C" strokeWidth="4"
-                    strokeLinecap="round"
-                    initial={{ strokeDasharray:'0 239' }}
-                    animate={{ strokeDasharray:`${driveVal / 100 * 239} 239` }}
-                    transition={{ duration:0.15 }}
-                    style={{ filter:'drop-shadow(0 0 4px #DC143C)' }}
-                  />
-                </svg>
-<div className="absolute flex flex-col items-center pointer-events-none">
-                   <span className="text-[9px] font-bold" style={{ color: 'var(--text-primary)' }}>{driveVal.toFixed(1)}</span>
-                   <span className="text-xs uppercase font-mono" style={{ color: 'var(--amber)' }}>DRIVE</span>
-                 </div>
-               </div>
+              {/* Mask Logo — audio reactive, replaces drive knob */}
+              <div className="flex-1 flex flex-col items-center justify-center gap-1">
+                <div className="relative">
+                  <svg className="absolute inset-0 w-full h-full rotate-[-90deg] pointer-events-none" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="46" fill="none" stroke="#1a1a1a" strokeWidth="3" />
+                    <motion.circle
+                      cx="50" cy="50" r="46" fill="none" stroke="#DC143C" strokeWidth="3"
+                      strokeLinecap="round"
+                      animate={{ strokeDasharray:`${(meterL + meterR) / 2 * 289} 289` }}
+                      transition={{ duration:0.05 }}
+                      style={{ filter:'drop-shadow(0 0 3px #DC143C)' }}
+                    />
+                  </svg>
+                  <MaskLogo audioLevel={(meterL + meterR) / 2} className="w-20 h-20" />
+                </div>
+                <span className="text-[8px] uppercase font-mono tracking-widest" style={{ color: 'var(--cremisi)' }}>WHYCREMISI</span>
+              </div>
              </div>
            </div>
 
