@@ -55,8 +55,8 @@ juce_add_plugin(WhyCremisiVSTPlugin
     PRODUCT_NAME "WhyCremisi"
     BUNDLE_ID "com.whycremisi.plugin"
     AU_MAIN_TYPE "kAudioUnitType_Effect"
-    ICON_BIG   "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/macos/icon_512x512.png"
-    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/macos/icon_32x32.png"
+    ICON_BIG   "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/macos/icon_512x512@2x.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/macos/icon_32x32@2x.png"
 )
 
 
@@ -170,14 +170,23 @@ endif()
 
 if(APPLE)
     set(REACT_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/webview-ui/dist")
-    set(STANDALONE_RESOURCES "${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/$<CONFIG>/Standalone/WhyCremisi.app/Contents/Resources/webview-ui")
+    set(ARTEFACTS_DIR  "${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/$<CONFIG>")
+    set(STANDALONE_APP "${ARTEFACTS_DIR}/Standalone/WhyCremisi.app")
+    set(VST3_BUNDLE    "${ARTEFACTS_DIR}/VST3/WhyCremisi.vst3")
+    set(AU_BUNDLE      "${ARTEFACTS_DIR}/AU/WhyCremisi.component")
+    set(ICNS_SRC       "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/WhyCremisi.icns")
 
     add_custom_command(TARGET WhyCremisiVSTPlugin POST_BUILD
+        # React UI (Release only)
         COMMAND ${CMAKE_COMMAND} -E echo "Copying React bundle to Standalone..."
         COMMAND ${CMAKE_COMMAND} -E $<IF:$<CONFIG:Release>,copy_directory,true>
             "${REACT_DIST_DIR}"
-            "${STANDALONE_RESOURCES}"
-        COMMENT "Embedding React UI in Standalone app bundle (Release only)"
+            "${STANDALONE_APP}/Contents/Resources/webview-ui"
+        # High-quality icns — replaces JUCE-generated icon in all bundles
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICNS_SRC}" "${STANDALONE_APP}/Contents/Resources/WhyCremisi.icns"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICNS_SRC}" "${VST3_BUNDLE}/Contents/Resources/WhyCremisi.icns"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICNS_SRC}" "${AU_BUNDLE}/Contents/Resources/WhyCremisi.icns"
+        COMMENT "Embedding React UI and high-quality icns in app bundles"
     )
 endif()
 
