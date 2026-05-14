@@ -208,6 +208,7 @@ export function SessionPanel() {
       {/* ── header bar ──────────────────────────────────────────────── */}
       <div className="bg-[#131313] border-b border-[#222222] px-4 py-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
+          <img src="/whycremisi-mask.png" className="w-5 h-5 flex-shrink-0 opacity-80" alt="WhyCremisi" />
           <div className="w-1.5 h-1.5 rounded-full bg-[#DC143C] led-red-active flex-shrink-0" />
           <span className="text-[10px] font-bold text-[#DC143C] tracking-widest uppercase">FLIGHT RECORDER</span>
           {sessionInfo?.session_id && (
