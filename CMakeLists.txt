@@ -59,6 +59,7 @@ juce_add_plugin(WhyCremisiVSTPlugin
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/macos/icon_32x32.png"
 )
 
+
 # Disabilita VST2 fallback
 target_compile_definitions(WhyCremisiVSTPlugin PRIVATE
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -180,8 +181,8 @@ if(APPLE)
     )
 endif()
 
-# DAW thumbnail — copied into VST3 bundle for plugin browser display
-if(APPLE)
+# DAW thumbnail — copied into VST3 bundle for plugin browser display (macOS + Windows)
+if(APPLE OR WIN32)
     add_custom_command(TARGET WhyCremisiVSTPlugin POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
             "${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/$<CONFIG>/VST3/WhyCremisi.vst3/Contents/Resources"
@@ -206,4 +207,17 @@ if(NOT WIN32 AND NOT APPLE)
     install(DIRECTORY ${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/Release/VST3/
             DESTINATION ~/.vst3
     )
+
+    # Install Linux icons for desktop integration
+    set(LINUX_ICON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Research/logo/platform/linux")
+    install(FILES ${LINUX_ICON_DIR}/linux-16.png   DESTINATION ~/.local/share/icons/hicolor/16x16/apps   RENAME whycremisi.png)
+    install(FILES ${LINUX_ICON_DIR}/linux-22.png   DESTINATION ~/.local/share/icons/hicolor/22x22/apps   RENAME whycremisi.png)
+    install(FILES ${LINUX_ICON_DIR}/linux-24.png   DESTINATION ~/.local/share/icons/hicolor/24x24/apps   RENAME whycremisi.png)
+    install(FILES ${LINUX_ICON_DIR}/linux-32.png   DESTINATION ~/.local/share/icons/hicolor/32x32/apps   RENAME whycremisi.png)
+    install(FILES ${LINUX_ICON_DIR}/linux-48.png   DESTINATION ~/.local/share/icons/hicolor/48x48/apps   RENAME whycremisi.png)
+    install(FILES ${LINUX_ICON_DIR}/linux-64.png   DESTINATION ~/.local/share/icons/hicolor/64x64/apps   RENAME whycremisi.png)
+    install(FILES ${LINUX_ICON_DIR}/linux-96.png   DESTINATION ~/.local/share/icons/hicolor/96x96/apps   RENAME whycremisi.png)
+    install(FILES ${LINUX_ICON_DIR}/linux-128.png  DESTINATION ~/.local/share/icons/hicolor/128x128/apps RENAME whycremisi.png)
+    install(FILES ${LINUX_ICON_DIR}/linux-256.png  DESTINATION ~/.local/share/icons/hicolor/256x256/apps RENAME whycremisi.png)
+    install(FILES ${LINUX_ICON_DIR}/linux-512.png  DESTINATION ~/.local/share/icons/hicolor/512x512/apps RENAME whycremisi.png)
 endif()
