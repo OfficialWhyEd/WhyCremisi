@@ -19,6 +19,8 @@
 </p>
 
 <p align="center">
+  <a href="https://officialwhyed.github.io/WhyCremisi">🌐 Website</a>
+  &nbsp;·&nbsp;
   <a href="https://github.com/OfficialWhyEd/WhyCremisi/stargazers">⭐ Star this repo</a>
   &nbsp;·&nbsp;
   <a href="https://github.com/OfficialWhyEd/WhyCremisi/issues">🐛 Report a bug</a>
