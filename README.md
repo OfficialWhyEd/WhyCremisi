@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  <strong>The AI that lives inside your DAW and controls every knob of every plugin — without knowing them in advance.</strong>
+  <strong>The AI that lives inside your DAW — controls transports, tracks, and every knob of every plugin — without knowing them in advance.</strong>
 </p>
 
 <p align="center">
@@ -15,9 +15,54 @@
   <img src="https://img.shields.io/badge/AI-Groq_%7C_Gemini_%7C_Claude_%7C_Ollama-D97706?style=flat-square" />
   <img src="https://img.shields.io/badge/tests-14_passing-brightgreen?style=flat-square" />
   <img src="https://img.shields.io/badge/macOS-Monterey+-000000?style=flat-square&logo=apple&logoColor=white" />
+  <img src="https://img.shields.io/github/stars/OfficialWhyEd/WhyCremisi?style=flat-square&color=b4143c" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/OfficialWhyEd/WhyCremisi/stargazers">⭐ Star this repo</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/OfficialWhyEd/WhyCremisi/issues">🐛 Report a bug</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/OfficialWhyEd/WhyCremisi/discussions">💬 Discuss</a>
+  &nbsp;·&nbsp;
+  <a href="https://x.com/OfficialWhyEd">𝕏 Follow</a>
 </p>
 
 <br/>
+
+---
+
+<h2 align="center">🎹 &nbsp; If you make music, this is for you</h2>
+
+<p align="center">You don't need to know C++. You don't need to code. You don't need to map any preset.<br/>
+You just need a DAW, a microphone for your ideas, and a question to type.</p>
+
+<table align="center">
+<tr>
+<td align="center" width="33%">
+
+**① Load the plugin**<br/>
+Drag WhyCremisi onto your master channel. It auto-scans every plugin in your session.
+
+</td>
+<td align="center" width="33%">
+
+**② Type what you hear**<br/>
+*"The low end is muddy"* · *"Make the reverb shorter"* · *"Start playback and record"*
+
+</td>
+<td align="center" width="33%">
+
+**③ Watch it happen**<br/>
+The AI finds the right knob, moves it, logs what it did — and shows you its reasoning.
+
+</td>
+</tr>
+</table>
+
+<p align="center">Works offline with <a href="https://ollama.ai">Ollama</a> — no API key, no subscription, no latency.</p>
+
+---
 
 <p align="center">
   <img src="assets/banner.png" width="100%" alt="WhyCremisi"/>
@@ -25,13 +70,84 @@
 
 <br/>
 
-> **WhyCremisi installs on your master channel.** From there, it scans every parameter of every plugin loaded in the session — Serum, FabFilter, Valhalla, anything — and exposes them all to an AI that can read, write and automate them in real time. No preset mapping. No plugin SDK. No prior knowledge of the plugin. Just index-based VST3 parameter scanning, and an AI that learns what each knob does on the fly.
+> **WhyCremisi installs on your master channel.** From there, it takes full control of your DAW: it can play/stop/record, mute tracks, adjust volumes, and scan every parameter of every plugin in the session — Serum, FabFilter, Valhalla, anything. It exposes everything to an AI that can read, write and automate it all in real time. No preset mapping. No plugin SDK. No prior knowledge of the plugin. Just index-based VST3 parameter scanning, and an AI that learns what each knob does on the fly.
 
 ---
 
 <p align="center">
   <img src="assets/screenshot.png" alt="WhyCremisi inside the DAW" width="100%"/>
 </p>
+
+---
+
+## What makes this technically insane
+
+Most DAW plugins are islands. They process audio and expose a UI — that's it. WhyCremisi breaks out of that model in three ways that shouldn't be possible from a single plugin slot:
+
+**1. It reads every other plugin's parameters without their SDK.**
+VST3 exposes parameters as numbered indices. WhyCremisi iterates them all at load time. It doesn't need to know what Serum is. It finds every knob Serum exposes and maps them. Same for any plugin you throw at it.
+
+**2. It runs a full React app inside the plugin window.**
+Most plugin UIs are drawn with OpenGL or platform-native widgets. WhyCremisi hosts a real React app inside a JUCE WebView, connected to the plugin backend via a WebSocket running at `localhost:8080`. The UI is hot-reloadable during development.
+
+**3. The AI sees your entire session history, not just the current state.**
+Every parameter change, transport event, OSC message and AI interaction is appended to a JSONL log in real time. When you ask the AI something, it gets the last N minutes of session context. It knows what you changed, when, and in what order.
+
+---
+
+## What you can actually say to it
+
+These are real prompts you can type into WhyCremisi right now. The AI reads your full session state — DAW transport, track layout, every loaded plugin — decides what to touch, and writes it live:
+
+**DAW control:**
+```
+"Start playback"
+```
+→ Sends the play command directly to your DAW. Transport starts.
+
+```
+"Mute the kick and the bass, I want to hear the mids only"
+```
+→ Mutes two tracks by name. No clicking.
+
+```
+"Drop the vocal volume by 3dB and bring the guitar up a notch"
+```
+→ Reads current fader values for both tracks, adjusts them.
+
+**Plugin parameters:**
+```
+"Make the Serum filter darker — it's too bright in the high mids"
+```
+→ Finds Serum's filter cutoff index, moves it down proportionally.
+
+```
+"The reverb tail is bleeding into the drop. Tighten it."
+```
+→ Reads Valhalla's decay parameter, shortens it. Logs the change.
+
+```
+"Automate the OTT drive up from bar 32 to bar 40"
+```
+→ Writes a parameter automation curve. No mouse drag required.
+
+**Session memory:**
+```
+"What did you do to the master bus 5 minutes ago?"
+```
+→ Queries the JSONL session log. Returns every parameter touch in that window.
+
+```
+"Something sounds wrong with the low end. Diagnose it."
+```
+→ Reads EQ and compressor states across all plugins. Suggests what's clashing.
+
+```
+"Save this state as my reference master"
+```
+→ Snapshots all parameter values to `memory.json`. Recalled across sessions.
+
+This works **offline** with Ollama. No API key, no cloud, no latency.
 
 ---
 
@@ -42,6 +158,8 @@ Every other "AI for music production" tool is either a standalone app disconnect
 | | WhyCremisi | Standalone AI tools | Manual workflow |
 |---|---|---|---|
 | Lives inside the DAW | ✅ VST3/AU plugin | ❌ External app | — |
+| Controls transport (play/stop/record) | ✅ Native DAW commands | ❌ | ❌ Manual |
+| Controls track volume, mute, solo | ✅ Real-time fader control | ❌ | ❌ Manual |
 | Accesses any plugin's parameters | ✅ Universal bridge | ❌ Hardcoded presets | ❌ One by one |
 | No preset mapping needed | ✅ Auto-discovery | ❌ Plugin-specific | — |
 | React UI inside the plugin | ✅ WebView | ❌ | — |
@@ -285,6 +403,38 @@ WhyCremisi/
 - [ ] Session summary export (what the AI did, and why)
 - [ ] Windows support (JUCE is cross-platform, bridge needs porting)
 - [ ] Plugin state presets saved by AI ("my warm master", "my hard-clipped drums")
+
+---
+
+## Contributing
+
+This is a one-person project so far. PRs, issues and discussions are very welcome — especially for:
+
+- **Plugin dictionary entries** — if you've mapped parameters for any DAW plugin, open a PR
+- **Provider implementations** — new AI providers follow the same interface as the existing 6
+- **DAW compatibility testing** — tested on Ableton and Logic, reports for other DAWs appreciated
+- **Windows port** — the JUCE layer is cross-platform, the bridge needs porting
+
+If you're working on something larger, open an issue first so we can align.
+
+---
+
+## Spread the word
+
+If WhyCremisi made you go "wait, this is actually insane" — that's the right reaction.
+
+The best way to help this project:
+
+1. **⭐ Star the repo** — it helps with discoverability
+2. **Share on Twitter/X** with what you think is the craziest part
+3. **Post in your DAW's community** — r/ableton, r/edmproduction, r/audioengineering, KVR Audio
+4. **Show it to your music producer friends** — they will not believe it's a plugin
+
+---
+
+## Star history
+
+[![Star History Chart](https://api.star-history.com/svg?repos=OfficialWhyEd/WhyCremisi&type=Date)](https://star-history.com/#OfficialWhyEd/WhyCremisi&Date)
 
 ---
 
