@@ -93,6 +93,7 @@ The AI moves knobs, explains what it did, and drops interactive suggestion boxes
 <details>
 <summary><strong>Table of Contents</strong></summary>
 
+- [Mission & Vision](#mission--vision)
 - [The philosophy](#the-philosophy)
 - [There are no limits to what you can ask](#there-are-no-limits-to-what-you-can-ask)
 - [It's a conversation, not a command line](#its-a-conversation-not-a-command-line)
@@ -118,9 +119,17 @@ The AI moves knobs, explains what it did, and drops interactive suggestion boxes
 
 ---
 
+## Mission & Vision
+
+> **Mission:** To bring the most powerful creative intelligence directly into the DAW — so the gap between what you hear in your head and what comes out of the speakers disappears.
+
+> **Vision:** To make the best AI tool for music producers on earth, and to leave the creative process better than we found it.
+
+---
+
 ## The philosophy
 
-WhyCremisi was built around one idea: **creativity has no limits, and neither should the tool.**
+WhyCremisi was built around one belief: **creativity has no limits, and neither should the tool.**
 
 Most audio software asks you to learn its language — menu structures, preset names, parameter ranges. WhyCremisi flips this. You speak in the language of music and emotion. The software figures out the rest.
 
@@ -134,7 +143,7 @@ You shouldn't need to know that "filter cutoff" is parameter index 0047 in Serum
 - **Has a personality.** Thinks, replies, explains, pushes back. Has a face that shows how it feels. Not a search bar — a collaborator.
 - **Lives inside the DAW.** Not an external app. Not a chatbot tab. On the master channel, always in the room.
 
-The gap between what you hear in your head and what comes out of the speakers — that's what WhyCremisi is closing.
+The more sessions you run with WhyCremisi, the more it knows you. That history — your taste, your decisions, your sound — is yours. It compounds. You can't take it with you if you switch. → [Full brand & community philosophy](PHILOSOPHY.md)
 
 ---
 
