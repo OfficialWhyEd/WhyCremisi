@@ -87,6 +87,8 @@ You shouldn't need to know that "filter cutoff" is parameter index 0047 in Serum
 This is the approach:
 
 - **Ask anything.** Mix like Chris Lord-Alge. Master like Stefano Pretolesi. Check controfasi. Rebuild your low end. There are no supported commands — there is only what you can describe.
+- **Native DAW plugins included.** Not just Serum and FabFilter — every native plugin in your DAW works the same way. Logic's stock EQ, Ableton's built-in compressor, any bundled instrument or effect. All of it is mapped, readable and writable.
+- **It creates, not just edits.** WhyCremisi can create MIDI regions directly in the timeline, write melodies, generate chord progressions, place audio regions — it's not limited to tweaking what already exists. It can build things from nothing.
 - **It remembers everything.** Every parameter touch, every decision, every session. Not just this session — every session. It knows your history and learns your taste.
 - **It has a personality.** WhyCremisi isn't a search bar. It's a collaborator. It thinks, it replies, it explains its reasoning, it makes suggestions. It pushes back when something doesn't make sense. It has a face that shows you how it feels.
 - **It's always in the room with you.** Not an external app, not a chatbot tab. It lives inside your DAW, on the master channel, watching and listening to everything that happens in the session.
@@ -206,7 +208,27 @@ WhyCremisi doesn't have a list of supported commands. It has a brain, a memory, 
 ```
 → Written to long-term memory. From now on, it's a rule WhyCremisi enforces automatically.
 
-The creativity has no ceiling. If a human engineer could describe the move in words, WhyCremisi can attempt it in knobs.
+```
+"Use Logic's built-in compressor on the drums and push the attack a bit"
+```
+→ Native DAW plugins are first-class citizens. Stock EQ, bundled instruments, built-in effects — all mapped, all controllable exactly like third-party plugins.
+
+```
+"Create a melody in C minor over 8 bars starting from bar 9"
+```
+→ WhyCremisi writes MIDI regions directly into the DAW timeline. Notes, velocities, lengths — placed where you say, in the key you say.
+
+```
+"Generate a chord progression for this drop — something dark and tense"
+```
+→ Composes the progression, creates the MIDI region, places it in the session. You didn't touch a piano roll.
+
+```
+"Add a riser region from bar 24 to 32 that builds into the drop"
+```
+→ Creates the audio or MIDI region in the timeline, positions it precisely, automates the parameters to build the tension.
+
+The creativity has no ceiling. If a human engineer or producer could describe the move in words, WhyCremisi can attempt it — in knobs, in regions, in melodies, in the timeline.
 
 ---
 
