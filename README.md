@@ -16,6 +16,12 @@
 
 ---
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="WhyCremisi in Ableton" width="100%"/>
+</p>
+
+---
+
 ## Cosa fa
 
 **WhyCremisi non è un semplice plugin** — è un universal parameter bridge. Espone automaticamente tutti i parametri di ogni plugin caricato nel DAW e li rende accessibili all'AI, senza dover conoscere il plugin in anticipo.
