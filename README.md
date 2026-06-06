@@ -89,7 +89,7 @@ This is the approach:
 - **Ask anything.** Mix like Chris Lord-Alge. Master like Stefano Pretolesi. Check controfasi. Rebuild your low end. There are no supported commands — there is only what you can describe.
 - **Every plugin. Including the ones released yesterday.** Not just Serum and FabFilter — native DAW plugins, Serum 2, Pro-Q 4, iZotope, Waves, Native Instruments, anything. Because it reads VST3 parameter indices at runtime, it never needs an update to support a new plugin. Load it, and it's mapped.
 - **A living encyclopedia of professional plugins.** On top of raw index scanning, WhyCremisi ships with a curated dictionary of the most-used modern plugins — human-readable names, ranges, interdependencies, professional usage patterns. It grows over time, and you can add your own entries.
-- **It creates, not just edits.** WhyCremisi can create MIDI regions directly in the timeline, write melodies, generate chord progressions, place audio regions — it's not limited to tweaking what already exists. It can build things from nothing.
+- **It creates, not just edits.** WhyCremisi has full access to the piano roll. It can write complete songs from scratch — verse, chorus, bridge, every instrument, every note — directly into your DAW's timeline. It can also rewrite specific bars, add layers, adjust voicings, and iterate on its own compositions when you push back. It's not limited to tweaking what already exists. It can build entire tracks from nothing.
 - **It remembers everything.** Every parameter touch, every decision, every session. Not just this session — every session. It knows your history and learns your taste.
 - **It has a personality.** WhyCremisi isn't a search bar. It's a collaborator. It thinks, it replies, it explains its reasoning, it makes suggestions. It pushes back when something doesn't make sense. It has a face that shows you how it feels.
 - **It's always in the room with you.** Not an external app, not a chatbot tab. It lives inside your DAW, on the master channel, watching and listening to everything that happens in the session.
@@ -141,6 +141,32 @@ WhyCremisi doesn't just call an LLM and paste the response. It runs a **complete
 Imagine asking your DAW: *"Search for how Chris Lord-Alge sets up his SSL bus compressor, then apply those settings to my master chain."* WhyCremisi searches the web, reads the result, finds the closest parameters in your loaded plugins, and applies them. Without leaving the DAW. Without switching tabs. Without touching a single knob.
 
 This is not a plugin that wraps an AI. This is an AI agent that happens to live inside a plugin.
+
+---
+
+## Compatibility — from old sessions to the newest SDK
+
+WhyCremisi is built to work everywhere, from day one and into the future.
+
+**VST3 SDK extension system**
+
+The VST3 SDK ships with an extension architecture that allows plugins to expose capabilities beyond the standard parameter interface — note expression, MIDI 2.0, MPE, extended process context, inter-plugin communication. WhyCremisi is designed to be compatible with this extension system, meaning as DAWs and plugins adopt newer SDK features, WhyCremisi can leverage them to go even deeper: richer MIDI data, per-note parameter control, tighter host integration.
+
+The extension system also makes WhyCremisi itself extensible. Third-party developers can build on top of the bridge — new AI providers, new DAW integrations, new widget types — without forking the core.
+
+**Backward compatibility**
+
+At the same time: if you're on an older DAW version, an older plugin format, or a host that doesn't support newer SDK features, WhyCremisi still works. The core mechanism — VST3 index-based parameter scanning — has been stable since VST3's initial release. Everything built on top of it degrades gracefully.
+
+| Environment | Support |
+|---|---|
+| Modern DAW (Logic 11, Ableton 12, Cubase 13+) | ✅ Full — SDK extensions, extended context |
+| Older DAW (Logic 10.7, Ableton 11, Cubase 12) | ✅ Full — core parameter bridge, all features |
+| Legacy sessions / older plugin versions | ✅ Read + write still works via index scanning |
+| AU (macOS only) | ✅ Same bridge, different plugin format |
+| Standalone mode | ✅ No DAW needed, bridge runs independently |
+
+The newest SDK makes it more powerful. Older environments make it no less functional.
 
 ---
 
@@ -269,7 +295,22 @@ WhyCremisi doesn't have a list of supported commands. It has a brain, a memory, 
 ```
 → Creates the audio or MIDI region in the timeline, positions it precisely, automates the parameters to build the tension.
 
-The creativity has no ceiling. If a human engineer or producer could describe the move in words, WhyCremisi can attempt it — in knobs, in regions, in melodies, in the timeline.
+```
+"Write me a full song — verse, pre-chorus, chorus, bridge. Dark pop, 128 BPM, key of A minor."
+```
+→ WhyCremisi opens the piano roll and composes the entire arrangement. Every part. Every instrument. Every note velocity and length. A complete song structure, written directly into your DAW's timeline — without you touching a single key.
+
+```
+"Take what you just wrote and make the chorus more emotional — add a string layer and open up the harmony"
+```
+→ Goes back into the piano roll, adds a new MIDI track, writes the string part, adjusts the chord voicings in the existing regions. It remembers exactly what it wrote and why.
+
+```
+"The verse melody is too predictable. Rewrite bars 5 to 8 and add some unexpected intervals"
+```
+→ Selects the specific region, rewrites only those bars, keeps the rest intact.
+
+The creativity has no ceiling. If a human composer, engineer or producer could describe the move in words, WhyCremisi can attempt it — in knobs, in regions, in melodies, in the piano roll, in the full arrangement.
 
 ---
 
