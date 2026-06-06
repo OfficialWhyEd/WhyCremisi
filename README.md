@@ -153,6 +153,44 @@ This works **offline** with Ollama. No API key, no cloud, no latency.
 
 ---
 
+## There are no limits to what you can ask
+
+WhyCremisi doesn't have a list of supported commands. It has a brain, a memory, and a personality. You can ask it anything a world-class audio engineer would know — and it will try to make it happen, parameter by parameter, in your actual session.
+
+```
+"Mix this track the way Chris Lord-Alge would"
+```
+→ Aggressive parallel compression on the drums, mid-forward guitars, punchy low end — CLA's signature applied to your session's plugins.
+
+```
+"Master this like Stefano Pretolesi"
+```
+→ Clean limiting, controlled low end, that Italian hi-fi warmth. Applied to whatever's on your master chain.
+
+```
+"Check the phases across all tracks — fix anything that's cancelling"
+```
+→ WhyCremisi analyzes polarity relationships between plugins and tracks. Flags and corrects phase cancellations before they kill your low end.
+
+```
+"Something feels out of phase in the low mids"
+```
+→ It knows what phase cancellation sounds like. It checks the usual suspects — parallel processing chains, doubled signals — and tells you exactly where.
+
+```
+"What did we do in the last 3 sessions on this track?"
+```
+→ Queries `memory.json` and `events.jsonl` across sessions. Full recall of every parameter touch, every AI decision, every thing you said yes or no to.
+
+```
+"Remember: I always want the kick at -6dBFS peak. Apply this to every session."
+```
+→ Written to long-term memory. From now on, it's a rule WhyCremisi enforces automatically.
+
+The creativity has no ceiling. If a human engineer could describe the move in words, WhyCremisi can attempt it in knobs.
+
+---
+
 ## It's a conversation, not a command line
 
 WhyCremisi is not a search bar where you type exact commands. You talk to it the way you'd talk to a collaborator in the studio.
@@ -335,19 +373,19 @@ Config: `temperature 0.7`, `maxTokens 2048`, `timeout 30s`. All providers share 
 
 ---
 
-## BotFace — the mascot that reads the room
+## BotFace — personality built in
 
-The BotFace SVG mascot changes state automatically based on what's happening on the wire:
+WhyCremisi isn't a toolbar with an LLM behind it. It has a face, emotional states, and a voice. BotFace is the animated SVG mascot living inside the plugin UI — and it reacts to everything happening in the session in real time.
 
-| Bridge event | BotFace state |
+| What's happening | BotFace state |
 |---|---|
-| `ai.prompt` sent | `thinking` |
-| `ai.stream` chunk received | `typing` |
-| `ai.response` complete | `success` → `idle` after 2s |
-| `plugin.error` | `error` → `idle` after 3s |
-| Idle | `idle` |
+| You sent a prompt | `thinking` — processing your request |
+| AI is streaming a response | `typing` — word by word |
+| Response complete | `success` → back to `idle` after 2s |
+| Something went wrong | `error` → recovers to `idle` after 3s |
+| Waiting for you | `idle` |
 
-9 emotional states total, animated with framer-motion. The mascot is not decorative — it's the real-time status indicator of everything happening between the plugin, the AI provider, and the DAW.
+9 emotional states total, animated with framer-motion. It's not decorative — it's a live status indicator that makes the AI feel present, not just functional. When WhyCremisi is thinking about your mix, you see it think. When it's done, it settles. It feels alive because it is, in the only way software can be.
 
 ---
 
