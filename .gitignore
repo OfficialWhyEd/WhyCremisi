@@ -44,3 +44,5 @@ temp/
 
 # LLM Wiki (local only)
 OpenClaw-VST-Wiki/
+node_modules/
+Research/logo/node_modules/
