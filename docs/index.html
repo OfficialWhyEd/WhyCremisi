@@ -12,19 +12,21 @@
   <link rel="icon" href="logo.png" />
   <link rel="preconnect" href="https://api.fontshare.com" />
   <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #070508;
-      --surface:  #0d0a0f;
-      --border:   rgba(180,20,60,0.18);
-      --crimson:  #b4143c;
-      --crimson2: #d0194a;
-      --text:     #f0eef2;
-      --muted:    #6b6070;
-      --sub:      #9d8fa6;
-      --mono:     'SF Mono', 'Fira Code', monospace;
+      --bg:      #070508;
+      --surface: #0d0a0f;
+      --border:  rgba(180,20,60,0.16);
+      --crimson: #b4143c;
+      --crim2:   #d0194a;
+      --text:    #f0eef2;
+      --dim:     #6b6070;
+      --sub:     #9d8fa6;
+      --mono:    'JetBrains Mono', monospace;
     }
 
     html { scroll-behavior: smooth; }
@@ -37,95 +39,157 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* ─── NAV ─────────────────────────────────────── */
+    /* ── Grain overlay (portfolio technique) ─────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      z-index: 9000; pointer-events: none;
+      opacity: 0.032;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px 256px;
+    }
+
+    /* ── NAV ─────────────────────────────────────── */
     nav {
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
       display: flex; align-items: center; justify-content: space-between;
       padding: 1.25rem 3rem;
-      background: rgba(7,5,8,0.85);
-      backdrop-filter: blur(16px);
+      background: rgba(7,5,8,0.8);
+      backdrop-filter: blur(20px);
       border-bottom: 1px solid var(--border);
     }
     .nav-logo {
       display: flex; align-items: center; gap: .75rem;
-      font-size: 1.05rem; font-weight: 700; letter-spacing: -.02em;
+      font-size: 1rem; font-weight: 700; letter-spacing: -.02em;
       color: var(--text); text-decoration: none;
     }
-    .nav-logo img { height: 28px; }
+    .nav-logo img { height: 26px; }
     .nav-links { display: flex; align-items: center; gap: 1rem; }
     .nav-link {
-      font-size: .85rem; font-weight: 500; color: var(--sub);
-      text-decoration: none; transition: color .2s;
+      font-family: var(--mono); font-size: .72rem;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--dim); text-decoration: none; transition: color .2s;
     }
     .nav-link:hover { color: var(--text); }
     .btn-star {
       display: inline-flex; align-items: center; gap: .4rem;
-      font-family: inherit; font-size: .85rem; font-weight: 600;
+      font-family: 'Satoshi', sans-serif; font-size: .85rem; font-weight: 700;
       padding: .5rem 1.1rem; border-radius: 6px;
       background: var(--crimson); color: #fff; border: none;
       cursor: pointer; text-decoration: none;
       transition: background .2s, transform .1s;
     }
-    .btn-star:hover { background: var(--crimson2); }
+    .btn-star:hover { background: var(--crim2); }
     .btn-star:active { transform: scale(.98); }
 
-    /* ─── HERO ────────────────────────────────────── */
+    /* ── HERO ────────────────────────────────────── */
     .hero {
       min-height: 100dvh;
       display: grid;
       grid-template-columns: 1fr 1fr;
       align-items: center;
-      padding: 7rem 3rem 4rem;
+      padding: 8rem 3rem 3rem;
       gap: 4rem;
       position: relative;
       overflow: hidden;
     }
-    .hero::before {
-      content: '';
-      position: absolute; top: -20%; right: -10%;
-      width: 600px; height: 600px;
-      background: radial-gradient(circle, rgba(180,20,60,.18) 0%, transparent 70%);
-      pointer-events: none;
-    }
-    .hero-text { max-width: 580px; }
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: .5rem;
-      font-size: .75rem; font-weight: 600; letter-spacing: .08em;
-      text-transform: uppercase; color: var(--crimson);
-      border: 1px solid var(--border); border-radius: 100px;
-      padding: .35rem 1rem; margin-bottom: 2rem;
-    }
-    .hero-badge span { width: 6px; height: 6px; border-radius: 50%; background: var(--crimson); animation: pulse 2s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    h1 {
-      font-size: clamp(2.8rem, 5vw, 4.5rem);
+    /* Background beams */
+    .beams {
+      position: absolute; inset: 0;
+      pointer-events: none; z-index: 0;
+      overflow: hidden;
+    }
+    .beams svg { width: 100%; height: 100%; position: absolute; inset: 0; }
+
+    /* Entrance animations */
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(28px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    .enter-1 { animation: slideUp .9s cubic-bezier(0.16,1,0.3,1) .05s both; }
+    .enter-2 { animation: slideUp .9s cubic-bezier(0.16,1,0.3,1) .2s both; }
+    .enter-3 { animation: slideUp .9s cubic-bezier(0.16,1,0.3,1) .35s both; }
+    .enter-4 { animation: slideUp .9s cubic-bezier(0.16,1,0.3,1) .5s both; }
+    .enter-5 { animation: fadeIn  .9s cubic-bezier(0.16,1,0.3,1) .65s both; }
+
+    .hero-text {
+      max-width: 600px; position: relative; z-index: 2;
+      will-change: transform;
+    }
+
+    /* Eyebrow */
+    .eyebrow {
+      font-family: var(--mono); font-size: .62rem;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: var(--dim); display: flex; gap: 2rem;
+      margin-bottom: 2.25rem; flex-wrap: wrap;
+    }
+    .eyebrow .signal { color: var(--crimson); }
+    .eyebrow .dot-live {
+      display: inline-block; width: 5px; height: 5px;
+      border-radius: 50%; background: #28c840;
+      margin-right: .4em; animation: blink-live 2.5s ease-in-out infinite;
+    }
+    @keyframes blink-live { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* Headline */
+    .hero-h1 {
+      font-size: clamp(3.2rem, 6vw, 5.5rem);
       font-weight: 900;
       line-height: 1.0;
       letter-spacing: -.04em;
-      margin-bottom: 1.5rem;
+      margin-bottom: .15em;
     }
-    h1 em { font-style: normal; color: var(--crimson); }
+    .hero-h1-b {
+      font-size: clamp(2.4rem, 4.5vw, 4rem);
+      font-weight: 700;
+      line-height: 1.0;
+      letter-spacing: -.04em;
+      color: var(--sub);
+      margin-bottom: 1.75rem;
+    }
+    .hero-h1-b em {
+      font-style: italic;
+      color: var(--crimson);
+    }
 
     .hero-sub {
-      font-size: 1.1rem; line-height: 1.7; color: var(--sub);
+      font-size: 1rem; line-height: 1.75; color: var(--sub);
       max-width: 480px; margin-bottom: 2.5rem;
+      border-left: 1px solid var(--border); padding-left: 1.25rem;
     }
     .hero-ctas { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+
+    /* Coord bar */
+    .coord-bar {
+      position: absolute; bottom: 2.5rem; left: 3rem; right: 3rem;
+      display: flex; justify-content: space-between; align-items: center;
+      z-index: 2;
+    }
+    .coord {
+      font-family: var(--mono); font-size: .58rem;
+      letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
+    }
+    .coord .signal { color: var(--crimson); }
+
     .btn-primary {
       display: inline-flex; align-items: center; gap: .5rem;
-      font-family: inherit; font-size: .95rem; font-weight: 700;
+      font-family: 'Satoshi',sans-serif; font-size: .95rem; font-weight: 700;
       padding: .75rem 1.75rem; border-radius: 8px;
       background: var(--crimson); color: #fff; border: none;
       cursor: pointer; text-decoration: none;
-      transition: background .2s, transform .15s;
-      box-shadow: 0 0 0 0 rgba(180,20,60,0);
+      transition: background .2s, transform .15s, box-shadow .2s;
     }
-    .btn-primary:hover { background: var(--crimson2); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(180,20,60,.3); }
-    .btn-primary:active { transform: translateY(0) scale(.98); }
+    .btn-primary:hover { background: var(--crim2); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(180,20,60,.3); }
+    .btn-primary:active { transform: scale(.98); }
     .btn-ghost {
       display: inline-flex; align-items: center; gap: .5rem;
-      font-family: inherit; font-size: .95rem; font-weight: 600;
+      font-family: 'Satoshi',sans-serif; font-size: .95rem; font-weight: 600;
       padding: .75rem 1.5rem; border-radius: 8px;
       background: transparent; color: var(--sub);
       border: 1px solid rgba(255,255,255,.1);
@@ -134,59 +198,64 @@
     }
     .btn-ghost:hover { border-color: rgba(255,255,255,.25); color: var(--text); }
 
-    /* hero right: mascot + terminal */
-    .hero-visual { position: relative; }
+    /* Hero right */
+    .hero-visual {
+      position: relative; z-index: 2;
+      will-change: transform;
+    }
     .mascot-wrap {
-      position: relative; display: flex; justify-content: center; align-items: center;
-      margin-bottom: 2rem;
+      display: flex; justify-content: center; align-items: center;
+      position: relative; margin-bottom: 2rem;
     }
     .mascot-glow {
       position: absolute;
-      width: 220px; height: 220px;
-      background: radial-gradient(circle, rgba(180,20,60,.35) 0%, transparent 70%);
-      animation: breathe 4s ease-in-out infinite;
+      width: 240px; height: 240px;
+      background: radial-gradient(circle, rgba(180,20,60,.3) 0%, transparent 70%);
+      animation: breathe 5s ease-in-out infinite;
     }
-    @keyframes breathe { 0%,100%{transform:scale(1);opacity:.7} 50%{transform:scale(1.15);opacity:1} }
-    .mascot-img { height: 120px; position: relative; z-index: 1; filter: drop-shadow(0 0 24px rgba(180,20,60,.5)); }
+    @keyframes breathe { 0%,100%{transform:scale(1);opacity:.6} 50%{transform:scale(1.2);opacity:1} }
+    .mascot-img {
+      height: 110px; position: relative; z-index: 1;
+      filter: drop-shadow(0 0 20px rgba(180,20,60,.45));
+      will-change: transform;
+    }
 
     /* Terminal */
     .terminal {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
-      font-family: var(--mono);
-      font-size: .82rem;
+      border-radius: 14px; overflow: hidden;
+      font-family: var(--mono); font-size: .8rem;
+      box-shadow: 0 24px 48px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04);
     }
     .terminal-bar {
       display: flex; align-items: center; gap: .5rem;
-      padding: .75rem 1rem;
-      background: rgba(255,255,255,.03);
+      padding: .7rem 1rem;
+      background: rgba(255,255,255,.025);
       border-bottom: 1px solid var(--border);
     }
     .dot { width: 10px; height: 10px; border-radius: 50%; }
-    .dot-r { background: #ff5f57; }
-    .dot-y { background: #febc2e; }
-    .dot-g { background: #28c840; }
-    .terminal-label { font-family: 'Satoshi',sans-serif; font-size:.75rem; color: var(--muted); margin-left: auto; }
-    .terminal-body { padding: 1.25rem 1.5rem; line-height: 1.8; }
+    .dot-r{background:#ff5f57;} .dot-y{background:#febc2e;} .dot-g{background:#28c840;}
+    .terminal-title { font-family: 'Satoshi',sans-serif; font-size:.72rem; color: var(--dim); margin-left: auto; letter-spacing:.04em; }
+    .terminal-body { padding: 1.25rem 1.5rem; line-height: 1.85; }
     .t-user { color: var(--crimson); }
     .t-ai { color: #c8b8d4; }
-    .t-dim { color: var(--muted); }
-    .t-line { margin-bottom: .15rem; }
+    .t-dim { color: var(--dim); }
+    .t-line { margin-bottom: .1rem; }
     .cursor {
-      display: inline-block; width: 8px; height: 1em;
+      display: inline-block; width: 7px; height: 1em;
       background: var(--crimson); vertical-align: text-bottom;
-      animation: blink 1.1s step-end infinite; margin-left: 2px;
+      animation: blink 1.1s step-end infinite; margin-left: 1px;
     }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    /* ─── SECTION BASE ────────────────────────────── */
+    /* ── SECTION BASE ────────────────────────────── */
     section { padding: 7rem 3rem; }
     .section-label {
-      font-size: .72rem; font-weight: 700; letter-spacing: .12em;
-      text-transform: uppercase; color: var(--crimson);
-      margin-bottom: 1rem;
+      font-family: var(--mono); font-size: .65rem; font-weight: 500;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: var(--crimson); margin-bottom: 1rem;
     }
     h2 {
       font-size: clamp(2rem, 4vw, 3.2rem);
@@ -194,87 +263,80 @@
       line-height: 1.05; margin-bottom: 1.25rem;
     }
     h2 em { font-style: normal; color: var(--crimson); }
-    .lead { font-size: 1.05rem; line-height: 1.75; color: var(--sub); max-width: 600px; }
-
-    /* ─── DIVIDER ─────────────────────────────────── */
+    .lead { font-size: 1rem; line-height: 1.8; color: var(--sub); max-width: 580px; }
     hr { border: none; border-top: 1px solid var(--border); }
 
-    /* ─── WHAT YOU CAN DO ─────────────────────────── */
-    .prompts-section { padding: 7rem 3rem; }
+    /* ── SCREENSHOT ──────────────────────────────── */
+    .screenshot-wrap {
+      margin: 0 3rem 5rem;
+      border: 1px solid var(--border);
+      border-radius: 20px; overflow: hidden;
+      box-shadow: 0 40px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(180,20,60,.08);
+    }
+    .screenshot-wrap img { width: 100%; display: block; }
+
+    /* ── PROMPTS ─────────────────────────────────── */
     .prompts-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 1.5rem;
-      margin-top: 4rem;
+      gap: 1.25rem; margin-top: 4rem;
     }
     .prompt-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 1.75rem;
-      position: relative;
-      overflow: hidden;
+      border-radius: 14px; padding: 1.75rem;
+      position: relative; overflow: hidden;
       transition: border-color .25s, transform .2s;
     }
-    .prompt-card:hover { border-color: rgba(180,20,60,.45); transform: translateY(-2px); }
+    .prompt-card:hover { border-color: rgba(180,20,60,.4); transform: translateY(-2px); }
     .prompt-card::before {
       content: '';
       position: absolute; top: 0; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(180,20,60,.4), transparent);
+      background: linear-gradient(90deg, transparent, rgba(180,20,60,.35), transparent);
     }
     .prompt-category {
-      font-size: .7rem; font-weight: 700; letter-spacing: .1em;
-      text-transform: uppercase; color: var(--crimson);
-      margin-bottom: .9rem;
+      font-family: var(--mono); font-size: .63rem; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--crimson); margin-bottom: .9rem;
     }
     .prompt-text {
-      font-family: var(--mono); font-size: .82rem;
+      font-family: var(--mono); font-size: .8rem;
       color: #e0d4e8; line-height: 1.6;
-      background: rgba(255,255,255,.04);
-      border-radius: 8px; padding: .75rem 1rem;
+      background: rgba(255,255,255,.035);
+      border-radius: 8px; padding: .7rem .9rem;
       margin-bottom: .9rem;
       border-left: 2px solid var(--crimson);
     }
     .prompt-result { font-size: .85rem; color: var(--sub); line-height: 1.65; }
     .prompt-card.wide { grid-column: span 2; }
 
-    /* ─── PHILOSOPHY ──────────────────────────────── */
+    /* ── PHILOSOPHY ──────────────────────────────── */
     .philosophy-grid {
       display: grid;
       grid-template-columns: 2fr 1fr 1fr;
-      gap: 1.5rem;
-      margin-top: 4rem;
+      gap: 1.25rem; margin-top: 4rem;
     }
     .phil-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 2rem;
+      border-radius: 14px; padding: 2rem;
       transition: border-color .25s;
     }
-    .phil-card:hover { border-color: rgba(180,20,60,.4); }
+    .phil-card:hover { border-color: rgba(180,20,60,.35); }
     .phil-card.tall { grid-row: span 2; }
     .phil-number {
-      font-family: var(--mono); font-size: .75rem;
+      font-family: var(--mono); font-size: .62rem; letter-spacing: .08em;
       color: var(--crimson); margin-bottom: 1.25rem;
-      letter-spacing: .05em;
     }
-    .phil-card h3 {
-      font-size: 1.2rem; font-weight: 700; letter-spacing: -.02em;
-      margin-bottom: .75rem;
-    }
-    .phil-card p { font-size: .9rem; color: var(--sub); line-height: 1.7; }
+    .phil-card h3 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; margin-bottom: .7rem; }
+    .phil-card p { font-size: .88rem; color: var(--sub); line-height: 1.75; }
 
-    /* ─── FEATURES TABLE ──────────────────────────── */
-    .features-section { padding: 7rem 3rem; }
+    /* ── FEATURES ────────────────────────────────── */
     .features-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0;
-      margin-top: 4rem;
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 0; margin-top: 4rem;
       border: 1px solid var(--border);
-      border-radius: 16px;
-      overflow: hidden;
+      border-radius: 16px; overflow: hidden;
     }
     .feat {
       padding: 1.75rem;
@@ -282,63 +344,85 @@
       border-bottom: 1px solid var(--border);
       transition: background .2s;
     }
-    .feat:hover { background: rgba(180,20,60,.05); }
+    .feat:hover { background: rgba(180,20,60,.04); }
     .feat:nth-child(3n) { border-right: none; }
-    .feat:nth-child(n+7) { border-bottom: none; }
+    .feat:nth-last-child(-n+3) { border-bottom: none; }
     .feat-icon {
-      width: 36px; height: 36px; border-radius: 8px;
-      background: rgba(180,20,60,.12); border: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 1rem; font-size: 1rem;
+      font-family: var(--mono); font-size: .62rem; letter-spacing: .08em;
+      color: var(--crimson); margin-bottom: .85rem;
+      text-transform: uppercase;
     }
-    .feat h4 { font-size: .95rem; font-weight: 700; margin-bottom: .4rem; letter-spacing: -.01em; }
-    .feat p { font-size: .83rem; color: var(--sub); line-height: 1.65; }
+    .feat h4 { font-size: .92rem; font-weight: 700; margin-bottom: .35rem; letter-spacing: -.01em; }
+    .feat p { font-size: .82rem; color: var(--sub); line-height: 1.65; }
+    code { font-family: var(--mono); font-size: .85em; color: var(--sub); }
 
-    /* ─── PLUGIN STRIP ────────────────────────────── */
-    .plugins-section { padding: 5rem 3rem; overflow: hidden; }
+    /* ── PLUGIN MARQUEE ──────────────────────────── */
+    .marquee-wrap { overflow: hidden; position: relative; margin-top: 2.5rem; }
+    .marquee-wrap::before, .marquee-wrap::after {
+      content: ''; position: absolute; top: 0; bottom: 0;
+      width: 5rem; z-index: 2; pointer-events: none;
+    }
+    .marquee-wrap::before { left: 0; background: linear-gradient(to right, var(--bg), transparent); }
+    .marquee-wrap::after  { right: 0; background: linear-gradient(to left, var(--bg), transparent); }
     .plugins-track {
-      display: flex; gap: 1rem; margin-top: 2rem;
-      animation: marquee 28s linear infinite;
+      display: flex; gap: 1rem;
+      animation: marquee 32s linear infinite;
       width: max-content;
     }
     .plugins-track:hover { animation-play-state: paused; }
     @keyframes marquee { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
     .plugin-badge {
-      display: flex; align-items: center; gap: .6rem;
-      padding: .55rem 1.1rem;
+      display: flex; align-items: center; gap: .55rem;
+      padding: .5rem 1.1rem;
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 100px; font-size: .82rem; font-weight: 600;
+      border-radius: 100px; font-family: 'Satoshi',sans-serif;
+      font-size: .8rem; font-weight: 600;
       white-space: nowrap; color: var(--sub);
       transition: border-color .2s, color .2s;
     }
     .plugin-badge:hover { border-color: rgba(180,20,60,.4); color: var(--text); }
-    .plugin-dot { width: 7px; height: 7px; border-radius: 50%; }
-    .dot-live { background: #28c840; }
-    .dot-wip  { background: #febc2e; }
-    .dot-q    { background: var(--muted); }
+    .plugin-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .dot-live2 { background: #28c840; }
+    .dot-wip   { background: #febc2e; }
+    .dot-q     { background: var(--dim); }
 
-    /* ─── QUOTE ───────────────────────────────────── */
-    .quote-section {
-      padding: 8rem 3rem; text-align: center;
-      background: radial-gradient(ellipse at center, rgba(180,20,60,.08) 0%, transparent 70%);
+    /* ── MANIFESTO ───────────────────────────────── */
+    .manifesto-section {
+      padding: 8rem 3rem;
+      position: relative; overflow: hidden;
     }
-    .quote-mark { font-size: 5rem; line-height: 1; color: var(--border); font-family: Georgia,serif; }
-    blockquote {
-      font-size: clamp(1.5rem, 3.5vw, 2.5rem);
-      font-weight: 700; letter-spacing: -.03em;
-      line-height: 1.25; max-width: 800px; margin: 0 auto 1.5rem;
+    .manifesto-section::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 60%, rgba(180,20,60,.07) 0%, transparent 65%);
+      pointer-events: none;
     }
-    blockquote em { font-style: normal; color: var(--crimson); }
-    .quote-attr { font-size: .9rem; color: var(--muted); }
+    .manifesto-inner { max-width: 860px; margin: 0 auto; }
+    .manifesto-label {
+      font-family: var(--mono); font-size: .62rem;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: var(--crimson); margin-bottom: 2.5rem; display: block;
+    }
+    .manifesto-text {
+      font-size: clamp(1.6rem, 3.5vw, 2.6rem);
+      font-weight: 700; line-height: 1.3; letter-spacing: -.03em;
+      color: var(--text); margin-bottom: 2.5rem;
+    }
+    .manifesto-text em { font-style: normal; color: var(--sub); font-weight: 400; }
+    .manifesto-sub {
+      font-size: 1rem; color: var(--sub); line-height: 1.8;
+      max-width: 580px; margin-bottom: 3rem;
+      border-left: 2px solid var(--border); padding-left: 1.25rem;
+    }
 
-    /* ─── CTA ─────────────────────────────────────── */
+    /* ── CTA ─────────────────────────────────────── */
     .cta-section {
-      padding: 7rem 3rem;
+      padding: 6rem 3rem;
       display: grid; grid-template-columns: 1fr 1fr;
       gap: 6rem; align-items: center;
     }
     .cta-text h2 { margin-bottom: 1rem; }
-    .cta-text p { font-size: 1rem; color: var(--sub); line-height: 1.75; margin-bottom: 2rem; }
+    .cta-text .lead { margin-bottom: 2rem; }
     .cta-buttons { display: flex; gap: 1rem; flex-wrap: wrap; }
     .cta-stats { display: flex; flex-direction: column; gap: 2rem; }
     .stat-item { border-top: 1px solid var(--border); padding-top: 1.5rem; }
@@ -347,23 +431,36 @@
       color: var(--text); line-height: 1;
     }
     .stat-num span { color: var(--crimson); }
-    .stat-label { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+    .stat-label {
+      font-family: var(--mono); font-size: .7rem;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--dim); margin-top: .35rem;
+    }
 
-    /* ─── FOOTER ──────────────────────────────────── */
+    /* ── FOOTER ──────────────────────────────────── */
     footer {
       padding: 2.5rem 3rem;
       border-top: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between;
     }
-    .footer-left { font-size: .82rem; color: var(--muted); }
+    .footer-left {
+      font-family: var(--mono); font-size: .62rem;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--dim);
+    }
+    .footer-left a { color: var(--crimson); text-decoration: none; }
     .footer-links { display: flex; gap: 1.5rem; }
-    .footer-link { font-size: .82rem; color: var(--muted); text-decoration: none; transition: color .2s; }
+    .footer-link {
+      font-family: var(--mono); font-size: .62rem;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--dim); text-decoration: none; transition: color .2s;
+    }
     .footer-link:hover { color: var(--text); }
 
-    /* ─── REVEAL ──────────────────────────────────── */
+    /* ── SCROLL REVEAL ───────────────────────────── */
     .reveal {
-      opacity: 0; transform: translateY(24px);
-      transition: opacity .65s cubic-bezier(0.16,1,0.3,1), transform .65s cubic-bezier(0.16,1,0.3,1);
+      opacity: 0; transform: translateY(22px);
+      transition: opacity .7s cubic-bezier(0.16,1,0.3,1), transform .7s cubic-bezier(0.16,1,0.3,1);
     }
     .reveal.visible { opacity: 1; transform: translateY(0); }
     .reveal-d1 { transition-delay: .1s; }
@@ -371,40 +468,31 @@
     .reveal-d3 { transition-delay: .3s; }
     .reveal-d4 { transition-delay: .4s; }
 
-    /* ─── SCREENSHOT ──────────────────────────────── */
-    .screenshot-wrap {
-      margin: 5rem 3rem;
-      border: 1px solid var(--border);
-      border-radius: 20px; overflow: hidden;
-      box-shadow: 0 40px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(180,20,60,.1);
-    }
-    .screenshot-wrap img { width: 100%; display: block; }
-
-    /* ─── MOBILE ──────────────────────────────────── */
+    /* ── MOBILE ──────────────────────────────────── */
     @media (max-width: 768px) {
       nav { padding: 1rem 1.25rem; }
-      .nav-links { gap: .6rem; }
-      .hero, .cta-section {
-        grid-template-columns: 1fr; padding: 6rem 1.5rem 3rem;
-        gap: 2.5rem;
-      }
+      .nav-links .nav-link { display: none; }
+      .hero, .cta-section { grid-template-columns: 1fr; padding: 6rem 1.5rem 4rem; gap: 3rem; }
       .hero-visual { order: -1; }
-      section, .prompts-section, .features-section, .plugins-section { padding: 5rem 1.5rem; }
+      .coord-bar { left: 1.5rem; right: 1.5rem; }
+      section { padding: 5rem 1.5rem; }
+      .screenshot-wrap { margin: 0 1.5rem 3rem; border-radius: 12px; }
       .prompts-grid { grid-template-columns: 1fr; }
       .prompt-card.wide { grid-column: span 1; }
       .philosophy-grid { grid-template-columns: 1fr; }
       .phil-card.tall { grid-row: span 1; }
-      .features-grid { grid-template-columns: 1fr; }
-      .feat:nth-child(3n) { border-right: 1px solid var(--border); }
+      .features-grid { grid-template-columns: 1fr; border-radius: 12px; }
       .feat:nth-child(n) { border-right: none; border-bottom: 1px solid var(--border); }
       .feat:last-child { border-bottom: none; }
-      .screenshot-wrap { margin: 3rem 1.5rem; border-radius: 12px; }
-      .quote-section { padding: 5rem 1.5rem; }
+      .manifesto-section { padding: 5rem 1.5rem; }
+      .cta-section { padding: 4rem 1.5rem; }
       footer { flex-direction: column; gap: 1.25rem; text-align: center; padding: 2rem 1.5rem; }
     }
   </style>
 </head>
 <body>
+
+<!-- Cursor spotlight -->
 
 <!-- NAV -->
 <nav>
@@ -417,7 +505,7 @@
     <a class="nav-link" href="https://instagram.com/whyed.music">Instagram</a>
     <a class="nav-link" href="https://github.com/OfficialWhyEd/WhyCremisi">Docs</a>
     <a class="btn-star" href="https://github.com/OfficialWhyEd/WhyCremisi">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
       Star on GitHub
     </a>
   </div>
@@ -425,65 +513,116 @@
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-text">
-    <div class="hero-badge reveal"><span></span> Live &amp; in development</div>
-    <h1 class="reveal reveal-d1">The AI that <em>lives</em><br/>inside your DAW</h1>
-    <p class="hero-sub reveal reveal-d2">
-      Mix like Chris Lord-Alge. Master like Pretolesi. Create full songs from scratch. Fix phase cancellation. Control every knob of every plugin — through natural language. From a single VST3 slot on your master channel.
+
+  <!-- Background beams -->
+  <div class="beams" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="bg0" gradientUnits="userSpaceOnUse" x1="500" y1="800" x2="-200" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0)"/><stop offset="100%" stop-color="rgba(255,255,255,0.016)"/></linearGradient>
+        <linearGradient id="bg1" gradientUnits="userSpaceOnUse" x1="500" y1="800" x2="300" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0)"/><stop offset="100%" stop-color="rgba(255,255,255,0.016)"/></linearGradient>
+        <linearGradient id="bg2" gradientUnits="userSpaceOnUse" x1="500" y1="800" x2="600" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0)"/><stop offset="100%" stop-color="rgba(255,255,255,0.016)"/></linearGradient>
+        <linearGradient id="bg3" gradientUnits="userSpaceOnUse" x1="500" y1="800" x2="900" y2="0"><stop offset="0%" stop-color="rgba(255,255,255,0)"/><stop offset="100%" stop-color="rgba(255,255,255,0.016)"/></linearGradient>
+        <linearGradient id="anim0" gradientUnits="userSpaceOnUse" x1="500" y1="800" x2="-200" y2="0"><stop offset="0%" stop-color="rgba(180,20,60,0)"/><stop offset="50%" stop-color="rgba(180,20,60,0.18)"/><stop offset="100%" stop-color="rgba(240,237,232,0)"/></linearGradient>
+        <linearGradient id="anim1" gradientUnits="userSpaceOnUse" x1="500" y1="800" x2="300" y2="0"><stop offset="0%" stop-color="rgba(180,20,60,0)"/><stop offset="50%" stop-color="rgba(180,20,60,0.18)"/><stop offset="100%" stop-color="rgba(240,237,232,0)"/></linearGradient>
+        <linearGradient id="anim2" gradientUnits="userSpaceOnUse" x1="500" y1="800" x2="600" y2="0"><stop offset="0%" stop-color="rgba(180,20,60,0)"/><stop offset="50%" stop-color="rgba(180,20,60,0.18)"/><stop offset="100%" stop-color="rgba(240,237,232,0)"/></linearGradient>
+        <linearGradient id="anim3" gradientUnits="userSpaceOnUse" x1="500" y1="800" x2="900" y2="0"><stop offset="0%" stop-color="rgba(180,20,60,0)"/><stop offset="50%" stop-color="rgba(180,20,60,0.18)"/><stop offset="100%" stop-color="rgba(240,237,232,0)"/></linearGradient>
+      </defs>
+      <path d="M500,800 L-200,0" stroke="url(#bg0)" stroke-width="0.6" fill="none"/>
+      <path d="M500,800 L300,0"  stroke="url(#bg1)" stroke-width="0.6" fill="none"/>
+      <path d="M500,800 L600,0"  stroke="url(#bg2)" stroke-width="0.6" fill="none"/>
+      <path d="M500,800 L900,0"  stroke="url(#bg3)" stroke-width="0.6" fill="none"/>
+      <path d="M500,800 L-200,0" stroke="url(#anim0)" stroke-width="1.2" fill="none" stroke-dasharray="260 1000" stroke-dashoffset="1000" style="animation:beam-travel 6s 0s ease-in-out infinite"/>
+      <path d="M500,800 L300,0"  stroke="url(#anim1)" stroke-width="1.2" fill="none" stroke-dasharray="260 1000" stroke-dashoffset="1000" style="animation:beam-travel 6s 1.4s ease-in-out infinite"/>
+      <path d="M500,800 L600,0"  stroke="url(#anim2)" stroke-width="1.2" fill="none" stroke-dasharray="260 1000" stroke-dashoffset="1000" style="animation:beam-travel 6s 2.8s ease-in-out infinite"/>
+      <path d="M500,800 L900,0"  stroke="url(#anim3)" stroke-width="1.2" fill="none" stroke-dasharray="260 1000" stroke-dashoffset="1000" style="animation:beam-travel 6s 4.2s ease-in-out infinite"/>
+    </svg>
+    <style>
+      @keyframes beam-travel {
+        0%   { stroke-dashoffset:1000; opacity:0; }
+        10%  { opacity:1; }
+        70%  { stroke-dashoffset:-400; opacity:.8; }
+        100% { stroke-dashoffset:-800; opacity:0; }
+      }
+    </style>
+  </div>
+
+  <div class="hero-text" id="hero-text">
+    <div class="eyebrow enter-1">
+      <span><span class="dot-live" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#28c840;margin-right:.4em;animation:blink-live 2.5s ease-in-out infinite;"></span>MASTER CHANNEL · ACTIVE</span>
+      <span class="signal">// UNIVERSAL AI BRIDGE</span>
+      <span style="background:rgba(180,20,60,0.18);border:1px solid rgba(180,20,60,0.4);border-radius:3px;padding:.1em .5em;font-size:.6rem;letter-spacing:.1em;color:var(--crimson);">BETA</span>
+      <span style="margin-left:auto;">macOS · Windows · Linux · OSC :9000 · WS :8080</span>
+    </div>
+
+    <h1 class="hero-h1 enter-2">Your DAW.</h1>
+    <h1 class="hero-h1-b enter-3">Now it <em>listens.</em></h1>
+
+    <p class="hero-sub enter-4">
+      Mix like Chris Lord-Alge. Master like Pretolesi. Compose full songs from scratch. Fix phase cancellations. Control every plugin — native or third-party — through natural language. From a single slot on your master channel.
     </p>
-    <div class="hero-ctas reveal reveal-d3">
+
+    <div class="hero-ctas enter-5">
       <a class="btn-primary" href="https://github.com/OfficialWhyEd/WhyCremisi">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        Star the repo
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Star on GitHub
       </a>
       <a class="btn-ghost" href="https://discord.gg/cQQckfnN">Join Discord</a>
+      <a class="btn-ghost" href="https://instagram.com/whyed.music">Instagram</a>
     </div>
   </div>
 
-  <div class="hero-visual reveal reveal-d2">
+  <div class="hero-visual enter-3" id="hero-visual">
     <div class="mascot-wrap">
       <div class="mascot-glow"></div>
-      <img class="mascot-img" src="logo.png" alt="BotFace mascot" />
+      <img class="mascot-img" id="mascot" src="logo.png" alt="BotFace" />
     </div>
     <div class="terminal">
       <div class="terminal-bar">
         <div class="dot dot-r"></div>
         <div class="dot dot-y"></div>
         <div class="dot dot-g"></div>
-        <span class="terminal-label">WhyCremisi — master channel</span>
+        <span class="terminal-title">WhyCremisi · master channel</span>
       </div>
-      <div class="terminal-body" id="terminal-body">
-        <div class="t-line t-dim"># session active · 6 plugins loaded · Ollama online</div>
-        <div class="t-line" style="height:.8rem"></div>
+      <div class="terminal-body">
+        <div class="t-line t-dim"># session: 6 plugins loaded · Ollama online · llama3.2</div>
+        <div class="t-line" style="height:.7rem"></div>
         <div class="t-line"><span class="t-user">you → </span>Mix this like Chris Lord-Alge</div>
-        <div class="t-line t-dim">  ↳ scanning 847 parameters across 6 plugins...</div>
-        <div class="t-line t-ai">  ↳ SSL Bus Comp: ratio 4:1, attack 10ms, release Auto</div>
-        <div class="t-line t-ai">  ↳ OTT: drive +0.8, time 36ms, upward comp engaged</div>
-        <div class="t-line t-ai">  ↳ Pro-Q 4: mid-forward shelf +1.4dB at 3.2kHz</div>
-        <div class="t-line t-dim">  ↳ 11 parameters written · logged to session</div>
-        <div class="t-line" style="height:.8rem"></div>
-        <div class="t-line"><span class="t-user">you → </span>Write a verse melody, C minor, 8 bars<span class="cursor"></span></div>
+        <div class="t-line t-dim">  scanning 847 params across 6 plugins...</div>
+        <div class="t-line t-ai">  SSL Bus Comp → ratio 4:1, attack 10ms, release Auto</div>
+        <div class="t-line t-ai">  OTT → drive +0.8, upward comp engaged</div>
+        <div class="t-line t-ai">  Pro-Q 4 → mid-forward shelf +1.4dB @ 3.2kHz</div>
+        <div class="t-line t-dim">  11 params written · logged to events.jsonl</div>
+        <div class="t-line" style="height:.7rem"></div>
+        <div class="t-line"><span class="t-user">you → </span>Write a verse, C minor, 8 bars<span class="cursor"></span></div>
       </div>
     </div>
   </div>
+
+  <!-- Coordinate bar -->
+  <div class="coord-bar">
+    <span class="coord"><span class="signal">//</span> JUCE 7 · C++17 · REACT WEBVIEW · <span class="signal">BETA</span></span>
+    <span class="coord">macOS · Windows · Linux · OLLAMA · GROQ · GEMINI · CLAUDE · OPENAI</span>
+    <span class="coord">↓ SCROLL</span>
+  </div>
+
 </section>
 
 <!-- SCREENSHOT -->
 <div class="screenshot-wrap reveal">
-  <img src="screenshot.png" alt="WhyCremisi inside the DAW" />
+  <img src="screenshot.png" alt="WhyCremisi inside the DAW" loading="lazy" />
 </div>
 
 <!-- WHAT YOU CAN DO -->
-<section class="prompts-section">
+<section>
   <p class="section-label reveal">What you can do</p>
-  <h2 class="reveal reveal-d1">No limits.<br/>If you can say it,<br/><em>it can do it.</em></h2>
-  <p class="lead reveal reveal-d2">There are no supported commands. Just describe what you want — in the language of music, emotion, and sound — and WhyCremisi figures out which knobs to move.</p>
+  <h2 class="reveal reveal-d1">No limits. If you can say it,<br/><em>it can do it.</em></h2>
+  <p class="lead reveal reveal-d2">There are no supported commands. Just describe what you want — in the language of music, emotion, and sound.</p>
 
   <div class="prompts-grid">
     <div class="prompt-card reveal">
       <div class="prompt-category">Mixing</div>
       <div class="prompt-text">"Mix this track the way Chris Lord-Alge would"</div>
-      <div class="prompt-result">Aggressive parallel compression on drums, mid-forward guitars, punchy low end. CLA's signature applied to your loaded plugins — parameter by parameter.</div>
+      <div class="prompt-result">Aggressive parallel compression on drums, mid-forward guitars, punchy low end. CLA's signature, applied parameter by parameter.</div>
     </div>
     <div class="prompt-card reveal reveal-d1">
       <div class="prompt-category">Mastering</div>
@@ -491,29 +630,29 @@
       <div class="prompt-result">Clean limiting, controlled low end, Italian hi-fi warmth. Applied to whatever's on your master chain right now.</div>
     </div>
     <div class="prompt-card reveal reveal-d2">
-      <div class="prompt-category">DAW Control</div>
-      <div class="prompt-text">"Mute the kick and bass — I want to hear the mids only"</div>
-      <div class="prompt-result">Mutes two tracks by name. Transport control, fader automation, solo, record — all native DAW commands.</div>
+      <div class="prompt-category">Phase & Analysis</div>
+      <div class="prompt-text">"Check phases across all tracks — fix anything that's cancelling"</div>
+      <div class="prompt-result">Analyzes polarity relationships between plugins and tracks. Flags and corrects phase cancellations before they kill your low end.</div>
     </div>
     <div class="prompt-card reveal reveal-d3">
-      <div class="prompt-category">Phase &amp; Analysis</div>
-      <div class="prompt-text">"Check phases across all tracks, fix anything that's cancelling"</div>
-      <div class="prompt-result">Analyzes polarity relationships between plugins and tracks. Flags and corrects phase cancellations before they kill your low end.</div>
+      <div class="prompt-category">DAW Control</div>
+      <div class="prompt-text">"Mute the kick and bass — I want to hear the mids only"</div>
+      <div class="prompt-result">Mutes two tracks by name. Transport control, fader automation, solo, record — all native DAW commands, no clicking.</div>
     </div>
     <div class="prompt-card reveal">
       <div class="prompt-category">Composition</div>
       <div class="prompt-text">"Write a full song — verse, chorus, bridge. Dark pop, 128 BPM, A minor"</div>
-      <div class="prompt-result">Opens the piano roll and composes the entire arrangement. Every part. Every note velocity and length. Without you touching a key.</div>
+      <div class="prompt-result">Opens the piano roll. Composes the entire arrangement. Every part, every note velocity and length — without you touching a single key.</div>
     </div>
     <div class="prompt-card reveal reveal-d1">
-      <div class="prompt-category">Memory</div>
+      <div class="prompt-category">Session Memory</div>
       <div class="prompt-text">"What did you do to the master bus 5 minutes ago?"</div>
-      <div class="prompt-result">Queries the JSONL session log. Full recall of every parameter touch, every decision — this session and every previous one.</div>
+      <div class="prompt-result">Queries the JSONL session log. Full recall of every parameter touch, every AI decision — this session and every previous one.</div>
     </div>
     <div class="prompt-card wide reveal reveal-d2">
-      <div class="prompt-category">Native plugins</div>
+      <div class="prompt-category">Native plugins — every plugin, day zero</div>
       <div class="prompt-text">"Use Logic's stock compressor on the drums, push the attack"</div>
-      <div class="prompt-result">Native DAW plugins are first-class citizens. Logic stock EQ, Ableton's built-in compressor, bundled instruments — all mapped, all controllable exactly like Serum or FabFilter Pro-Q 4. And because it reads VST3 parameter indices at runtime, any plugin released today — Serum 2, Ozone 11, Neutron 5 — works on day zero. No update required.</div>
+      <div class="prompt-result">Native DAW plugins are first-class. Logic stock EQ, Ableton's built-in compressor, any bundled instrument — all mapped identically to Serum 2 or FabFilter Pro-Q 4. And because WhyCremisi reads VST3 parameter indices at runtime, any plugin released today works immediately. No update required. No mapping file. Just load it.</div>
     </div>
   </div>
 </section>
@@ -527,31 +666,31 @@
 
   <div class="philosophy-grid">
     <div class="phil-card tall reveal">
-      <div class="phil-number">01 — ASK ANYTHING</div>
+      <div class="phil-number">01 // ASK ANYTHING</div>
       <h3>The tool speaks your language</h3>
       <p>Most audio software asks you to learn its language — menu structures, preset names, parameter ranges. WhyCremisi flips this. You speak in the language of music and emotion. The software figures out the rest.</p>
       <br/>
-      <p>You shouldn't need to know that "filter cutoff" is parameter index 0047 in Serum. You should be able to say <em>"make it darker"</em> and have it happen.</p>
+      <p>You shouldn't need to know that "filter cutoff" is parameter index 0047 in Serum. You should be able to say <em style="font-style:italic;color:var(--sub);">"make it darker"</em> and have it happen.</p>
     </div>
     <div class="phil-card reveal reveal-d1">
-      <div class="phil-number">02 — MEMORY</div>
+      <div class="phil-number">02 // MEMORY</div>
       <h3>It remembers everything</h3>
       <p>Every parameter touch, every AI decision, every session. Not just this session — every session. It knows your history and learns your taste.</p>
     </div>
     <div class="phil-card reveal reveal-d2">
-      <div class="phil-number">03 — PERSONALITY</div>
+      <div class="phil-number">03 // PERSONALITY</div>
       <h3>A collaborator, not a toolbar</h3>
       <p>It thinks, replies, explains its reasoning, makes suggestions, pushes back when something doesn't make sense. It has a face that shows you how it feels.</p>
     </div>
     <div class="phil-card reveal reveal-d1">
-      <div class="phil-number">04 — ALWAYS PRESENT</div>
+      <div class="phil-number">04 // ALWAYS PRESENT</div>
       <h3>In the room with you</h3>
-      <p>Not an external app, not a chatbot tab. It lives inside your DAW, on the master channel, watching and listening to everything that happens in the session.</p>
+      <p>Not an external app, not a chatbot tab. It lives inside your DAW, on the master channel, watching and listening to everything in the session.</p>
     </div>
     <div class="phil-card reveal reveal-d2">
-      <div class="phil-number">05 — FULL AGENT</div>
-      <h3>Web search, bash, code — inside a plugin</h3>
-      <p>WhyCremisi runs a complete AI agent with web search, bash execution, code generation, and file system access — from inside a single VST3 slot.</p>
+      <div class="phil-number">05 // FULL AGENT</div>
+      <h3>Web search. Bash. Code. Inside a plugin.</h3>
+      <p>A complete AI agent with every modern tool — from inside a single VST3 slot on your master channel. This shouldn't be possible.</p>
     </div>
   </div>
 </section>
@@ -559,60 +698,60 @@
 <hr />
 
 <!-- FEATURES -->
-<section class="features-section">
+<section>
   <p class="section-label reveal">Under the hood</p>
-  <h2 class="reveal reveal-d1">Built on real<br/><em>engineering.</em></h2>
+  <h2 class="reveal reveal-d1">Real engineering.<br/><em>Real numbers.</em></h2>
 
   <div class="features-grid reveal reveal-d2">
     <div class="feat">
-      <div class="feat-icon">⚡</div>
-      <h4>33ms broadcast loop</h4>
-      <p>JUCE Timer fires every 33ms (~30fps), pushing DAW state to every connected React client. Transport, meter L/R/peak — always live.</p>
+      <div class="feat-icon">01 // BROADCAST</div>
+      <h4>33ms update loop</h4>
+      <p>JUCE Timer at ~30fps pushes transport, meter L/R/peak to every connected React client. Always live, never polling.</p>
     </div>
     <div class="feat">
-      <div class="feat-icon">🧠</div>
+      <div class="feat-icon">02 // MEMORY</div>
       <h4>JSONL Flight Recorder</h4>
-      <p>Every event appended to <code>events.jsonl</code> with ms timestamps. Cross-session <code>memory.json</code> persists knowledge between sessions.</p>
+      <p>Append-only <code>events.jsonl</code> with ms timestamps. Cross-session <code>memory.json</code> persists AI knowledge between sessions.</p>
     </div>
     <div class="feat">
-      <div class="feat-icon">🌐</div>
-      <h4>WebSocket bridge</h4>
-      <p>OSC UDP :9000/:9001 ↔ WebSocket TCP :8080 ↔ React UI. Typed event system, auto-reconnect, pending request map.</p>
+      <div class="feat-icon">03 // PROTOCOL</div>
+      <h4>OSC + WebSocket bridge</h4>
+      <p>DAW → OSC UDP :9000 → WebSocket TCP :8080 → React. Typed event system, auto-reconnect, pending request map.</p>
     </div>
     <div class="feat">
-      <div class="feat-icon">🎛</div>
+      <div class="feat-icon">04 // PROVIDERS</div>
       <h4>6 AI providers</h4>
-      <p>Ollama offline by default (llama3.2, localhost:11434). Groq, Gemini, Claude, OpenAI, OpenRouter — swap with one config change.</p>
+      <p>Ollama offline by default (llama3.2 @ localhost:11434). Groq, Gemini, Claude, OpenAI, OpenRouter — one config change.</p>
     </div>
     <div class="feat">
-      <div class="feat-icon">📦</div>
-      <h4>Dynamic widget system</h4>
-      <p>C++ broadcasts <code>ui.widget.create/update/remove</code>. React renders interactive suggestion widgets live as the conversation evolves.</p>
+      <div class="feat-icon">05 // WIDGETS</div>
+      <h4>Dynamic suggestion widgets</h4>
+      <p>C++ broadcasts <code>ui.widget.create/update/remove</code>. React renders interactive parameter widgets live as the conversation evolves.</p>
     </div>
     <div class="feat">
-      <div class="feat-icon">🔌</div>
+      <div class="feat-icon">06 // TARGETS</div>
       <h4>VST3 · AU · Standalone</h4>
-      <p>One JUCE 7 codebase, three build targets. 14 automated tests. macOS Monterey+. Windows port on the roadmap.</p>
+      <p>One JUCE 7 codebase. Three build targets. 14 automated tests. macOS · Windows · Linux — developed and tested across all three platforms. Currently in <strong>Beta</strong>.</p>
     </div>
   </div>
 </section>
 
 <hr />
 
-<!-- PLUGIN STRIP -->
-<section class="plugins-section">
+<!-- PLUGINS MARQUEE -->
+<section style="padding:5rem 3rem;">
   <p class="section-label reveal">Compatible with everything</p>
-  <p class="lead reveal reveal-d1">Reads VST3 parameter indices at runtime — any plugin works on day zero.</p>
-  <div style="position:relative; overflow:hidden; margin-top:2.5rem;">
+  <p class="lead reveal reveal-d1">Reads VST3 parameter indices at runtime — any plugin, any release date, day zero.</p>
+  <div class="marquee-wrap">
     <div class="plugins-track">
-      <!-- doubled for seamless loop -->
       <span class="plugin-badge"><span class="plugin-dot dot-wip"></span>Serum 2</span>
       <span class="plugin-badge"><span class="plugin-dot dot-wip"></span>FabFilter Pro-Q 4</span>
-      <span class="plugin-badge"><span class="plugin-dot dot-live"></span>OTT</span>
+      <span class="plugin-badge"><span class="plugin-dot dot-live2"></span>OTT</span>
       <span class="plugin-badge"><span class="plugin-dot dot-wip"></span>Vital</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Massive X</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>iZotope Ozone 11</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Neutron 5</span>
+      <span class="plugin-badge"><span class="plugin-dot dot-q"></span>iZotope RX 11</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Valhalla VintageVerb</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Waves SSL E</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Kontakt 8</span>
@@ -620,16 +759,17 @@
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Plugin Alliance</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Slate Digital</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>UAD Apollo</span>
-      <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Native Instruments</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Logic Stock Plugins</span>
-      <!-- duplicate -->
+      <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Ableton Built-ins</span>
+      <!-- duplicate for seamless loop -->
       <span class="plugin-badge"><span class="plugin-dot dot-wip"></span>Serum 2</span>
       <span class="plugin-badge"><span class="plugin-dot dot-wip"></span>FabFilter Pro-Q 4</span>
-      <span class="plugin-badge"><span class="plugin-dot dot-live"></span>OTT</span>
+      <span class="plugin-badge"><span class="plugin-dot dot-live2"></span>OTT</span>
       <span class="plugin-badge"><span class="plugin-dot dot-wip"></span>Vital</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Massive X</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>iZotope Ozone 11</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Neutron 5</span>
+      <span class="plugin-badge"><span class="plugin-dot dot-q"></span>iZotope RX 11</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Valhalla VintageVerb</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Waves SSL E</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Kontakt 8</span>
@@ -637,39 +777,49 @@
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Plugin Alliance</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Slate Digital</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>UAD Apollo</span>
-      <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Native Instruments</span>
       <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Logic Stock Plugins</span>
+      <span class="plugin-badge"><span class="plugin-dot dot-q"></span>Ableton Built-ins</span>
     </div>
   </div>
-  <div style="display:flex;gap:1.5rem;margin-top:1.5rem;font-size:.78rem;color:var(--muted);">
-    <span><span style="color:#28c840">●</span> Dictionary entry complete</span>
-    <span><span style="color:#febc2e">●</span> Dictionary mapping in progress</span>
-    <span><span style="color:var(--muted)">●</span> Index scanning (works day zero)</span>
+  <div style="display:flex;gap:2rem;margin-top:1.25rem;">
+    <span style="font-family:var(--mono);font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);"><span style="color:#28c840">●</span> Dictionary complete</span>
+    <span style="font-family:var(--mono);font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);"><span style="color:#febc2e">●</span> Mapping in progress</span>
+    <span style="font-family:var(--mono);font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);"><span style="color:var(--dim)">●</span> Index scanning (day zero)</span>
   </div>
 </section>
 
-<!-- QUOTE -->
-<section class="quote-section">
-  <div class="quote-mark">&ldquo;</div>
-  <blockquote class="reveal">
-    If you think this is <em>insane</em>,<br/>you're right. Star it anyway.
-  </blockquote>
-  <p class="quote-attr reveal reveal-d1">— <a href="https://github.com/OfficialWhyEd" style="color:var(--crimson);text-decoration:none;">@whyed</a>, creator</p>
-</section>
-
-<!-- CTA -->
-<section class="cta-section">
-  <div class="cta-text">
-    <p class="section-label reveal">Get started</p>
-    <h2 class="reveal reveal-d1">The gap between what you <em>hear</em> and what comes out — closed.</h2>
-    <p class="reveal reveal-d2">Load on the master channel. Talk to it. Watch it work. Works offline with Ollama — no API key, no subscription, no cloud.</p>
-    <div class="cta-buttons reveal reveal-d3">
+<!-- MANIFESTO -->
+<section class="manifesto-section">
+  <div class="manifesto-inner">
+    <span class="manifesto-label reveal">// Manifesto</span>
+    <p class="manifesto-text reveal reveal-d1">
+      Most tools make you speak their language.<br/>
+      <em>This one speaks yours.</em>
+    </p>
+    <p class="manifesto-sub reveal reveal-d2">
+      WhyCremisi is for the producer who can hear what the track needs but can't get there fast enough. For the engineer who knows exactly which word describes the sound but not which plugin to open. For the composer who hears the chord progression in their head but resists the piano roll.<br/><br/>
+      The gap between what you imagine and what you produce — we're closing it, one session at a time.
+    </p>
+    <div class="hero-ctas reveal reveal-d3">
       <a class="btn-primary" href="https://github.com/OfficialWhyEd/WhyCremisi">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         Star on GitHub
       </a>
       <a class="btn-ghost" href="https://discord.gg/cQQckfnN">Join Discord</a>
       <a class="btn-ghost" href="https://instagram.com/whyed.music">Instagram</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA STATS -->
+<section class="cta-section">
+  <div class="cta-text">
+    <p class="section-label reveal">Get started</p>
+    <h2 class="reveal reveal-d1">Load on the master channel.<br/><em>Talk to it.</em></h2>
+    <p class="lead reveal reveal-d2">Works offline with Ollama — no API key, no subscription, no cloud. Install JUCE 7, build, drop on the master channel. The bridge starts automatically.</p>
+    <div class="cta-buttons reveal reveal-d3">
+      <a class="btn-primary" href="https://github.com/OfficialWhyEd/WhyCremisi">View on GitHub</a>
+      <a class="btn-ghost" href="https://discord.gg/cQQckfnN">Discord</a>
     </div>
   </div>
   <div class="cta-stats reveal reveal-d2">
@@ -694,7 +844,9 @@
 
 <!-- FOOTER -->
 <footer>
-  <div class="footer-left">© 2024 WhyCremisi · Built by <a href="https://github.com/OfficialWhyEd" style="color:var(--crimson);text-decoration:none;">@whyed</a> · MIT License</div>
+  <div class="footer-left">
+    © 2026 WhyCremisi · Built by <a href="https://github.com/OfficialWhyEd">@whyed</a> · MIT License
+  </div>
   <div class="footer-links">
     <a class="footer-link" href="https://github.com/OfficialWhyEd/WhyCremisi">GitHub</a>
     <a class="footer-link" href="https://discord.gg/cQQckfnN">Discord</a>
@@ -704,15 +856,28 @@
 </footer>
 
 <script>
-  // Scroll reveal
-  const els = document.querySelectorAll('.reveal');
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
-  }, { threshold: 0.08 });
-  els.forEach(el => io.observe(el));
+  // Hero parallax — title and mascot move in opposite directions
+  const heroText   = document.getElementById('hero-text');
+  const heroVisual = document.getElementById('hero-visual');
+  const mascot     = document.getElementById('mascot');
+  document.addEventListener('mousemove', e => {
+    const x = (e.clientX / window.innerWidth  - 0.5) * 18;
+    const y = (e.clientY / window.innerHeight - 0.5) * 10;
+    if (heroText)   heroText.style.transform   = `translate(${-x * 0.3}px, ${-y * 0.3}px)`;
+    if (heroVisual) heroVisual.style.transform = `translate(${x * 0.25}px, ${y * 0.25}px)`;
+    if (mascot)     mascot.style.transform     = `translate(${x * 0.4}px, ${y * 0.4}px)`;
+  });
 
-  // Hero elements visible immediately
-  document.querySelectorAll('.hero .reveal').forEach(el => el.classList.add('visible'));
+  // Scroll reveal
+  const reveals = document.querySelectorAll('.reveal');
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); }
+    });
+  }, { threshold: 0.07 });
+  reveals.forEach(el => io.observe(el));
+
+  // Screenshot visible immediately
   document.querySelectorAll('.screenshot-wrap').forEach(el => el.classList.add('visible'));
 </script>
 

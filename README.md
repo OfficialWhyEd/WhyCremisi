@@ -16,9 +16,10 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/status-Beta-orange?style=flat-square" />
   <img src="https://img.shields.io/badge/AI-Ollama_%7C_Groq_%7C_Gemini_%7C_Claude_%7C_OpenAI_%7C_OpenRouter-D97706?style=flat-square" />
   <img src="https://img.shields.io/badge/tests-14_passing-brightgreen?style=flat-square" />
-  <img src="https://img.shields.io/badge/macOS-Monterey+-000000?style=flat-square&logo=apple&logoColor=white" />
+  <img src="https://img.shields.io/badge/platform-macOS_%7C_Windows_%7C_Linux-555?style=flat-square" />
   <img src="https://img.shields.io/badge/license-MIT-b4143c?style=flat-square" />
   <img src="https://img.shields.io/badge/PRs-welcome-b4143c?style=flat-square" />
   <img src="https://img.shields.io/github/last-commit/OfficialWhyEd/WhyCremisi?style=flat-square&color=555" />
@@ -121,17 +122,15 @@ Most audio software asks you to learn its language — menu structures, preset n
 
 You shouldn't need to know that "filter cutoff" is parameter index 0047 in Serum. You should be able to say *"make it darker"* and have it happen. You shouldn't need to google Pretolesi's mastering chain — you should be able to say *"master this like Pretolesi"* and watch it apply, knob by knob, in your actual session.
 
-This is the approach:
+- **Ask anything.** No supported commands. Say *"mix this like CLA"* or *"check the controfasi"* or *"rebuild the low end."* The language of music, not menus.
+- **Every plugin. Including yesterday's.** Serum 2, Pro-Q 4, Ozone 11, native DAW plugins — anything. VST3 parameter indices are read at runtime. Load a plugin and it's mapped. No update needed.
+- **A living encyclopedia.** A curated dictionary of the most-used modern plugins — human-readable names, ranges, interdependencies, how pros use them. You can add entries. The community contributes via PRs.
+- **Creates, not just edits.** Piano roll access. Full songs from scratch — verse, chorus, bridge, every instrument, every note — written directly into the timeline. Or just rewrite bars 5–8 and leave the rest.
+- **Remembers everything.** Every parameter touch, every decision, every session. Cross-session memory. It knows your history and learns your taste.
+- **Has a personality.** Thinks, replies, explains, pushes back. Has a face that shows how it feels. Not a search bar — a collaborator.
+- **Lives inside the DAW.** Not an external app. Not a chatbot tab. On the master channel, always in the room.
 
-- **Ask anything.** Mix like Chris Lord-Alge. Master like Stefano Pretolesi. Check controfasi. Rebuild your low end. There are no supported commands — there is only what you can describe.
-- **Every plugin. Including the ones released yesterday.** Not just Serum and FabFilter — native DAW plugins, Serum 2, Pro-Q 4, iZotope, Waves, Native Instruments, anything. Because it reads VST3 parameter indices at runtime, it never needs an update to support a new plugin. Load it, and it's mapped.
-- **A living encyclopedia of professional plugins.** On top of raw index scanning, WhyCremisi ships with a curated dictionary of the most-used modern plugins — human-readable names, ranges, interdependencies, professional usage patterns. It grows over time, and you can add your own entries.
-- **It creates, not just edits.** WhyCremisi has full access to the piano roll. It can write complete songs from scratch — verse, chorus, bridge, every instrument, every note — directly into your DAW's timeline. It can also rewrite specific bars, add layers, adjust voicings, and iterate on its own compositions when you push back. It's not limited to tweaking what already exists. It can build entire tracks from nothing.
-- **It remembers everything.** Every parameter touch, every decision, every session. Not just this session — every session. It knows your history and learns your taste.
-- **It has a personality.** WhyCremisi isn't a search bar. It's a collaborator. It thinks, it replies, it explains its reasoning, it makes suggestions. It pushes back when something doesn't make sense. It has a face that shows you how it feels.
-- **It's always in the room with you.** Not an external app, not a chatbot tab. It lives inside your DAW, on the master channel, watching and listening to everything that happens in the session.
-
-The goal is to make the gap between what you hear in your head and what comes out of the speakers as small as possible — using nothing but natural language and an AI that actually understands audio.
+The gap between what you hear in your head and what comes out of the speakers — that's what WhyCremisi is closing.
 
 ---
 
@@ -143,65 +142,21 @@ The goal is to make the gap between what you hear in your head and what comes ou
 
 ## There are no limits to what you can ask
 
-WhyCremisi doesn't have a list of supported commands. It has a brain, a memory, and a personality. You can ask it anything a world-class audio engineer would know — and it will try to make it happen, parameter by parameter, in your actual session.
+No supported commands — just describe what you want. WhyCremisi figures out which knobs to move.
 
-**Mixing & mastering:**
-```
-"Mix this track the way Chris Lord-Alge would"
-```
-→ Aggressive parallel compression on the drums, mid-forward guitars, punchy low end — CLA's signature applied to your session's plugins.
+| What you say | What happens |
+|---|---|
+| *"Mix this like Chris Lord-Alge"* | Parallel compression on drums, mid-forward guitars, punchy low end — CLA's signature applied to your session's plugins |
+| *"Master this like Stefano Pretolesi"* | Clean limiting, controlled low end, Italian hi-fi warmth — on your actual master chain |
+| *"Check phases across all tracks — fix cancellations"* | Analyzes polarity across plugins, flags and corrects phase issues before they kill your low end |
+| *"Mute the kick, drop the vocal 3dB, start recording"* | Native transport + fader control — no clicking, no menus |
+| *"What did we change in the last 3 sessions on this track?"* | Full recall from `memory.json` + `events.jsonl` — every parameter touch, every decision |
+| *"Remember: I always want the kick at -6dBFS. Apply this every session."* | Written to long-term memory. Enforced automatically from now on |
+| *"Use Logic's built-in compressor, push the attack a bit"* | Stock and bundled plugins mapped exactly like third-party ones |
+| *"Write me a full song — dark pop, 128 BPM, A minor, verse/chorus/bridge"* | Opens the piano roll, composes the entire arrangement — every instrument, every note, every velocity — directly into the DAW timeline |
+| *"The verse is too predictable, rewrite bars 5–8 with unexpected intervals"* | Selects the region, rewrites only those bars, keeps everything else intact |
 
-```
-"Master this like Stefano Pretolesi"
-```
-→ Clean limiting, controlled low end, that Italian hi-fi warmth. Applied to whatever's on your master chain.
-
-**Phase & analysis:**
-```
-"Check the phases across all tracks — fix anything that's cancelling"
-```
-→ WhyCremisi analyzes polarity relationships between plugins and tracks. Flags and corrects phase cancellations before they kill your low end.
-
-**DAW control:**
-```
-"Start playback" · "Mute the kick and bass" · "Drop the vocal by 3dB"
-```
-→ Native DAW commands: transport, faders, mute, solo — no clicking.
-
-**Session memory:**
-```
-"What did we do in the last 3 sessions on this track?"
-```
-→ Queries `memory.json` and `events.jsonl` across sessions. Full recall of every parameter touch, every AI decision, everything you said yes or no to.
-
-```
-"Remember: I always want the kick at -6dBFS peak. Apply this to every session."
-```
-→ Written to long-term memory. From now on, it's a rule WhyCremisi enforces automatically.
-
-**Native plugins:**
-```
-"Use Logic's built-in compressor on the drums and push the attack a bit"
-```
-→ Stock EQ, bundled instruments, built-in effects — all mapped, all controllable exactly like third-party plugins.
-
-**Composition:**
-```
-"Write me a full song — verse, pre-chorus, chorus, bridge. Dark pop, 128 BPM, key of A minor."
-```
-→ WhyCremisi opens the piano roll and composes the entire arrangement. Every part. Every instrument. Every note velocity and length. A complete song structure, written directly into your DAW's timeline — without you touching a single key.
-
-```
-"Take what you just wrote and make the chorus more emotional — add a string layer and open up the harmony"
-```
-→ Goes back into the piano roll, adds a new MIDI track, writes the string part, adjusts the chord voicings in the existing regions. It remembers exactly what it wrote and why.
-
-```
-"The verse melody is too predictable. Rewrite bars 5 to 8 and add some unexpected intervals"
-```
-→ Selects the specific region, rewrites only those bars, keeps the rest intact.
-
-The creativity has no ceiling. If a human composer, engineer or producer could describe the move in words, WhyCremisi can attempt it — in knobs, in regions, in melodies, in the piano roll, in the full arrangement.
+If a human composer, engineer, or producer could describe a move in words — WhyCremisi will attempt it in knobs, regions, melodies, and the full arrangement.
 
 ---
 
@@ -305,21 +260,6 @@ WhyCremisi doesn't just call an LLM and paste the response. It runs a **complete
 Imagine asking your DAW: *"Search for how Chris Lord-Alge sets up his SSL bus compressor, then apply those settings to my master chain."* WhyCremisi searches the web, reads the result, finds the closest parameters in your loaded plugins, and applies them. Without leaving the DAW. Without switching tabs. Without touching a single knob.
 
 This is not a plugin that wraps an AI. This is an AI agent that happens to live inside a plugin.
-
----
-
-## What makes this technically insane
-
-Most DAW plugins are islands. They process audio and expose a UI — that's it. WhyCremisi breaks out of that model in three ways that shouldn't be possible from a single plugin slot:
-
-**1. It reads every other plugin's parameters without their SDK.**
-VST3 exposes parameters as numbered indices. WhyCremisi iterates them all at load time. It doesn't need to know what Serum is. It finds every knob Serum exposes and maps them. Same for any plugin you throw at it.
-
-**2. It runs a full React app inside the plugin window.**
-Most plugin UIs are drawn with OpenGL or platform-native widgets. WhyCremisi hosts a real React app inside a JUCE WebView, connected to the plugin backend via a WebSocket running at `localhost:8080`. The UI is hot-reloadable during development.
-
-**3. The AI sees your entire session history, not just the current state.**
-Every parameter change, transport event, OSC message and AI interaction is appended to a JSONL log in real time. When you ask the AI something, it gets the last N minutes of session context. It knows what you changed, when, and in what order.
 
 ---
 
@@ -509,13 +449,16 @@ The plugins that cover ~90% of real-world sessions. Every plugin works via index
 
 | Environment | Support |
 |---|---|
+| **macOS** (Monterey+) | ✅ Primary development platform |
+| **Windows** (10/11) | ✅ JUCE cross-platform build, tested |
+| **Linux** | ✅ JUCE cross-platform build, tested |
 | Modern DAW (Logic 11, Ableton 12, Cubase 13+) | ✅ Full — SDK extensions, extended context |
 | Older DAW (Logic 10.7, Ableton 11, Cubase 12) | ✅ Full — core parameter bridge, all features |
-| Legacy sessions / older plugin versions | ✅ Read + write still works via index scanning |
-| AU (macOS only) | ✅ Same bridge, different plugin format |
+| Legacy sessions / older plugin versions | ✅ Read + write via index scanning |
+| AU (macOS only) | ✅ Same bridge, AU format |
 | Standalone mode | ✅ No DAW needed, bridge runs independently |
 
-The VST3 SDK's extension architecture (note expression, MIDI 2.0, MPE, inter-plugin communication) is supported where available and degrades gracefully where it isn't. The core mechanism — VST3 index-based parameter scanning — has been stable since VST3's initial release.
+The VST3 SDK extension architecture (note expression, MIDI 2.0, MPE) is supported where available and degrades gracefully where it isn't. The core mechanism — VST3 index-based parameter scanning — has been stable since VST3's initial release.
 
 ---
 
@@ -582,11 +525,12 @@ WhyCremisi/
 
 ## Roadmap
 
-- [ ] Plugin dictionary for top 10 plugins
-- [ ] Auto-discovery via audio analysis
+> **Status: Beta.** Core bridge, AI engine, and session memory are live. Plugin dictionary and auto-discovery are next.
+
+- [ ] Plugin dictionary for top 10 plugins (semantic layer on top of index scanning)
+- [ ] Auto-discovery — AI infers what unknown parameters do by observing their audio effect
 - [ ] Parameter automation curves generated by AI
 - [ ] Session summary export (what the AI did, and why)
-- [ ] Windows support (JUCE is cross-platform, bridge needs porting)
 - [ ] Plugin state presets saved by AI ("my warm master", "my hard-clipped drums")
 
 ---
@@ -597,8 +541,7 @@ This is a one-person project so far. PRs, issues and discussions are very welcom
 
 - **Plugin dictionary entries** — if you've mapped parameters for any DAW plugin, open a PR
 - **Provider implementations** — new AI providers follow the same interface as the existing 6
-- **DAW compatibility testing** — tested on Ableton and Logic, reports for other DAWs appreciated
-- **Windows port** — the JUCE layer is cross-platform, the bridge needs porting
+- **DAW compatibility testing** — tested on Ableton and Logic (macOS), reports for Windows/Linux DAWs appreciated
 
 If you're working on something larger, open an issue first so we can align.
 
@@ -626,7 +569,7 @@ If WhyCremisi made you go "wait, this is actually insane" — that's the right r
 <p align="center">
   <br/>
   Built by <a href="https://github.com/OfficialWhyEd">@whyed</a>
-  &nbsp;·&nbsp; macOS · JUCE 7 · MIT License
+  &nbsp;·&nbsp; macOS · Windows · Linux · JUCE 7 · MIT License
   &nbsp;·&nbsp; <a href="https://officialwhyed.github.io/WhyCremisi">Website</a>
   &nbsp;·&nbsp; <a href="https://discord.gg/cQQckfnN">Discord</a>
   &nbsp;·&nbsp; <a href="https://instagram.com/whyed.music">Instagram</a>
