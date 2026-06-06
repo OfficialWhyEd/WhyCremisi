@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   OscBridge.cpp
-  WhyCremisi VST Plugin - Bidirectional OSC-WebSocket Bridge Implementation
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  Bidirectional OSC-WebSocket Bridge Implementation
 
   Bridges OSC (UDP) from DAW to WebSocket (TCP) for React UI.
   ==============================================================================

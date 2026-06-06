@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   AiEngine.cpp
-  WhyCremisi VST Plugin - AI Engine Implementation
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  AI Engine Implementation
   
   Phase 2 PROGRESS: Ollama local HTTP implemented
   Uses JUCE URL and WebInputStream for HTTP requests

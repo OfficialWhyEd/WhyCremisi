@@ -1,8 +1,11 @@
 /**
- * WhyCremisi Bridge - JavaScript Bridge per comunicazione con Plugin VST via WebSocket
- * 
- * Sostituisce il vecchio approccio app://message/ (WebView JUCE)
- * con WebSocket RFC 6455 per connettersi al WebSocketServer nel plugin.
+ * WhyCremisi™ · A WhyEd Project
+ * © 2026 WhyEd™ — @whyed.music · MIT License
+ *
+ * WhyCremisi Bridge — WebSocket singleton for VST ↔ React communication.
+ *
+ * Replaces the legacy app://message/ WebView approach with WebSocket RFC 6455
+ * connecting to the WebSocketServer inside the plugin.
  * 
  * Il bridge può connettersi a:
  * - localhost:8080 (plugin in production/standalone)

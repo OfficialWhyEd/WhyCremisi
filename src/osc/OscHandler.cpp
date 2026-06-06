@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   OscHandler.cpp
-  WhyCremisi VST Plugin - OSC Communication Handler Implementation
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  OSC Communication Handler Implementation
   
   Phase 1 COMPLETE: Bidirectional OSC
   - Receives on UDP port (default 9000)

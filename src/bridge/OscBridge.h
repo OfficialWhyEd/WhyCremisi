@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   OscBridge.h
-  WhyCremisi VST Plugin - Bidirectional OSC-WebSocket Bridge
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  Bidirectional OSC-WebSocket Bridge
 
   Connects:
   - OscHandler (UDP OSC from/to DAW)

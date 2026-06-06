@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   PluginProcessor.cpp
-  WhyCremisi VST Plugin - Main Audio Processor Implementation
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  Main Audio Processor Implementation
   ==============================================================================
 */
 

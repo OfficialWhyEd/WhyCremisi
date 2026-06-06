@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   PluginProcessor.h
-  WhyCremisi VST Plugin - Main Audio Processor
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  Main Audio Processor
   ==============================================================================
 */
 
@@ -39,7 +41,8 @@ public:
     bool hasEditor() const override { return true; }
 
     //==============================================================================
-    const juce::String getName() const override { return "WhyCremisi VST Plugin"; }
+    const juce::String getName() const override { return "WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License"; }
 
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }

@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   OscHandler.h
-  WhyCremisi VST Plugin - OSC Communication Handler
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  OSC Communication Handler
   
   Bidirectional OSC: receives from DAW and sends back.
   Receive: UDP listener on configurable port (default 9000)

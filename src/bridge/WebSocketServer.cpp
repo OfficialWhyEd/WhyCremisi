@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   WebSocketServer.cpp
-  WhyCremisi VST Plugin - WebSocket Server Implementation
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  WebSocket Server Implementation
 
   Minimal RFC 6455 WebSocket server for browser communication.
   ==============================================================================

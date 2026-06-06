@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   PluginEditor.h
-  WhyCremisi VST Plugin - Plugin Editor with WebView UI
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  Plugin Editor with WebView UI
   ==============================================================================
 */
 

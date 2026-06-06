@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   WebSocketServer.h
-  WhyCremisi VST Plugin - WebSocket Server for React UI Communication
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  WebSocket Server for React UI Communication
 
   Minimal WebSocket server that runs inside the VST plugin process.
   Listens on a configurable port (default 8080) and accepts connections

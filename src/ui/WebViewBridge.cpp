@@ -1,7 +1,9 @@
 /*
    ==============================================================================
    WebViewBridge.cpp
-   WhyCremisi VST Plugin - Communication bridge between C++ and React UI
+   WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  Communication bridge between C++ and React UI
    ==============================================================================
 */
 

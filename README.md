@@ -8,6 +8,10 @@
 </p>
 
 <p align="center">
+  <sub>A <strong>WhyEd™</strong> Project · © 2026 <a href="https://instagram.com/whyed.music">@whyed</a></sub>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/JUCE-7-FF0000?style=flat-square" />
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white" />
   <img src="https://img.shields.io/badge/React-WebView_UI-61DAFB?style=flat-square&logo=react&logoColor=black" />
@@ -568,7 +572,9 @@ If WhyCremisi made you go "wait, this is actually insane" — that's the right r
 
 <p align="center">
   <br/>
-  Built by <a href="https://github.com/OfficialWhyEd">@whyed</a>
+  <strong>WhyCremisi™</strong> · A <strong>WhyEd™</strong> Project
+  <br/>
+  © 2026 <a href="https://instagram.com/whyed.music">@whyed</a>
   &nbsp;·&nbsp; macOS · Windows · Linux · JUCE 7 · MIT License
   &nbsp;·&nbsp; <a href="https://officialwhyed.github.io/WhyCremisi">Website</a>
   &nbsp;·&nbsp; <a href="https://discord.gg/cQQckfnN">Discord</a>

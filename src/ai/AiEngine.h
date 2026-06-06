@@ -1,7 +1,9 @@
 /*
   ==============================================================================
   AiEngine.h
-  WhyCremisi VST Plugin - AI Engine for multi-provider support
+  WhyCremisi™ · A WhyEd Project
+  © 2026 WhyEd™ — @whyed.music · MIT License
+  AI Engine for multi-provider support
   
   Phase 2 IN PROGRESS: Ollama local implemented
   Phase 3: Will add Gemini, Anthropic, OpenAI, OpenRouter, Groq
