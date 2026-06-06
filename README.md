@@ -1,51 +1,88 @@
-# WhyCremisi VST Bridge AI
+<p align="center">
+  <img src="assets/banner.png" alt="WhyCremisi" width="100%"/>
+</p>
 
-**⚠️ IMPORTANTE: Leggi prima `WORKFLOW.md` per le regole di collaborazione tra Aura e Heartbroken.**
+<p align="center">
+  <img src="https://img.shields.io/badge/JUCE-7-FF0000?style=flat-square" />
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white" />
+  <img src="https://img.shields.io/badge/React-WebView_UI-61DAFB?style=flat-square&logo=react&logoColor=black" />
+  <img src="https://img.shields.io/badge/VST3-AU-7B00D4?style=flat-square" />
+  <img src="https://img.shields.io/badge/status-active-brightgreen?style=flat-square" />
+</p>
 
-AI-powered VST3 plugin for DAW control via OSC and MIDI.
+<br/>
 
-## Quick Start
+> Un layer di intelligenza che si installa sul master channel e da lì controlla l'intera sessione: il DAW, il transport, e tutti gli altri plugin caricati. Un co-pilota AI per la produzione musicale.
 
-### Prerequisites (Linux)
-```bash
-sudo apt install libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev
-```
+---
 
-### Build
-```bash
-cd /home/carlo/progetti/Vst-plugin-AI
-export JUCE_ROOT=/home/carlo/SDKs/JUCE
-cmake -B build -DJUCE_ROOT=$JUCE_ROOT
-cmake --build build --config Release
-```
+<p align="center">
+  <img src="assets/screenshot.png" alt="WhyCremisi in Ableton" width="100%"/>
+</p>
 
-### Install Plugin
-```bash
-# VST3 location
-cp build/WhyCremisiVSTPlugin_artefacts/VST3/WhyCremisiVSTPlugin.vst3 ~/.vst3/
-```
+---
 
-## Project Structure
+## Cosa fa
 
-```
-├── CMakeLists.txt          # CMake configuration
-├── src/
-│   ├── core/               # PluginProcessor, PluginEditor
-│   ├── osc/                # OSC communication handler
-│   ├── ai/                 # AI Engine (multi-provider)
-│   ├── ui/                 # UI components (WebView bridge)
-│   └── utils/              # Utility functions
-└── Documentazione/         # Full documentation
-```
+**WhyCremisi non è un semplice plugin** — è un universal parameter bridge. Espone automaticamente tutti i parametri di ogni plugin caricato nel DAW e li rende accessibili all'AI, senza dover conoscere il plugin in anticipo.
+
+**Tre fasi di intelligenza:**
+
+| Fase | Descrizione | Stato |
+|------|-------------|-------|
+| **Universal bridge** | Legge e scrive qualsiasi parametro VST per indice | ✅ Attivo |
+| **Plugin dictionary** | Mappa semantica dei 10 plugin più usati al mondo | 🔧 In sviluppo |
+| **Auto-discovery** | AI interpreta parametri di plugin sconosciuti | 🔮 Roadmap |
+
+---
 
 ## Features
 
-- **VST3/AU Plugin** for Ableton Live, Reaper, etc.
-- **OSC Control** for parameter automation
-- **Multi-Provider AI**: Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq
-- **WebView UI** with React frontend
-- **MIDI CC Mapping** for hardware controllers
+- **VST3 + AU + Standalone** — build completa per Ableton, REAPER e DAW compatibili
+- **OSC Bridge** — comunicazione bidirezionale con il DAW in tempo reale
+- **Flight Recorder** — log degli ultimi N eventi di sessione come contesto AI
+- **React WebView UI** — interfaccia moderna con mascotte BotFace (9 stati)
+- **Multi-provider AI** — Groq, Gemini, Anthropic, OpenAI, OpenRouter, Ollama
+- **14 test automatizzati** — CI-ready, build stabile
 
-## License
+---
 
-MIT License - See LICENSE file
+## Build (macOS)
+
+```bash
+git clone https://github.com/OfficialWhyEd/WhyCremisi
+cd WhyCremisi
+
+# Prerequisiti: CMake, Xcode Command Line Tools, JUCE 7
+cmake -B build -DJUCE_ROOT=/path/to/JUCE
+cmake --build build --config Release
+
+# Installa
+cp -r build/WhyCremisi_artefacts/VST3/WhyCremisi.vst3 ~/Library/Audio/Plug-Ins/VST3/
+```
+
+---
+
+## Struttura
+
+```
+WhyCremisi/
+├── src/
+│   ├── core/          # PluginProcessor — universal parameter bridge
+│   ├── bridge/        # WebSocketServer — OSC + WebView IPC
+│   └── core/tests/    # 14 test automatizzati
+├── webview-ui/        # React UI — BotFace, SessionPanel, Widget system
+└── Research/          # Design, loghi, documentazione visiva
+```
+
+---
+
+## Plugin Dictionary (roadmap)
+
+I 10 plugin target che coprono il 90% delle sessioni reali:
+
+`Serum` · `Vital` · `Massive X` · `FabFilter Pro-Q3` · `Pro-C2` · `OTT` · `Valhalla VintageVerb` · `Valhalla Delay` · `Waves SSL` · `API 2500`
+
+---
+
+<p align="center">Built by <a href="https://github.com/OfficialWhyEd">@whyed</a> · macOS · JUCE 7 · MIT License</p>
