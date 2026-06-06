@@ -76,6 +76,25 @@ The AI moves knobs, explains what it did, and drops interactive suggestion boxes
 
 ---
 
+## The philosophy
+
+WhyCremisi was built around one idea: **creativity has no limits, and neither should the tool.**
+
+Most audio software asks you to learn its language — menu structures, preset names, parameter ranges. WhyCremisi flips this. You speak in the language of music and emotion. The software figures out the rest.
+
+You shouldn't need to know that "filter cutoff" is parameter index 0047 in Serum. You should be able to say *"make it darker"* and have it happen. You shouldn't need to google Pretolesi's mastering chain — you should be able to say *"master this like Pretolesi"* and watch it apply, knob by knob, in your actual session.
+
+This is the approach:
+
+- **Ask anything.** Mix like Chris Lord-Alge. Master like Stefano Pretolesi. Check controfasi. Rebuild your low end. There are no supported commands — there is only what you can describe.
+- **It remembers everything.** Every parameter touch, every decision, every session. Not just this session — every session. It knows your history and learns your taste.
+- **It has a personality.** WhyCremisi isn't a search bar. It's a collaborator. It thinks, it replies, it explains its reasoning, it makes suggestions. It pushes back when something doesn't make sense. It has a face that shows you how it feels.
+- **It's always in the room with you.** Not an external app, not a chatbot tab. It lives inside your DAW, on the master channel, watching and listening to everything that happens in the session.
+
+The goal is to make the gap between what you hear in your head and what comes out of the speakers as small as possible — using nothing but natural language and an AI that actually understands audio.
+
+---
+
 <p align="center">
   <img src="assets/screenshot.png" alt="WhyCremisi inside the DAW" width="100%"/>
 </p>
