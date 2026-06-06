@@ -49,14 +49,14 @@ Drag WhyCremisi onto your master channel. It auto-scans every plugin in your ses
 </td>
 <td align="center" width="33%">
 
-**② Type what you hear**<br/>
-*"The low end is muddy"* · *"Make the reverb shorter"* · *"Start playback and record"*
+**② Just talk to it**<br/>
+Type naturally — *"The low end is muddy"* · *"Start the recording"* · *"What should I fix here?"*
 
 </td>
 <td align="center" width="33%">
 
-**③ Watch it happen**<br/>
-The AI finds the right knob, moves it, logs what it did — and shows you its reasoning.
+**③ It talks back**<br/>
+The AI moves knobs, explains what it did, and drops interactive suggestion boxes right in the UI.
 
 </td>
 </tr>
@@ -150,6 +150,49 @@ These are real prompts you can type into WhyCremisi right now. The AI reads your
 → Snapshots all parameter values to `memory.json`. Recalled across sessions.
 
 This works **offline** with Ollama. No API key, no cloud, no latency.
+
+---
+
+## It's a conversation, not a command line
+
+WhyCremisi is not a search bar where you type exact commands. You talk to it the way you'd talk to a collaborator in the studio.
+
+```
+You:  "Something feels off in the high end, not sure what"
+AI:   "The FabFilter Q3 has a +4.2dB shelf at 10kHz that might be too aggressive
+       for this mix. I also see Serum's oscillator brightness is at 78% — that's
+       quite high. Want me to pull both down a bit and see how it feels?"
+You:  "Yeah try it"
+AI:   [moves both parameters] "Done. The shelf is now +1.8dB and Serum brightness
+       is at 55%. How does that sit?"
+```
+
+The AI sees your full session — current values, what you changed recently, what's loaded, what's playing. It reasons from that context, not from a manual.
+
+---
+
+## Smart suggestion widgets
+
+As the conversation evolves, WhyCremisi creates **interactive parameter widgets** directly in the plugin UI — no need to hunt for knobs across multiple plugin windows.
+
+```
+┌─────────────────────────────────────┐
+│  💡 Suggested tweaks                │
+│                                     │
+│  FabFilter Q3 · High Shelf          │
+│  ████████░░░░  +1.8 dB   [Apply]   │
+│                                     │
+│  Serum · Osc A Brightness           │
+│  █████████░░░  55%        [Apply]   │
+│                                     │
+│  Valhalla · Decay Time              │
+│  ████░░░░░░░░  1.2s       [Apply]   │
+└─────────────────────────────────────┘
+```
+
+The AI decides which parameters are worth surfacing based on your conversation. Widgets appear live, update as values change, and disappear when they're no longer relevant. You can apply each suggestion individually or tell the AI to go ahead with all of them.
+
+Every widget interaction is logged to the session, so the AI knows what you accepted and what you ignored — and learns your preferences over time.
 
 ---
 
