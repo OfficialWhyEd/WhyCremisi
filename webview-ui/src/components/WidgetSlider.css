@@ -5,19 +5,19 @@
   padding: 1rem;
 }
 
-.widget-header {
+.slider-widget .widget-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
 }
 
-.widget-header label {
+.slider-widget .widget-header label {
   font-weight: 500;
   color: #fff;
 }
 
-.remove-btn {
+.slider-widget .remove-btn {
   background: #f44336;
   color: white;
   border: none;
@@ -29,7 +29,7 @@
   line-height: 1;
 }
 
-.widget-body {
+.slider-widget .widget-body {
   display: flex;
   align-items: center;
   gap: 1rem;

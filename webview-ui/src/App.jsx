@@ -46,6 +46,7 @@ export default function App() {
   const throttleRef = useRef(0)
   const fpsRef = useRef(0)
   const [fps, setFps] = useState(0)
+  const rafRef = useRef(null)
   useEffect(() => {
     let frames = 0, last = performance.now()
     const tick = () => {
@@ -57,10 +58,12 @@ export default function App() {
         frames = 0
         last = now
       }
-      raf = requestAnimationFrame(tick)
+      rafRef.current = requestAnimationFrame(tick)
     }
-    let raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
+    rafRef.current = requestAnimationFrame(tick)
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
   }, [])
   const MAX_MESSAGES = 200
   useEffect(() => {
@@ -84,6 +87,10 @@ export default function App() {
   const [actionLog, setActionLog] = useState([])
   const [toasts, setToasts] = useState([])
   const [pluginChain, setPluginChain] = useState([])
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('whycremisi_theme', theme)
+  }, [theme])
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark')
   }, [])
@@ -209,8 +216,8 @@ export default function App() {
             sysMsg(`[${ts()}] Invalid session file`)
             return
           }
-          setMessages(prev => [...prev, { id: Date.now(), type: 'system', text: `[${ts()}] SESSION IMPORTED (${data.messages.length} messages)` },
-            ...data.messages.map((m, i) => ({ ...m, id: Date.now() + i + 1 }))])
+          const importedMsgs = data.messages.map((m, i) => ({ ...m, id: Date.now() + i + 1 }))
+          setMessages(prev => [...prev, { id: Date.now(), type: 'system', text: `[${ts()}] SESSION IMPORTED (${data.messages.length} messages)` }, ...importedMsgs])
           if (data.config) setConfig(data.config)
           if (data.personalityStyle) setPersonalityStyle(data.personalityStyle)
           sysMsg(`[${ts()}] Imported ${data.messages.length} messages from session file`)

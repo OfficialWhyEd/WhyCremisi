@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { whycremisi } from '../../whycremisi-bridge'
 import './WidgetKnob.css'
 
 function WidgetKnob({ id, label, min, max, default: defaultValue, onRemove }) {
@@ -8,16 +9,7 @@ function WidgetKnob({ id, label, min, max, default: defaultValue, onRemove }) {
     const newValue = parseFloat(e.target.value)
     setValue(newValue)
     
-    if (window.sendToPlugin) {
-      window.sendToPlugin({
-        message_type: 'command',
-        action: {
-          type: 'set_parameter',
-          target: { widget_id: id, param_name: 'pan' },
-          value: newValue
-        }
-      })
-    }
+    whycremisi.sendDAWCommand('setParameter', { widgetId: id, value: newValue })
   }
 
   // Visualizzazione grafica semplice del knob

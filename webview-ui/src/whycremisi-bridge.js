@@ -556,6 +556,24 @@ class WhyCremisiBridge {
   /**
    * Gets connection info (health)
    */
+  /**
+   * Latency tracking (placeholder — real implementation needs server-side timestamps)
+   */
+  getLatencyMs() {
+    return 0
+  }
+
+  getAvgLatencyMs() {
+    return 0
+  }
+
+  getMaxLatencyMs() {
+    return 0
+  }
+
+  /**
+   * Gets connection info (health)
+   */
   getConnectionInfo() {
     return {
       state: this.state,

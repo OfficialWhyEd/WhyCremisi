@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { whycremisi } from '../../whycremisi-bridge'
 import './WidgetButton.css'
 
 function WidgetButton({ id, label, action, onRemove }) {
@@ -7,16 +8,7 @@ function WidgetButton({ id, label, action, onRemove }) {
   const handleClick = () => {
     setIsActive(!isActive)
     
-    if (window.sendToPlugin) {
-      window.sendToPlugin({
-        message_type: 'command',
-        action: {
-          type: 'trigger_transport',
-          target: { widget_id: id, action: action || 'play' },
-          value: !isActive
-        }
-      })
-    }
+    whycremisi.sendDAWCommand(action || 'play', { widgetId: id, active: !isActive })
   }
 
   return (

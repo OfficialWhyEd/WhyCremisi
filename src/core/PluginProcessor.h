@@ -27,6 +27,7 @@ class AgentWorkspace;
 //==============================================================================
 class WhyCremisiProcessor : public juce::AudioProcessor
                            , private juce::AudioProcessorValueTreeState::Listener
+                           , private juce::AsyncUpdater
 {
 public:
     //==============================================================================
@@ -211,6 +212,10 @@ private:
     // VST3 Program/Preset management
     juce::StringArray programNames;
     std::atomic<int> currentProgramIndex { 0 };
+
+    // Async update from audio thread (deferred broadcast)
+    void handleAsyncUpdate() override;
+    std::atomic<bool> pendingPersonalityContext{false};
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WhyCremisiProcessor)

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { whycremisi } from '../../whycremisi-bridge'
 import './WidgetSlider.css'
 
 function WidgetSlider({ id, label, min, max, default: defaultValue, onRemove }) {
@@ -8,17 +9,7 @@ function WidgetSlider({ id, label, min, max, default: defaultValue, onRemove }) 
     const newValue = parseFloat(e.target.value)
     setValue(newValue)
     
-    // Invia al plugin C++
-    if (window.sendToPlugin) {
-      window.sendToPlugin({
-        message_type: 'command',
-        action: {
-          type: 'set_parameter',
-          target: { widget_id: id, param_name: 'volume' },
-          value: newValue
-        }
-      })
-    }
+    whycremisi.sendDAWCommand('setParameter', { widgetId: id, value: newValue })
   }
 
   return (

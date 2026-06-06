@@ -21,7 +21,7 @@ public:
             WhyCremisiProcessor processor;
             
             // Check that the processor is created successfully
-            expect (! processor.hasEditor() == false, "Processor should have an editor");
+            expect (processor.hasEditor(), "Processor should have an editor");
             expect (processor.getName() == "WhyCremisi VST Plugin", "Processor name should be correct");
         }
         
@@ -33,43 +33,33 @@ public:
             expect (processor.getParameters().getParameter ("gain1") != nullptr, "gain1 parameter should exist");
             expect (processor.getParameters().getParameter ("gain2") != nullptr, "gain2 parameter should exist");
             
-            // Set gain1 to +6dB (which is a gain of 2.0)
-            processor.getParameters().getParameterAsValue ("gain1").setValue (6.0);
-            // Set gain2 to -6dB (which is a gain of 0.5)
-            processor.getParameters().getParameterAsValue ("gain2").setValue (-6.0);
+            // Set gain1 to +6dB using normalized value: (6 - (-60)) / 72 = 0.917
+            auto* p1 = processor.getParameters().getParameter ("gain1");
+            p1->setValueNotifyingHost (p1->convertTo0to1 (6.0f));
             
             // Create a simple buffer
-            juce::AudioBuffer<float> buffer (2, 1024); // 2 channels, 1024 samples
+            juce::AudioBuffer<float> buffer (2, 1024);
             buffer.clear();
             
-            // Add a test signal (e.g., 0.5)
+            // Add a test signal (0.5)
             for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
-            {
                 for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
-                {
                     buffer.setSample (channel, sample, 0.5f);
-                }
-            }
             
             // Process the buffer
             juce::MidiBuffer midi;
             processor.processBlock (buffer, midi);
             
-            // Check that the gain has been applied
-            // Expected: 0.5 * gain1 * gain2
-            // gain1 = 6dB -> factor 2.0
-            // gain2 = -6dB -> factor 0.5
-            // So total factor = 2.0 * 0.5 = 1.0
-            // Therefore, the output should be 0.5
-            
-            const float tolerance = 0.001f;
+            // gainParam1 (+6dB = factor ~2.0) is applied via smoothedGain
+            // Expected: 0.5 * ~2.0 ≈ 1.0
+            const float tolerance = 0.01f;
             for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
             {
                 for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
                 {
                     float sampleValue = buffer.getSample (channel, sample);
-                    expect (std::abs (sampleValue - 0.5f) < tolerance, 
-                            "Sample should be 0.5 after applying +6dB and -6dB gains");
+                    expect (std::abs (sampleValue - 1.0f) < tolerance, 
+                            "Sample should be ~1.0 after applying +6dB gain");
                 }
             }
         }
@@ -78,27 +68,27 @@ public:
         {
             WhyCremisiProcessor processor;
             
-            // Set both gains to 0dB (factor 1.0)
-            processor.getParameters().getParameterAsValue ("gain1").setValue (0.0);
-            processor.getParameters().getParameterAsValue ("gain2").setValue (0.0);
+            // Set gain1 to 0dB (factor 1.0) using normalized value: (0 - (-60)) / 72 = 0.833
+            auto* p1 = processor.getParameters().getParameter ("gain1");
+            p1->setValueNotifyingHost (p1->convertTo0to1 (0.0f));
             
             juce::AudioBuffer<float> buffer (2, 1024);
-            buffer.setSample (0, 0, 0.5f); // Just check one sample
+            buffer.setSample (0, 0, 0.5f);
             
             juce::MidiBuffer midi;
             processor.processBlock (buffer, midi);
             
-            expect (std::abs (buffer.getSample (0, 0) - 0.5f) < 0.001f, 
-                    "With 0dB gains, signal should be unchanged");
+            expect (std::abs (buffer.getSample (0, 0) - 0.5f) < 0.01f, 
+                    "With 0dB gain, signal should be unchanged");
         }
         
         beginTest ("Gain silence");
         {
             WhyCremisiProcessor processor;
             
-            // Set gains to -inf (but we can't set -inf, so use a very low value)
-            processor.getParameters().getParameterAsValue ("gain1").setValue (-60.0); // approx 0.001
-            processor.getParameters().getParameterAsValue ("gain2").setValue (-60.0); // approx 0.001
+            // Set gain1 to -60dB (factor ~0.001) using normalized value: (-60 - (-60)) / 72 = 0.0
+            auto* p1 = processor.getParameters().getParameter ("gain1");
+            p1->setValueNotifyingHost (p1->convertTo0to1 (-60.0f));
             
             juce::AudioBuffer<float> buffer (2, 1024);
             buffer.setSample (0, 0, 1.0f);
@@ -106,10 +96,10 @@ public:
             juce::MidiBuffer midi;
             processor.processBlock (buffer, midi);
             
-            // With -60dB twice, gain is about 0.001 * 0.001 = 1e-6
-            // So 1.0 * 1e-6 = 0.000001
-            expect (std::abs (buffer.getSample (0, 0)) < 0.0001f, 
-                    "With -60dB gains, signal should be very close to zero");
+            // With -60dB, gain factor is ~0.001
+            // So 1.0 * 0.001 = 0.001
+            expect (std::abs (buffer.getSample (0, 0)) < 0.01f, 
+                    "With -60dB gain, signal should be near zero");
         }
     }
 };

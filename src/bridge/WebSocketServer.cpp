@@ -209,15 +209,15 @@ void WebSocketServer::stop()
     while (client->connected.load() && running.load())
     {
         // Read data from client
-        char buffer[65536];
-        int bytesRead = client->socket->read(buffer, sizeof(buffer), false);
+        std::vector<char> buffer(65536);
+        int bytesRead = client->socket->read(buffer.data(), static_cast<int>(buffer.size()), false);
 
         if (bytesRead > 0)
         {
             // Append to receive buffer
             client->receiveBuffer.insert(client->receiveBuffer.end(),
-                                         reinterpret_cast<uint8_t*>(buffer),
-                                         reinterpret_cast<uint8_t*>(buffer) + bytesRead);
+                                         reinterpret_cast<uint8_t*>(buffer.data()),
+                                         reinterpret_cast<uint8_t*>(buffer.data()) + bytesRead);
 
             // Process buffer
             while (!client->receiveBuffer.empty())
