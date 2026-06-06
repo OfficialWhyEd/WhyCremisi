@@ -1,0 +1,2099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WhyCremisi — AI That Lives In Your DAW</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet"/>
+
+<style>
+/* ══════════════════════════════════════════════════════════
+   CSS @LAYER ARCHITECTURE
+   ══════════════════════════════════════════════════════════ */
+@layer reset, tokens, base, layout, components, states, motion;
+
+/* ── LAYER: RESET ─────────────────────────────────────────── */
+@layer reset {
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  img, svg { display: block; }
+  button { cursor: pointer; border: none; background: none; font: inherit; }
+  a { color: inherit; text-decoration: none; }
+  ul, ol { list-style: none; }
+}
+
+/* ── LAYER: TOKENS ─────────────────────────────────────────── */
+@layer tokens {
+  :root {
+    /* ── PRIMITIVE TOKENS ─────── */
+    --color-crimson-500: oklch(47% 0.24 17);
+    --color-crimson-600: oklch(56% 0.26 17);
+    --color-crimson-300: oklch(35% 0.18 17);
+    --color-crimson-bg:  oklch(47% 0.24 17 / 0.08);
+    --color-amber-500:   oklch(77% 0.17 67);
+    --color-amber-bg:    oklch(77% 0.17 67 / 0.12);
+    --color-cyan-500:    oklch(88% 0.14 196);
+    --color-cyan-bg:     oklch(88% 0.14 196 / 0.10);
+    --color-green-500:   oklch(78% 0.19 155);
+    --color-green-bg:    oklch(78% 0.19 155 / 0.10);
+    --color-blue-500:    oklch(52% 0.18 265);
+    --color-blue-bg:     oklch(52% 0.18 265 / 0.10);
+
+    --color-bg-900:      oklch(9%  0.004 17);
+    --color-bg-800:      oklch(12% 0.005 17);
+    --color-bg-700:      oklch(14% 0.006 17);
+    --color-bg-600:      oklch(17% 0.007 17);
+    --color-border-hard: oklch(22% 0.006 17);
+    --color-border-soft: oklch(22% 0.006 17 / 0.5);
+    --color-ink-100:     oklch(93% 0.005 17);
+    --color-ink-400:     oklch(68% 0.007 17);
+    --color-ink-600:     oklch(42% 0.006 17);
+    --color-ink-800:     oklch(28% 0.005 17);
+
+    /* ── SEMANTIC TOKENS ────────── */
+    --color-accent:        var(--color-crimson-500);
+    --color-accent-hi:     var(--color-crimson-600);
+    --color-accent-lo:     var(--color-crimson-300);
+    --color-accent-bg:     var(--color-crimson-bg);
+    --color-highlight:     var(--color-amber-500);
+    --color-info:          var(--color-cyan-500);
+    --color-success:       var(--color-green-500);
+    --color-error:         var(--color-crimson-500);
+
+    --color-bg:            var(--color-bg-900);
+    --color-surface:       var(--color-bg-800);
+    --color-surface-raised:var(--color-bg-700);
+    --color-border:        var(--color-border-hard);
+    --color-text:          var(--color-ink-100);
+    --color-text-muted:    var(--color-ink-400);
+    --color-text-dim:      var(--color-ink-600);
+
+    /* ── COMPONENT TOKENS ────────── */
+    --btn-primary-bg:      var(--color-accent);
+    --btn-primary-text:    var(--color-ink-100);
+    --btn-primary-border:  var(--color-accent-hi);
+    --btn-ghost-border:    var(--color-border);
+    --card-border:         var(--color-border);
+    --card-bg:             transparent;
+    --nav-bg:              oklch(9% 0.004 17 / 0.85);
+    --nav-border:          var(--color-border-soft);
+    --pill-gap:            8px;
+
+    /* ── SPACING / GRID ─────────── */
+    --grid: 4px;
+    --sp-1:  4px;   /* 1 × --grid */
+    --sp-2:  8px;
+    --sp-3:  12px;
+    --sp-4:  16px;
+    --sp-5:  20px;
+    --sp-6:  24px;
+    --sp-8:  32px;
+    --sp-10: 40px;
+    --sp-12: 48px;
+    --sp-16: 64px;
+    --sp-20: 80px;
+
+    /* ── TYPOGRAPHY ─────────────── */
+    --font-sans: 'Space Grotesk', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+
+    /* ── RADII ────────────────────── */
+    --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 20px;
+
+    /* ── EASING ─────────────────── */
+    --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-expo:    cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-quart:   cubic-bezier(0.25, 1, 0.5, 1);
+    --ease-linear:  linear;
+  }
+}
+
+/* ── LAYER: BASE ─────────────────────────────────────────── */
+@layer base {
+  html { font-size: 16px; }
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-weight: 400;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  /* CRT scanline overlay */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px, transparent 3px,
+      oklch(0% 0 0 / 0.035) 3px, oklch(0% 0 0 / 0.035) 4px
+    );
+    pointer-events: none; z-index: 9999;
+  }
+  h1,h2,h3,h4 {
+    font-weight: 700; line-height: 1.1; letter-spacing: -0.03em;
+    color: var(--color-text);
+  }
+  p { max-width: 65ch; }
+  code, .mono {
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+  }
+}
+
+/* ── LAYER: LAYOUT ─────────────────────────────────────────── */
+@layer layout {
+  .container {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 0 clamp(24px, 5vw, 64px);
+  }
+  section { padding: var(--sp-20) 0; }
+}
+
+/* ── CANVAS BG ──────────────────────────────────────────── */
+#bg-canvas {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none;
+}
+
+/* ── LAYER: COMPONENTS ─────────────────────────────────────── */
+@layer components {
+
+  /* ── PRODUCTION BAR ──── */
+  .prod-bar {
+    position: fixed;
+    top: 12px; left: 16px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--color-text-dim);
+    letter-spacing: 0.08em;
+    z-index: 200;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+
+  /* ── NAV ──── */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 100;
+    height: 60px;
+    display: flex; align-items: center;
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--nav-border);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+  .nav__inner {
+    width: 100%; max-width: 1320px; margin: 0 auto;
+    padding: 0 clamp(24px, 5vw, 64px);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav__logo {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--color-accent);
+  }
+  .nav__logo span { color: var(--color-text-muted); font-weight: 300; }
+  .nav__links {
+    display: flex; align-items: center; gap: var(--sp-8);
+  }
+  .nav__link {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    letter-spacing: 0.02em;
+    transition: color 0.2s;
+  }
+  .nav__link:hover { color: var(--color-text); }
+  .nav__cta {
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    color: var(--btn-primary-text);
+    background: var(--btn-primary-bg);
+    padding: 8px 20px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--btn-primary-border);
+    letter-spacing: 0.04em;
+    transition: transform 0.2s var(--ease-spring), box-shadow 0.2s;
+  }
+  .nav__cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px oklch(47% 0.24 17 / 0.3);
+  }
+
+  /* ── HERO ──── */
+  .hero {
+    min-height: 100vh;
+    padding-top: 60px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: var(--sp-16);
+    position: relative;
+    z-index: 1;
+  }
+  .hero__left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-8);
+    padding: var(--sp-20) 0;
+  }
+  .hero__botface-wrap {
+    position: relative;
+    width: 260px; height: 260px;
+    /* ring bleeds -40px outside its box */
+    margin: -40px;
+    flex-shrink: 0;
+  }
+  .hero__botface-ring {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    border: 1px solid var(--color-border-soft);
+    box-shadow:
+      inset 0 0 40px oklch(47% 0.24 17 / 0.06),
+      0 0 60px oklch(47% 0.24 17 / 0.04);
+    pointer-events: none;
+  }
+  .hero__state-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--color-text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: calc(var(--sp-8) + 40px); /* compensate margin bleed */
+  }
+
+  /* ── STATE PILLS ──── */
+  .state-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--pill-gap);
+    justify-content: center;
+    margin-top: var(--sp-4);
+    max-width: 340px;
+  }
+  .state-pill {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    padding: 5px 12px;
+    border-radius: 100px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: transform 0.2s var(--ease-spring), opacity 0.2s;
+    white-space: nowrap;
+  }
+  .state-pill:hover { transform: scale(1.08); }
+  .state-pill.active { opacity: 1 !important; transform: scale(1.05); }
+  .state-pill--cyan   { background: var(--color-cyan-bg); border-color: oklch(88% 0.14 196 / 0.25); color: var(--color-cyan-500); }
+  .state-pill--amber  { background: var(--color-amber-bg); border-color: oklch(77% 0.17 67 / 0.25); color: var(--color-amber-500); }
+  .state-pill--crimson{ background: var(--color-crimson-bg); border-color: oklch(47% 0.24 17 / 0.35); color: var(--color-crimson-600); }
+  .state-pill--green  { background: var(--color-green-bg); border-color: oklch(78% 0.19 155 / 0.25); color: var(--color-green-500); }
+  .state-pill--blue   { background: var(--color-blue-bg); border-color: oklch(52% 0.18 265 / 0.25); color: var(--color-blue-500); }
+
+  /* ── HERO RIGHT ──── */
+  .hero__right {
+    padding: var(--sp-20) 0 var(--sp-20) var(--sp-8);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-8);
+  }
+  .hero__eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--color-accent);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .hero__h1 {
+    font-size: clamp(4rem, 8vw, 9rem);
+    font-weight: 700;
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+    color: var(--color-text);
+    /* NO gradient text — solid color only */
+  }
+  .hero__h1 .hero__h1-sub {
+    display: block;
+    font-weight: 300;
+    font-size: clamp(1.4rem, 2.5vw, 2.8rem);
+    color: var(--color-text-muted);
+    letter-spacing: -0.02em;
+    margin-top: var(--sp-4);
+    line-height: 1.2;
+  }
+  .hero__desc {
+    font-weight: 300;
+    font-size: clamp(1rem, 1.4vw, 1.15rem);
+    color: var(--color-text-muted);
+    line-height: 1.7;
+    max-width: 52ch;
+  }
+  .hero__stats {
+    display: flex;
+    gap: var(--sp-8);
+    flex-wrap: wrap;
+    margin-top: var(--sp-4);
+  }
+  .hero__stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .hero__stat-num {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--color-accent);
+    line-height: 1;
+  }
+  .hero__stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--color-text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .hero__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    flex-wrap: wrap;
+    margin-top: var(--sp-4);
+  }
+
+  /* ── CTA BUTTON (magnetic) ──── */
+  .btn-primary {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--btn-primary-text);
+    background: var(--btn-primary-bg);
+    padding: 16px 36px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--btn-primary-border);
+    transition: box-shadow 0.2s var(--ease-quart);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .btn-primary::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, oklch(100% 0 0 / 0.08) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .btn-primary:hover {
+    box-shadow: 0 12px 40px oklch(47% 0.24 17 / 0.4);
+  }
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    padding: 16px 24px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--btn-ghost-border);
+    transition: color 0.2s, border-color 0.2s, transform 0.2s var(--ease-spring);
+  }
+  .btn-ghost:hover {
+    color: var(--color-text);
+    border-color: var(--color-border-soft);
+    transform: translateY(-2px);
+  }
+
+  /* ── TICKER ──── */
+  .ticker {
+    padding: 0;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+  }
+  .ticker__track {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    white-space: nowrap;
+    animation: ticker-scroll 32s linear infinite;
+    padding: 14px 0;
+  }
+  .ticker__item {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+    padding: 0 var(--sp-8);
+    display: flex; align-items: center; gap: var(--sp-4);
+  }
+  .ticker__sep {
+    width: 3px; height: 3px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  @keyframes ticker-scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  /* ── SECTION HEADERS ──── */
+  .section-header {
+    margin-bottom: var(--sp-12);
+  }
+  .section-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-accent);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: var(--sp-4);
+  }
+  .section-h2 {
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--color-text);
+    margin-bottom: var(--sp-4);
+    line-height: 1.05;
+  }
+  .section-h2 em {
+    font-style: normal;
+    font-weight: 300;
+    color: var(--color-text-muted);
+  }
+  .section-desc {
+    font-weight: 300;
+    color: var(--color-text-muted);
+    font-size: 1.05rem;
+    max-width: 60ch;
+  }
+
+  /* ── HAIRLINE CARD ──── */
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-8);
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.25s var(--ease-spring), border-color 0.25s;
+  }
+  .card:hover { transform: scale(1.04); }
+  /* Spotlight border via JS --mx/--my */
+  .card::before {
+    content: '';
+    position: absolute; inset: -1px;
+    border-radius: inherit;
+    background: radial-gradient(
+      200px circle at var(--mx, 50%) var(--my, 50%),
+      oklch(47% 0.24 17 / 0.35),
+      transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .card:hover::before { opacity: 1; }
+  .card > * { position: relative; z-index: 1; }
+
+  /* ── HOW IT WORKS ──── */
+  .how-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-1);
+    position: relative;
+  }
+  .how-step {
+    padding: var(--sp-8);
+    border: 1px solid var(--color-border);
+    position: relative;
+  }
+  .how-step:not(:last-child)::after {
+    content: '→';
+    position: absolute;
+    right: calc(-1 * var(--sp-5));
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-size: 18px;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .how-step__num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--color-accent);
+    letter-spacing: 0.1em;
+    margin-bottom: var(--sp-4);
+  }
+  .how-step__title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: var(--sp-3);
+    letter-spacing: -0.02em;
+  }
+  .how-step__desc {
+    font-weight: 300;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+  }
+  .how-step__badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent-lo);
+    border-radius: 2px;
+    padding: 2px 6px;
+    margin-top: var(--sp-4);
+  }
+
+  /* ── BOTFACE STATES SECTION ──── */
+  .states-section {
+    position: relative; z-index: 1;
+  }
+  .states-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-16);
+    align-items: center;
+  }
+  .states__botface-large {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-8);
+  }
+  .states__info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+  }
+  .state-detail {
+    display: none;
+    flex-direction: column;
+    gap: var(--sp-4);
+    animation: fadeIn 0.3s var(--ease-expo);
+  }
+  .state-detail.visible { display: flex; }
+  .state-detail__name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .state-detail__desc {
+    font-weight: 300;
+    font-size: 1rem;
+    color: var(--color-text-muted);
+    line-height: 1.7;
+    max-width: 45ch;
+  }
+  .state-detail__meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-dim);
+    letter-spacing: 0.05em;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── AI PROVIDERS: ZIGZAG 2-COL ──── */
+  .providers-section { position: relative; z-index: 1; }
+  .providers-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+  }
+  .provider-row {
+    display: grid;
+    gap: var(--sp-6);
+    align-items: center;
+  }
+  .provider-row:nth-child(odd)  { grid-template-columns: 1fr 2fr; }
+  .provider-row:nth-child(even) { grid-template-columns: 2fr 1fr; }
+  .provider-row:nth-child(even) .provider-card { order: 2; }
+  .provider-row:nth-child(even) .provider-detail { order: 1; }
+  .provider-card {
+    border: 1px solid var(--card-border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-8);
+    background: transparent;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.25s var(--ease-spring);
+  }
+  .provider-card:hover { transform: scale(1.03); }
+  .provider-card::before {
+    content: '';
+    position: absolute; inset: -1px;
+    border-radius: inherit;
+    background: radial-gradient(
+      200px circle at var(--mx, 50%) var(--my, 50%),
+      oklch(47% 0.24 17 / 0.3),
+      transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .provider-card:hover::before { opacity: 1; }
+  .provider-card__logo {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: var(--sp-3);
+    line-height: 1;
+  }
+  .provider-card__tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+    border: 1px solid var(--color-border);
+    border-radius: 2px;
+    padding: 2px 6px;
+    display: inline-block;
+    margin-bottom: var(--sp-4);
+  }
+  .provider-detail {
+    padding: var(--sp-6);
+  }
+  .provider-detail__name {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: var(--sp-3);
+  }
+  .provider-detail__desc {
+    font-weight: 300;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+    max-width: 40ch;
+  }
+  .provider-detail__spec {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--color-text-dim);
+    margin-top: var(--sp-4);
+    letter-spacing: 0.05em;
+  }
+
+  /* ── ARCHITECTURE ──── */
+  .arch-section { position: relative; z-index: 1; }
+  .arch-diagram {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-12);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 2;
+    color: var(--color-text-muted);
+    overflow-x: auto;
+  }
+  .arch-diagram pre {
+    white-space: pre;
+    font-family: inherit;
+  }
+  .arch-hi   { color: var(--color-text); font-weight: 700; }
+  .arch-acc  { color: var(--color-accent); }
+  .arch-amb  { color: var(--color-highlight); }
+  .arch-cyn  { color: var(--color-info); }
+  .arch-grn  { color: var(--color-success); }
+  .arch-dim  { color: var(--color-text-dim); }
+
+  /* ── PLUGIN PREVIEW ──── */
+  .preview-section { position: relative; z-index: 1; }
+  .plugin-mock {
+    border: 1px solid var(--color-border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    background: var(--color-surface);
+    max-width: 760px;
+    margin: 0 auto;
+    box-shadow: 0 40px 80px oklch(0% 0 0 / 0.5);
+  }
+  .plugin-mock__header {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-700);
+  }
+  .plugin-mock__dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .plugin-mock__title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    letter-spacing: 0.1em;
+    margin-left: var(--sp-2);
+  }
+  .plugin-mock__tabs {
+    display: flex;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-800);
+  }
+  .plugin-mock__tab {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: var(--color-text-dim);
+    padding: 10px 20px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .plugin-mock__tab.active {
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+  }
+  .plugin-mock__body {
+    padding: var(--sp-6);
+    min-height: 240px;
+  }
+  /* chat tab */
+  .plugin-chat { display: flex; flex-direction: column; gap: var(--sp-4); }
+  .plugin-msg {
+    display: flex;
+    gap: var(--sp-3);
+    font-size: 12px;
+  }
+  .plugin-msg--ai { flex-direction: row; }
+  .plugin-msg--user { flex-direction: row-reverse; }
+  .plugin-msg__bubble {
+    border-radius: var(--r-md);
+    padding: 8px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    max-width: 70%;
+  }
+  .plugin-msg--ai .plugin-msg__bubble {
+    background: var(--color-bg-700);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+  }
+  .plugin-msg--user .plugin-msg__bubble {
+    background: var(--color-crimson-bg);
+    border: 1px solid oklch(47% 0.24 17 / 0.3);
+    color: var(--color-text);
+  }
+  .plugin-input-row {
+    display: flex; gap: var(--sp-2);
+    margin-top: var(--sp-4);
+  }
+  .plugin-input {
+    flex: 1;
+    background: var(--color-bg-700);
+    border: 1px solid var(--color-border);
+    border-radius: var(--r-md);
+    padding: 8px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text);
+    outline: none;
+  }
+  .plugin-send {
+    background: var(--color-accent);
+    border: none;
+    border-radius: var(--r-md);
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-size: 14px;
+    transition: transform 0.2s var(--ease-spring);
+  }
+  .plugin-send:hover { transform: scale(1.1); }
+
+  /* ── CAPABILITIES ──── */
+  .caps-section { position: relative; z-index: 1; }
+  .caps-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    background: var(--color-border);
+  }
+  .cap-item {
+    background: var(--color-bg);
+    padding: var(--sp-8);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    transition: background 0.2s;
+  }
+  .cap-item:hover { background: var(--color-surface); }
+  .cap-item__icon {
+    font-size: 20px;
+    line-height: 1;
+  }
+  .cap-item__title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .cap-item__desc {
+    font-weight: 300;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+  .cap-item__spec {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--color-text-dim);
+    letter-spacing: 0.05em;
+    margin-top: auto;
+  }
+
+  /* ── CTA SECTION ──── */
+  .cta-section {
+    position: relative; z-index: 1;
+    text-align: center;
+    padding: 120px 0;
+    border-top: 1px solid var(--color-border);
+  }
+  .cta-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 60% 50% at 50% 50%,
+      oklch(47% 0.24 17 / 0.04),
+      transparent
+    );
+    pointer-events: none;
+  }
+  .cta__h2 {
+    font-size: clamp(2.4rem, 5vw, 5rem);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    margin-bottom: var(--sp-6);
+    line-height: 1;
+  }
+  .cta__h2 span {
+    font-weight: 300;
+    color: var(--color-text-muted);
+  }
+  .cta__sub {
+    font-weight: 300;
+    color: var(--color-text-muted);
+    font-size: 1.05rem;
+    margin-bottom: var(--sp-10);
+    max-width: 50ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .cta__footnote {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--color-text-dim);
+    letter-spacing: 0.08em;
+    margin-top: var(--sp-6);
+  }
+
+  /* ── FOOTER ──── */
+  .footer {
+    position: relative; z-index: 1;
+    border-top: 1px solid var(--color-border);
+    padding: var(--sp-8) 0;
+    background: var(--color-surface);
+  }
+  .footer__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--sp-4);
+  }
+  .footer__logo {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-accent);
+    letter-spacing: 0.05em;
+  }
+  .footer__meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--color-text-dim);
+    letter-spacing: 0.08em;
+  }
+  .footer__links {
+    display: flex;
+    gap: var(--sp-6);
+  }
+  .footer__link {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    transition: color 0.2s;
+  }
+  .footer__link:hover { color: var(--color-text); }
+}
+
+/* ── LAYER: STATES ─────────────────────────────────────────── */
+@layer states {
+  .reveal-item {
+    opacity: 0;
+    transform: translateY(20px);
+    transition:
+      opacity 0.6s var(--ease-expo),
+      transform 0.6s var(--ease-expo);
+  }
+  .reveal-item.revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── LAYER: MOTION ─────────────────────────────────────────── */
+@layer motion {
+  @media (prefers-reduced-motion: no-preference) {
+    .stagger-1 { transition-delay: 0ms; }
+    .stagger-2 { transition-delay: 60ms; }
+    .stagger-3 { transition-delay: 120ms; }
+    .stagger-4 { transition-delay: 180ms; }
+    .stagger-5 { transition-delay: 240ms; }
+    .stagger-6 { transition-delay: 300ms; }
+    .stagger-7 { transition-delay: 360ms; }
+    .stagger-8 { transition-delay: 420ms; }
+    .stagger-9 { transition-delay: 480ms; }
+  }
+
+  /* BotFace SVG base */
+  .botface-svg {
+    width: 100%; height: 100%;
+    filter: drop-shadow(0 0 20px currentColor);
+  }
+  .bf-face-circle {
+    fill: var(--color-bg-800);
+    stroke: currentColor;
+    stroke-width: 1.5;
+    transition: stroke 0.4s;
+  }
+  .bf-eye {
+    fill: currentColor;
+    transition: fill 0.4s;
+  }
+  .bf-eye-inner {
+    fill: var(--color-bg-800);
+    transition: fill 0.4s;
+  }
+  .bf-brow {
+    stroke: currentColor;
+    stroke-width: 2.5;
+    fill: none;
+    stroke-linecap: round;
+    transition: stroke 0.4s;
+  }
+  .bf-mouth {
+    stroke: currentColor;
+    stroke-width: 2.5;
+    fill: none;
+    stroke-linecap: round;
+    transition: stroke 0.4s;
+  }
+  .bf-antenna {
+    stroke: currentColor;
+    stroke-width: 1.5;
+    fill: none;
+  }
+  .bf-antenna-dot {
+    fill: currentColor;
+  }
+  .bf-scan-line {
+    opacity: 0.35;
+    animation: scan-move 2.5s linear infinite;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1;
+  }
+  @keyframes scan-move {
+    0%   { transform: translateY(-12px); opacity: 0; }
+    10%  { opacity: 0.35; }
+    90%  { opacity: 0.35; }
+    100% { transform: translateY(12px); opacity: 0; }
+  }
+}
+
+/* ── RESPONSIVE ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .hero__left { padding-top: var(--sp-16); }
+  .hero__right { padding: 0; align-items: center; }
+  .hero__desc { margin: 0 auto; }
+  .hero__stats { justify-content: center; }
+  .hero__actions { justify-content: center; }
+  .how-grid { grid-template-columns: 1fr; gap: 1px; }
+  .how-step:not(:last-child)::after { display: none; }
+  .states-layout { grid-template-columns: 1fr; }
+  .provider-row { grid-template-columns: 1fr !important; }
+  .provider-row:nth-child(even) .provider-card,
+  .provider-row:nth-child(even) .provider-detail { order: unset; }
+  .caps-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- Production bar -->
+<div class="prod-bar">v0.9.3-beta / JUCE 8.0.12</div>
+
+<!-- Canvas particle background -->
+<canvas id="bg-canvas" aria-hidden="true"></canvas>
+
+<!-- ══════════════ NAV ══════════════ -->
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav__inner">
+    <a href="#" class="nav__logo">WHY<span>CREMISI</span></a>
+    <div class="nav__links" role="list">
+      <a href="#how" class="nav__link" role="listitem">How it works</a>
+      <a href="#providers" class="nav__link" role="listitem">Providers</a>
+      <a href="#architecture" class="nav__link" role="listitem">Architecture</a>
+      <a href="#capabilities" class="nav__link" role="listitem">Capabilities</a>
+      <a href="#cta" class="nav__cta" role="listitem">Download Beta</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ══════════════ HERO ══════════════ -->
+<main>
+<section class="hero container" aria-label="Hero">
+  <!-- LEFT: BotFace + pills -->
+  <div class="hero__left">
+    <div class="hero__botface-wrap" id="hero-botface-wrap">
+      <div class="hero__botface-ring" id="hero-botface-ring"></div>
+      <!-- BotFace SVG (100x100 viewBox) -->
+      <svg class="botface-svg" id="botface-hero" viewBox="0 0 100 100" aria-label="BotFace mascot" role="img">
+        <!-- Antenna -->
+        <line class="bf-antenna" x1="50" y1="8" x2="50" y2="20"/>
+        <circle class="bf-antenna-dot" cx="50" cy="6" r="2.5"/>
+        <!-- Face circle -->
+        <circle class="bf-face-circle" cx="50" cy="54" r="38"/>
+        <!-- Scan line -->
+        <line class="bf-scan-line" x1="14" y1="54" x2="86" y2="54"/>
+        <!-- Left eye -->
+        <circle class="bf-eye" cx="35" cy="47" r="6"/>
+        <circle class="bf-eye-inner" cx="36.5" cy="45.5" r="2"/>
+        <!-- Right eye -->
+        <circle class="bf-eye" cx="65" cy="47" r="6"/>
+        <circle class="bf-eye-inner" cx="66.5" cy="45.5" r="2"/>
+        <!-- Brows -->
+        <path class="bf-brow" id="brow-l" d="M 26 44 Q 35 33 44 44"/>
+        <path class="bf-brow" id="brow-r" d="M 56 44 Q 65 33 74 44"/>
+        <!-- Mouth -->
+        <path class="bf-mouth" id="mouth" d="M 38 65 Q 50 74 62 65"/>
+      </svg>
+    </div>
+
+    <div class="hero__state-label mono" id="hero-state-label">IDLE</div>
+
+    <!-- State pills row -->
+    <div class="state-pills" id="hero-state-pills" role="group" aria-label="BotFace states">
+      <button class="state-pill state-pill--cyan active" data-state="idle">idle</button>
+      <button class="state-pill state-pill--amber" data-state="thinking">thinking</button>
+      <button class="state-pill state-pill--cyan" data-state="typing">typing</button>
+      <button class="state-pill state-pill--amber" data-state="listening">listening</button>
+      <button class="state-pill state-pill--crimson" data-state="error">error</button>
+      <button class="state-pill state-pill--green" data-state="success">success</button>
+      <button class="state-pill state-pill--cyan" data-state="loading">loading</button>
+      <button class="state-pill state-pill--amber" data-state="advisory">advisory</button>
+      <button class="state-pill state-pill--blue" data-state="sad">sad</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: Text + CTA -->
+  <div class="hero__right">
+    <div class="hero__eyebrow reveal-item stagger-1">VST3 / AU · JUCE 8 · REACT 19</div>
+    <h1 class="hero__h1 reveal-item stagger-2" id="hero-h1" aria-label="AI LIVES INSIDE YOUR DAW">
+      <span id="scramble-target">AI LIVES</span>
+      <span class="hero__h1-sub">inside your DAW.</span>
+    </h1>
+    <p class="hero__desc reveal-item stagger-3">
+      6 AI providers. Zero latency. Full bidirectional WebSocket pipeline from React UI
+      to C++ AudioProcessor via OscBridge. Your DAW is now a conversation.
+    </p>
+    <div class="hero__stats reveal-item stagger-4">
+      <div class="hero__stat">
+        <span class="hero__stat-num">6</span>
+        <span class="hero__stat-label">AI Providers</span>
+      </div>
+      <div class="hero__stat">
+        <span class="hero__stat-num">9</span>
+        <span class="hero__stat-label">Bot States</span>
+      </div>
+      <div class="hero__stat">
+        <span class="hero__stat-num">&lt;2ms</span>
+        <span class="hero__stat-label">Bridge Latency</span>
+      </div>
+      <div class="hero__stat">
+        <span class="hero__stat-num">3</span>
+        <span class="hero__stat-label">Layer Arch</span>
+      </div>
+    </div>
+    <div class="hero__actions reveal-item stagger-5">
+      <a href="#cta" class="btn-primary" id="magnetic-btn">
+        ↓ Download Beta
+      </a>
+      <a href="#architecture" class="btn-ghost">View Architecture →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ TICKER ══════════════ -->
+<div class="ticker" aria-hidden="true">
+  <div class="ticker__track" id="ticker-track">
+    <!-- JS fills in duplicated content -->
+  </div>
+</div>
+
+<!-- ══════════════ HOW IT WORKS ══════════════ -->
+<section id="how" style="position:relative;z-index:1;">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-eyebrow reveal-item stagger-1">Architecture in 3 Steps</div>
+      <h2 class="section-h2 reveal-item stagger-2">How <em>it actually</em> works</h2>
+      <p class="section-desc reveal-item stagger-3">
+        No black boxes. Three concrete layers handle every keystroke from
+        your plugin's chat UI to real-time audio parameter changes.
+      </p>
+    </div>
+    <div class="how-grid">
+      <div class="how-step card reveal-item stagger-1">
+        <div class="how-step__num">01 / 03</div>
+        <div class="how-step__title">React UI Layer</div>
+        <p class="how-step__desc">
+          React 19 with framer-motion 12 runs inside the JUCE WebView.
+          WebSocket client sends JSON commands, receives streamed AI tokens,
+          drives BotFace animation states in real-time.
+        </p>
+        <span class="how-step__badge">port 8765</span>
+      </div>
+      <div class="how-step card reveal-item stagger-2">
+        <div class="how-step__num">02 / 03</div>
+        <div class="how-step__title">OscBridge C++</div>
+        <p class="how-step__desc">
+          Stateful C++17 bridge process. Owns the WebSocket server, routes
+          messages to 6 AI provider adapters, translates NLP intent into
+          OSC-style AudioProcessor parameter mutations.
+        </p>
+        <span class="how-step__badge">C++17 / JUCE OSC</span>
+      </div>
+      <div class="how-step card reveal-item stagger-3">
+        <div class="how-step__num">03 / 03</div>
+        <div class="how-step__title">AudioProcessor</div>
+        <p class="how-step__desc">
+          Host-synchronized DSP runs in the realtime thread. Receives
+          parameter mutations from the bridge on the message thread,
+          applies them sample-accurately using JUCE's atomic parameter system.
+        </p>
+        <span class="how-step__badge">Sample-accurate</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ BOTFACE STATES ══════════════ -->
+<section id="states" class="states-section">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-eyebrow reveal-item stagger-1">9 Emotional States</div>
+      <h2 class="section-h2 reveal-item stagger-2">BotFace <em>reads the room</em></h2>
+      <p class="section-desc reveal-item stagger-3">
+        Morphing SVG paths via Web Animations API. Every state communicates
+        real plugin status — not decoration.
+      </p>
+    </div>
+    <div class="states-layout">
+      <div class="states__botface-large">
+        <!-- Large BotFace for states section -->
+        <svg class="botface-svg" id="botface-states" viewBox="0 0 100 100"
+             style="width:220px;height:220px;" aria-label="BotFace mascot states" role="img">
+          <line class="bf-antenna" x1="50" y1="8" x2="50" y2="20"/>
+          <circle class="bf-antenna-dot" cx="50" cy="6" r="2.5"/>
+          <circle class="bf-face-circle" cx="50" cy="54" r="38"/>
+          <line class="bf-scan-line" x1="14" y1="54" x2="86" y2="54"/>
+          <circle class="bf-eye" cx="35" cy="47" r="6"/>
+          <circle class="bf-eye-inner" cx="36.5" cy="45.5" r="2"/>
+          <circle class="bf-eye" cx="65" cy="47" r="6"/>
+          <circle class="bf-eye-inner" cx="66.5" cy="45.5" r="2"/>
+          <path class="bf-brow" id="states-brow-l" d="M 26 44 Q 35 33 44 44"/>
+          <path class="bf-brow" id="states-brow-r" d="M 56 44 Q 65 33 74 44"/>
+          <path class="bf-mouth" id="states-mouth" d="M 38 65 Q 50 74 62 65"/>
+        </svg>
+
+        <!-- Second pills row for states section -->
+        <div class="state-pills" id="states-pills" role="group" aria-label="BotFace state selector">
+          <button class="state-pill state-pill--cyan active" data-state="idle">idle</button>
+          <button class="state-pill state-pill--amber" data-state="thinking">thinking</button>
+          <button class="state-pill state-pill--cyan" data-state="typing">typing</button>
+          <button class="state-pill state-pill--amber" data-state="listening">listening</button>
+          <button class="state-pill state-pill--crimson" data-state="error">error</button>
+          <button class="state-pill state-pill--green" data-state="success">success</button>
+          <button class="state-pill state-pill--cyan" data-state="loading">loading</button>
+          <button class="state-pill state-pill--amber" data-state="advisory">advisory</button>
+          <button class="state-pill state-pill--blue" data-state="sad">sad</button>
+        </div>
+      </div>
+
+      <div class="states__info" id="states-info">
+        <!-- JS renders state details here -->
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ AI PROVIDERS ══════════════ -->
+<section id="providers" class="providers-section">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-eyebrow reveal-item stagger-1">6 AI Providers</div>
+      <h2 class="section-h2 reveal-item stagger-2">Local or cloud. <em>Your call.</em></h2>
+      <p class="section-desc reveal-item stagger-3">
+        Hot-swap providers without reloading the plugin.
+        Every provider shares the same adapter interface — zero abstraction leaks.
+      </p>
+    </div>
+    <div class="providers-grid">
+
+      <!-- Row 1: Ollama (card narrow left, detail wide right) -->
+      <div class="provider-row reveal-item stagger-1">
+        <div class="provider-card">
+          <div class="provider-card__logo" style="color:var(--color-amber-500);">OLLAMA</div>
+          <div class="provider-card__tag">LOCAL · OFFLINE</div>
+          <p style="font-size:0.85rem;font-weight:300;color:var(--color-text-muted);line-height:1.5;">
+            Run any Llama, Mistral, Gemma model locally. Zero API costs, complete data sovereignty, works air-gapped.
+          </p>
+        </div>
+        <div class="provider-detail">
+          <div class="provider-detail__name">Ollama</div>
+          <p class="provider-detail__desc">
+            Stream tokens from a local model server. No network dependency in the studio.
+            Plugin auto-detects running Ollama instance on <code>localhost:11434</code>.
+          </p>
+          <div class="provider-detail__spec">adapter: OllamaProvider.cpp · streaming: SSE · auth: none</div>
+        </div>
+      </div>
+
+      <!-- Row 2: Anthropic (detail wide left, card narrow right) -->
+      <div class="provider-row reveal-item stagger-2">
+        <div class="provider-detail">
+          <div class="provider-detail__name">Anthropic Claude</div>
+          <p class="provider-detail__desc">
+            Claude 3.5 Sonnet/Haiku via Messages API. Extended thinking mode for complex
+            harmonic analysis. Streaming with tool use support.
+          </p>
+          <div class="provider-detail__spec">adapter: AnthropicProvider.cpp · model: claude-3-5-sonnet · streaming: SSE</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-card__logo" style="color:var(--color-crimson-600);">CLAUDE</div>
+          <div class="provider-card__tag">ANTHROPIC · CLOUD</div>
+          <p style="font-size:0.85rem;font-weight:300;color:var(--color-text-muted);line-height:1.5;">
+            Extended thinking. Tool use. Best reasoning quality for complex music theory questions.
+          </p>
+        </div>
+      </div>
+
+      <!-- Row 3: OpenAI -->
+      <div class="provider-row reveal-item stagger-3">
+        <div class="provider-card">
+          <div class="provider-card__logo" style="color:var(--color-cyan-500);">OPENAI</div>
+          <div class="provider-card__tag">OPENAI · CLOUD</div>
+          <p style="font-size:0.85rem;font-weight:300;color:var(--color-text-muted);line-height:1.5;">
+            GPT-4o with function calling. Fine-tuned models supported. Realtime API roadmap integration planned.
+          </p>
+        </div>
+        <div class="provider-detail">
+          <div class="provider-detail__name">OpenAI GPT</div>
+          <p class="provider-detail__desc">
+            GPT-4o multimodal streaming. Plugin sends structured JSON tool schemas to the model.
+            Model returns parameter mutations as structured JSON, bridge validates schema.
+          </p>
+          <div class="provider-detail__spec">adapter: OpenAIProvider.cpp · model: gpt-4o · streaming: SSE</div>
+        </div>
+      </div>
+
+      <!-- Row 4: OpenRouter -->
+      <div class="provider-row reveal-item stagger-4">
+        <div class="provider-detail">
+          <div class="provider-detail__name">OpenRouter</div>
+          <p class="provider-detail__desc">
+            Unified gateway to 50+ models. Mix providers per session.
+            Pay-per-token across Mistral, Cohere, Perplexity, Command R+, and more.
+          </p>
+          <div class="provider-detail__spec">adapter: OpenRouterProvider.cpp · routing: dynamic · models: 50+</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-card__logo" style="color:var(--color-ink-400);">OR</div>
+          <div class="provider-card__tag">OPENROUTER · GATEWAY</div>
+          <p style="font-size:0.85rem;font-weight:300;color:var(--color-text-muted);line-height:1.5;">
+            Single API key. Route to any model. Budget limits enforced per session.
+          </p>
+        </div>
+      </div>
+
+      <!-- Row 5: Groq -->
+      <div class="provider-row reveal-item stagger-5">
+        <div class="provider-card">
+          <div class="provider-card__logo" style="color:var(--color-amber-500);">GROQ</div>
+          <div class="provider-card__tag">GROQ · ULTRA-FAST</div>
+          <p style="font-size:0.85rem;font-weight:300;color:var(--color-text-muted);line-height:1.5;">
+            LPU inference. 500+ tokens/sec. First-token latency under 200ms. Ideal for real-time workflows.
+          </p>
+        </div>
+        <div class="provider-detail">
+          <div class="provider-detail__name">Groq LPU</div>
+          <p class="provider-detail__desc">
+            Language Processing Unit hardware runs Llama 3.1 at 500+ tok/s.
+            Fastest streaming response times of any provider. Plugin BotFace stays in
+            <em style="color:var(--color-cyan-500);font-style:normal">typing</em> state for 180ms average.
+          </p>
+          <div class="provider-detail__spec">adapter: GroqProvider.cpp · model: llama-3.1-70b-versatile · ttft: &lt;200ms</div>
+        </div>
+      </div>
+
+      <!-- Row 6: Gemini -->
+      <div class="provider-row reveal-item stagger-6">
+        <div class="provider-detail">
+          <div class="provider-detail__name">Google Gemini</div>
+          <p class="provider-detail__desc">
+            Gemini 1.5 Pro with 1M token context. Long audio analysis sessions.
+            Multimodal — paste a chord chart screenshot, get back a progression analysis.
+          </p>
+          <div class="provider-detail__spec">adapter: GeminiProvider.cpp · model: gemini-1.5-pro · context: 1M tokens</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-card__logo" style="color:var(--color-green-500);">GEMINI</div>
+          <div class="provider-card__tag">GOOGLE · MULTIMODAL</div>
+          <p style="font-size:0.85rem;font-weight:300;color:var(--color-text-muted);line-height:1.5;">
+            1M token context. Multimodal input. Best for long session analysis.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ ARCHITECTURE ══════════════ -->
+<section id="architecture" class="arch-section">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-eyebrow reveal-item stagger-1">3-Layer Architecture</div>
+      <h2 class="section-h2 reveal-item stagger-2">The <em>full stack</em></h2>
+      <p class="section-desc reveal-item stagger-3">
+        No magic. Every layer is auditable, replaceable, and documented.
+      </p>
+    </div>
+    <div class="arch-diagram reveal-item stagger-4">
+<pre>
+<span class="arch-dim">┌─────────────────────────────────────────────────────────────────┐</span>
+<span class="arch-dim">│</span>  <span class="arch-hi">LAYER 1 — REACT UI</span>                              <span class="arch-cyn">port: 8765</span>  <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>  <span class="arch-cyn">React 19</span> · <span class="arch-cyn">framer-motion 12</span> · <span class="arch-cyn">Tailwind CSS 4</span>               <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>                                                               <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>  <span class="arch-amb">BotFaceWidget</span>  <span class="arch-amb">ChatPanel</span>  <span class="arch-amb">SettingsPanel</span>  <span class="arch-amb">ProvidersPanel</span>  <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>      ↕ SVG Web Animations         ↕ WebSocket JSON            <span class="arch-dim">│</span>
+<span class="arch-dim">└──────────────────────────────┬──────────────────────────────────┘</span>
+                               <span class="arch-acc">│ ws://localhost:8765</span>
+<span class="arch-dim">┌──────────────────────────────┴──────────────────────────────────┐</span>
+<span class="arch-dim">│</span>  <span class="arch-hi">LAYER 2 — OSCBRIDGE C++17</span>                                    <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>  WebSocket Server · Provider Router · Intent → OSC Translator  <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>                                                               <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>  <span class="arch-amb">OllamaProvider</span>   <span class="arch-acc">AnthropicProvider</span>   <span class="arch-cyn">OpenAIProvider</span>          <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>  <span class="arch-dim">OpenRouterProvider</span>   <span class="arch-amb">GroqProvider</span>   <span class="arch-grn">GeminiProvider</span>          <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>      ↕ HTTP/SSE streaming          ↕ JUCE MessageManager      <span class="arch-dim">│</span>
+<span class="arch-dim">└──────────────────────────────┬──────────────────────────────────┘</span>
+                               <span class="arch-acc">│ MessageThread → AudioThread</span>
+<span class="arch-dim">┌──────────────────────────────┴──────────────────────────────────┐</span>
+<span class="arch-dim">│</span>  <span class="arch-hi">LAYER 3 — AUDIPROCESSOR JUCE DSP</span>                            <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>  <span class="arch-grn">Sample-accurate parameter mutations</span>                         <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>  juce::AudioProcessorValueTreeState · Realtime-safe atomics    <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>                                                               <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>  <span class="arch-amb">processBlock()</span>   <span class="arch-cyn">parameterChanged()</span>   <span class="arch-grn">prepareToPlay()</span>        <span class="arch-dim">│</span>
+<span class="arch-dim">│</span>      → DAW / Host (Ableton, Logic, Reaper, Bitwig, FL...)     <span class="arch-dim">│</span>
+<span class="arch-dim">└─────────────────────────────────────────────────────────────────┘</span>
+</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ PLUGIN UI PREVIEW ══════════════ -->
+<section id="preview" class="preview-section">
+  <div class="container">
+    <div class="section-header" style="text-align:center;">
+      <div class="section-eyebrow reveal-item stagger-1">Plugin Interface</div>
+      <h2 class="section-h2 reveal-item stagger-2">Built in <em>your DAW</em></h2>
+      <p class="section-desc reveal-item stagger-3" style="margin:0 auto;">
+        React 19 running inside JUCE WebView. Full hardware-accelerated UI at 60fps.
+      </p>
+    </div>
+    <div class="plugin-mock reveal-item stagger-4">
+      <div class="plugin-mock__header">
+        <div class="plugin-mock__dot" style="background:#DC143C;"></div>
+        <div class="plugin-mock__dot" style="background:#FFB000;"></div>
+        <div class="plugin-mock__dot" style="background:#00FF7F;"></div>
+        <span class="plugin-mock__title">WHYCREMISI v0.9.3-beta</span>
+      </div>
+      <div class="plugin-mock__tabs">
+        <div class="plugin-mock__tab active" onclick="switchTab(this,'chat')">CHAT</div>
+        <div class="plugin-mock__tab" onclick="switchTab(this,'settings')">SETTINGS</div>
+        <div class="plugin-mock__tab" onclick="switchTab(this,'providers')">PROVIDERS</div>
+        <div class="plugin-mock__tab" onclick="switchTab(this,'about')">ABOUT</div>
+      </div>
+      <div class="plugin-mock__body">
+        <!-- CHAT TAB -->
+        <div id="tab-chat" class="plugin-chat">
+          <div class="plugin-msg plugin-msg--ai">
+            <div class="plugin-msg__bubble">
+              Hello. I'm WhyCremisi. What are we building today?<br/>
+              <span style="color:var(--color-text-dim);font-size:9px;">IDLE · 12:04:31</span>
+            </div>
+          </div>
+          <div class="plugin-msg plugin-msg--user">
+            <div class="plugin-msg__bubble">
+              Suggest a chord progression for dark ambient
+            </div>
+          </div>
+          <div class="plugin-msg plugin-msg--ai">
+            <div class="plugin-msg__bubble">
+              <span style="color:var(--color-amber-500);">THINKING</span> · analysing key signature…<br/>
+              Try: <code>i – ♭VII – ♭VI – ♭VII</code> in D minor.<br/>
+              Apply to track? → <code>setParam("root", "D")</code>
+            </div>
+          </div>
+          <div class="plugin-input-row">
+            <input class="plugin-input" type="text" placeholder="Ask WhyCremisi…" />
+            <button class="plugin-send" aria-label="Send">↑</button>
+          </div>
+        </div>
+        <!-- SETTINGS TAB -->
+        <div id="tab-settings" style="display:none;">
+          <div style="display:flex;flex-direction:column;gap:12px;font-family:var(--font-mono);font-size:11px;">
+            <div style="display:flex;justify-content:space-between;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span style="color:var(--color-text-muted);">Active Provider</span>
+              <span style="color:var(--color-amber-500);">ollama / llama3.1</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span style="color:var(--color-text-muted);">WebSocket Port</span>
+              <span style="color:var(--color-cyan-500);">8765</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span style="color:var(--color-text-muted);">Streaming</span>
+              <span style="color:var(--color-green-500);">ENABLED</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span style="color:var(--color-text-muted);">Context Window</span>
+              <span>4096 tokens</span>
+            </div>
+          </div>
+        </div>
+        <!-- PROVIDERS TAB -->
+        <div id="tab-providers" style="display:none;">
+          <div style="display:flex;flex-direction:column;gap:8px;font-family:var(--font-mono);font-size:11px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span>OLLAMA</span><span style="color:var(--color-green-500);">● CONNECTED</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span>ANTHROPIC</span><span style="color:var(--color-text-dim);">○ key required</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span>OPENAI</span><span style="color:var(--color-text-dim);">○ key required</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span>OPENROUTER</span><span style="color:var(--color-text-dim);">○ key required</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span>GROQ</span><span style="color:var(--color-text-dim);">○ key required</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--color-border);border-radius:4px;">
+              <span>GEMINI</span><span style="color:var(--color-text-dim);">○ key required</span>
+            </div>
+          </div>
+        </div>
+        <!-- ABOUT TAB -->
+        <div id="tab-about" style="display:none;">
+          <div style="font-family:var(--font-mono);font-size:11px;display:flex;flex-direction:column;gap:8px;color:var(--color-text-muted);">
+            <div><span style="color:var(--color-accent);">WhyCremisi</span> v0.9.3-beta</div>
+            <div>JUCE 8.0.12 · C++17 · React 19 · Vite 8</div>
+            <div>Tailwind CSS 4 · framer-motion 12</div>
+            <div style="margin-top:8px;color:var(--color-text-dim);">
+              VST3 + AU · macOS 12+ / Windows 10+<br/>
+              Tested: Ableton 11, Logic Pro 10.8, Reaper 7
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ CAPABILITIES ══════════════ -->
+<section id="capabilities" class="caps-section">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-eyebrow reveal-item stagger-1">Technical Specifications</div>
+      <h2 class="section-h2 reveal-item stagger-2">What it <em>actually does</em></h2>
+    </div>
+    <div class="caps-grid">
+      <div class="cap-item reveal-item stagger-1">
+        <div class="cap-item__icon">⚡</div>
+        <div class="cap-item__title">Real-time Parameter Mutation</div>
+        <p class="cap-item__desc">AI responses translate to JUCE AudioProcessorParameter changes. No async gaps in the audio graph.</p>
+        <div class="cap-item__spec">sample-accurate · JUCE APVTS · atomic write</div>
+      </div>
+      <div class="cap-item reveal-item stagger-2">
+        <div class="cap-item__icon">🔌</div>
+        <div class="cap-item__title">WebSocket Bidirectional Bridge</div>
+        <p class="cap-item__desc">Full duplex JSON messaging. React UI sends commands, receives streaming AI tokens, updates BotFace state.</p>
+        <div class="cap-item__spec">ws://localhost:8765 · JSON · streaming SSE</div>
+      </div>
+      <div class="cap-item reveal-item stagger-3">
+        <div class="cap-item__icon">🎭</div>
+        <div class="cap-item__title">9-State Animated Mascot</div>
+        <p class="cap-item__desc">SVG path morphing via Web Animations API. Each state maps to real plugin status — not just cosmetic animation.</p>
+        <div class="cap-item__spec">Web Animations API · cubic-bezier easing · 400ms morph</div>
+      </div>
+      <div class="cap-item reveal-item stagger-4">
+        <div class="cap-item__icon">🌐</div>
+        <div class="cap-item__title">6 AI Provider Adapters</div>
+        <p class="cap-item__desc">Unified adapter interface. Hot-swap between Ollama, Anthropic, OpenAI, OpenRouter, Groq, Gemini mid-session.</p>
+        <div class="cap-item__spec">6 adapters · shared interface · hot-swap</div>
+      </div>
+      <div class="cap-item reveal-item stagger-5">
+        <div class="cap-item__icon">🔒</div>
+        <div class="cap-item__title">Local-first Privacy</div>
+        <p class="cap-item__desc">Ollama mode sends zero data to external servers. Full offline capability for air-gapped studio environments.</p>
+        <div class="cap-item__spec">ollama localhost:11434 · zero telemetry · offline</div>
+      </div>
+      <div class="cap-item reveal-item stagger-6">
+        <div class="cap-item__icon">🎛️</div>
+        <div class="cap-item__title">DAW Compatibility</div>
+        <p class="cap-item__desc">VST3 and AU formats. Tested against Ableton Live 11, Logic Pro 10.8, Reaper 7, Bitwig 5, FL Studio 21.</p>
+        <div class="cap-item__spec">VST3 + AU · macOS 12+ / Win 10+ · 64-bit only</div>
+      </div>
+      <div class="cap-item reveal-item stagger-7">
+        <div class="cap-item__icon">📡</div>
+        <div class="cap-item__title">Streaming Token Display</div>
+        <p class="cap-item__desc">AI responses stream character-by-character into the chat UI. BotFace transitions to typing state for every token batch.</p>
+        <div class="cap-item__spec">SSE chunked · token-by-token · BotFace sync</div>
+      </div>
+      <div class="cap-item reveal-item stagger-8">
+        <div class="cap-item__icon">🏗️</div>
+        <div class="cap-item__title">Modern Stack, No Cruft</div>
+        <p class="cap-item__desc">React 19 Concurrent Mode. Vite 8 HMR. JUCE 8.0.12. Zero legacy dependencies in the UI layer.</p>
+        <div class="cap-item__spec">React 19 · Vite 8 · JUCE 8.0.12 · C++17</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ CTA ══════════════ -->
+<section id="cta" class="cta-section">
+  <div class="container" style="position:relative;z-index:1;">
+    <div class="reveal-item stagger-1">
+      <h2 class="cta__h2">
+        Your DAW.<br/>
+        <span>Now it talks back.</span>
+      </h2>
+    </div>
+    <p class="cta__sub reveal-item stagger-2">
+      VST3 and AU. Free beta. No telemetry. Full source on GitHub.
+      Works in Ableton, Logic, Reaper, Bitwig, FL Studio.
+    </p>
+    <div class="reveal-item stagger-3" style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;align-items:center;">
+      <a href="#" class="btn-primary" id="magnetic-btn-cta">
+        ↓ Download Beta — Free
+      </a>
+      <a href="#" class="btn-ghost">View on GitHub →</a>
+    </div>
+    <div class="cta__footnote reveal-item stagger-4">
+      v0.9.3-beta · JUCE 8.0.12 · macOS 12+ / Windows 10+ · VST3 + AU · 64-bit
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ══════════════ FOOTER ══════════════ -->
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__logo">WHY<span style="color:var(--color-text-dim);font-weight:300;">CREMISI</span></div>
+    <div class="footer__meta">© 2025 WhyCremisi · v0.9.3-beta · JUCE 8.0.12</div>
+    <div class="footer__links">
+      <a href="#" class="footer__link">GitHub</a>
+      <a href="#" class="footer__link">Docs</a>
+      <a href="#" class="footer__link">Discord</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ══════════════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════════════ -->
+<script>
+/* ──────────────────────────────────────────────────────────
+   1. BOTFACE — STATE DATA + WEB ANIMATIONS API MORPHING
+─────────────────────────────────────────────────────────── */
+const BF_PATHS = {
+  idle:      { l: 'M 26 44 Q 35 33 44 44', r: 'M 56 44 Q 65 33 74 44', m: 'M 38 65 Q 50 74 62 65' },
+  sad:       { l: 'M 24 40 Q 35 50 46 50', r: 'M 54 50 Q 65 50 76 40', m: 'M 38 72 Q 50 62 62 72' },
+  thinking:  { l: 'M 29 40 Q 37 34 45 40', r: 'M 55 38 Q 65 32 74 40', m: 'M 44 66 Q 50 66 56 66' },
+  typing:    { l: 'M 26 41 Q 35 31 44 41', r: 'M 56 41 Q 65 31 74 41', m: 'M 36 62 Q 50 80 64 62' },
+  listening: { l: 'M 24 41 Q 35 28 46 41', r: 'M 54 41 Q 65 28 76 41', m: 'M 38 65 Q 50 65 62 65' },
+  error:     { l: 'M 27 41 Q 35 52 43 41', r: 'M 57 41 Q 65 52 73 41', m: 'M 37 70 Q 50 58 63 70' },
+  success:   { l: 'M 23 46 Q 35 24 47 46', r: 'M 53 46 Q 65 24 77 46', m: 'M 33 60 Q 50 88 67 60' },
+  loading:   { l: 'M 29 45 Q 35 45 41 45', r: 'M 59 45 Q 65 45 71 45', m: 'M 43 66 Q 50 66 57 66' },
+  advisory:  { l: 'M 26 41 Q 35 37 44 41', r: 'M 56 38 Q 65 34 74 40', m: 'M 40 65 Q 50 65 60 65' },
+};
+
+const STATE_COLORS = {
+  idle:      '#00E5FF',
+  typing:    '#00E5FF',
+  loading:   '#00E5FF',
+  listening: '#FFB000',
+  thinking:  '#FFB000',
+  advisory:  '#FFB000',
+  error:     '#DC143C',
+  success:   '#00FFaa',
+  sad:       '#4169E1',
+};
+
+const STATE_INFO = {
+  idle:      { label: 'IDLE',      desc: 'Awaiting input. Plugin is connected to the AI provider and ready for a prompt. WebSocket link alive, heartbeat active.', meta: 'color: #00E5FF · bridge: connected · ws: alive' },
+  thinking:  { label: 'THINKING',  desc: 'AI is processing your request. Tokens are being generated by the language model. OscBridge is accumulating the response buffer.', meta: 'color: #FFB000 · streaming: pending · buffer: filling' },
+  typing:    { label: 'TYPING',    desc: 'Streaming token output in progress. Chat UI is receiving characters in real-time. BotFace animates the mouth in sync with token rate.', meta: 'color: #00E5FF · streaming: active · tokens: live' },
+  listening: { label: 'LISTENING', desc: 'User input is being captured. Voice or text entry detected. Plugin is in high-attention mode, waiting for query completion.', meta: 'color: #FFB000 · input: capturing · mode: voice/text' },
+  error:     { label: 'ERROR',     desc: 'Provider connection failed, API key invalid, or bridge timeout exceeded. Error details appear in the chat log with suggested resolution.', meta: 'color: #DC143C · status: failed · retry: manual' },
+  success:   { label: 'SUCCESS',   desc: 'Action completed. Parameter mutation applied to AudioProcessor. DAW automation lane updated with the new value. Bridge confirmed receipt.', meta: 'color: #00FFaa · mutation: applied · daw: updated' },
+  loading:   { label: 'LOADING',   desc: 'Provider is initializing, model is loading, or a large context window is being prepared. Flat brows indicate neutral-wait state.', meta: 'color: #00E5FF · init: in progress · model: loading' },
+  advisory:  { label: 'ADVISORY',  desc: 'Plugin is offering a suggestion or warning. AI detected a potential issue in the current session: conflicting parameters, latency spike, or resource pressure.', meta: 'color: #FFB000 · mode: advisory · attention: required' },
+  sad:       { label: 'SAD',       desc: 'Provider disconnected, model unavailable, or API quota exhausted. Plugin is operational but AI features are degraded until reconnected.', meta: 'color: #4169E1 · provider: offline · fallback: active' },
+};
+
+/* Morph a single SVG path element using Web Animations API */
+function morphPath(el, toPath, duration = 400) {
+  if (!el) return;
+  const from = el.getAttribute('d');
+  el.animate(
+    [{ d: from }, { d: toPath }],
+    {
+      duration,
+      easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+      fill: 'forwards',
+    }
+  );
+  // also set attribute so next morph starts from correct position
+  setTimeout(() => { el.setAttribute('d', toPath); }, duration);
+}
+
+/* Apply a state to a given BotFace SVG */
+function applyBotfaceState(svgId, browLId, browRId, mouthId, state) {
+  const paths = BF_PATHS[state];
+  if (!paths) return;
+
+  const color = STATE_COLORS[state];
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+
+  // Set color on all colored elements
+  svg.style.color = color;
+
+  morphPath(document.getElementById(browLId), paths.l);
+  morphPath(document.getElementById(browRId), paths.r);
+  morphPath(document.getElementById(mouthId), paths.m);
+}
+
+/* ──────────────────────────────────────────────────────────
+   2. HERO BOTFACE CONTROLLER
+─────────────────────────────────────────────────────────── */
+let heroCurrent = 'idle';
+let heroAutoTimer = null;
+const heroStates = Object.keys(BF_PATHS);
+let heroAutoIndex = 0;
+
+function setHeroState(state, fromPill = false) {
+  heroCurrent = state;
+  applyBotfaceState('botface-hero', 'brow-l', 'brow-r', 'mouth', state);
+
+  // Update state label
+  const label = document.getElementById('hero-state-label');
+  if (label) label.textContent = STATE_INFO[state].label;
+
+  // Update botface ring color
+  const ring = document.getElementById('hero-botface-ring');
+  if (ring) {
+    ring.style.borderColor = STATE_COLORS[state] + '40';
+    ring.style.boxShadow = `inset 0 0 40px ${STATE_COLORS[state]}10, 0 0 60px ${STATE_COLORS[state]}08`;
+  }
+
+  // Update pills
+  document.querySelectorAll('#hero-state-pills .state-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.state === state);
+  });
+
+  if (fromPill) {
+    // Pause auto-cycle for 10s then resume
+    clearInterval(heroAutoTimer);
+    heroAutoIndex = heroStates.indexOf(state);
+    heroAutoTimer = setTimeout(startHeroAutoCycle, 10000);
+  }
+}
+
+function startHeroAutoCycle() {
+  heroAutoTimer = setInterval(() => {
+    heroAutoIndex = (heroAutoIndex + 1) % heroStates.length;
+    setHeroState(heroStates[heroAutoIndex]);
+  }, 3000);
+}
+
+// Wire hero pills
+document.querySelectorAll('#hero-state-pills .state-pill').forEach(pill => {
+  pill.addEventListener('click', () => setHeroState(pill.dataset.state, true));
+});
+
+// Initialize + start auto cycle
+setHeroState('idle');
+startHeroAutoCycle();
+
+/* ──────────────────────────────────────────────────────────
+   3. STATES SECTION BOTFACE CONTROLLER
+─────────────────────────────────────────────────────────── */
+let statesCurrent = 'idle';
+
+function setStatesState(state) {
+  statesCurrent = state;
+  applyBotfaceState('botface-states', 'states-brow-l', 'states-brow-r', 'states-mouth', state);
+
+  // Update pills
+  document.querySelectorAll('#states-pills .state-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.state === state);
+  });
+
+  // Render state info
+  const info = STATE_INFO[state];
+  const container = document.getElementById('states-info');
+  if (container && info) {
+    container.innerHTML = `
+      <div class="state-detail visible">
+        <div class="state-detail__name" style="color:${STATE_COLORS[state]};">${info.label}</div>
+        <p class="state-detail__desc">${info.desc}</p>
+        <div class="state-detail__meta">${info.meta}</div>
+      </div>
+    `;
+  }
+}
+
+document.querySelectorAll('#states-pills .state-pill').forEach(pill => {
+  pill.addEventListener('click', () => setStatesState(pill.dataset.state));
+});
+
+setStatesState('idle');
+
+/* ──────────────────────────────────────────────────────────
+   4. CANVAS PARTICLE BACKGROUND
+─────────────────────────────────────────────────────────── */
+(function initCanvas() {
+  const canvas = document.getElementById('bg-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const NUM = 80;
+  const particles = [];
+
+  for (let i = 0; i < NUM; i++) {
+    particles.push({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      r: Math.random() * 1.5 + 0.5,
+      alpha: Math.random() * 0.4 + 0.05,
+      hue: Math.random() < 0.6 ? 17 : (Math.random() < 0.5 ? 67 : 196),
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw connection lines
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+          const alpha = (1 - dist / 120) * 0.06;
+          ctx.beginPath();
+          ctx.strokeStyle = `oklch(47% 0.24 17 / ${alpha})`;
+          ctx.lineWidth = 0.5;
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw particles
+    for (const p of particles) {
+      ctx.beginPath();
+      // Alternate hue for variety
+      if (p.hue === 17) {
+        ctx.fillStyle = `oklch(47% 0.24 17 / ${p.alpha})`;
+      } else if (p.hue === 67) {
+        ctx.fillStyle = `oklch(77% 0.17 67 / ${p.alpha * 0.6})`;
+      } else {
+        ctx.fillStyle = `oklch(88% 0.14 196 / ${p.alpha * 0.4})`;
+      }
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Move
+      p.x += p.vx;
+      p.y += p.vy;
+
+      // Bounce
+      if (p.x < 0 || p.x > canvas.width)  p.vx *= -1;
+      if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  draw();
+})();
+
+/* ──────────────────────────────────────────────────────────
+   5. TEXT SCRAMBLE ON HERO H1
+─────────────────────────────────────────────────────────── */
+(function textScramble() {
+  const el = document.getElementById('scramble-target');
+  if (!el) return;
+
+  const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&';
+  const original = el.textContent.trim();
+  const LEN = original.length;
+
+  let frame = 0;
+  let revealed = 0;
+  const FRAMES_PER_CHAR = 4;
+  const TOTAL_FRAMES = LEN * FRAMES_PER_CHAR + 10;
+
+  function scramble() {
+    revealed = Math.floor(frame / FRAMES_PER_CHAR);
+    if (revealed > LEN) revealed = LEN;
+
+    let out = '';
+    for (let i = 0; i < LEN; i++) {
+      if (i < revealed) {
+        out += original[i];
+      } else if (original[i] === ' ') {
+        out += ' ';
+      } else {
+        out += CHARS[Math.floor(Math.random() * CHARS.length)];
+      }
+    }
+    el.textContent = out;
+    frame++;
+    if (frame < TOTAL_FRAMES) {
+      setTimeout(scramble, 40);
+    } else {
+      el.textContent = original;
+    }
+  }
+
+  // Delay scramble until after stagger reveal
+  setTimeout(scramble, 800);
+})();
+
+/* ──────────────────────────────────────────────────────────
+   6. MAGNETIC CTA BUTTONS
+─────────────────────────────────────────────────────────── */
+function initMagnetic(id) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+
+  const RADIUS = 60;
+  const STRENGTH = 0.35;
+
+  function onMove(e) {
+    const rect = btn.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < RADIUS) {
+      const mx = dx * STRENGTH;
+      const my = dy * STRENGTH;
+      btn.style.transform = `translate(${mx}px, ${my}px)`;
+    }
+  }
+
+  function onLeave() {
+    btn.style.transform = '';
+    btn.style.transition = 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    setTimeout(() => { btn.style.transition = ''; }, 400);
+  }
+
+  document.addEventListener('mousemove', onMove);
+  btn.addEventListener('mouseleave', onLeave);
+}
+
+initMagnetic('magnetic-btn');
+initMagnetic('magnetic-btn-cta');
+
+/* ──────────────────────────────────────────────────────────
+   7. SPOTLIGHT BORDER EFFECT (mousemove → --mx/--my)
+─────────────────────────────────────────────────────────── */
+const spotlightTargets = document.querySelectorAll('.card, .provider-card');
+
+document.addEventListener('mousemove', (e) => {
+  spotlightTargets.forEach(el => {
+    const rect = el.getBoundingClientRect();
+    const mx = ((e.clientX - rect.left) / rect.width) * 100;
+    const my = ((e.clientY - rect.top) / rect.height) * 100;
+    el.style.setProperty('--mx', `${mx}%`);
+    el.style.setProperty('--my', `${my}%`);
+  });
+});
+
+/* ──────────────────────────────────────────────────────────
+   8. INTERSECTION OBSERVER — STAGGERED REVEALS
+─────────────────────────────────────────────────────────── */
+(function initReveal() {
+  const items = document.querySelectorAll('.reveal-item');
+  if (!items.length) return;
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('revealed');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+  items.forEach(el => observer.observe(el));
+})();
+
+/* ──────────────────────────────────────────────────────────
+   9. TICKER — FILL CONTENT + DUPLICATE
+─────────────────────────────────────────────────────────── */
+(function initTicker() {
+  const track = document.getElementById('ticker-track');
+  if (!track) return;
+
+  const items = [
+    'VST3 + AU', 'JUCE 8.0.12', 'React 19', 'Vite 8',
+    'Tailwind CSS 4', 'framer-motion 12', 'C++17',
+    'WebSocket bridge', '6 AI providers', '9 bot states',
+    'Ollama local', 'Anthropic Claude', 'OpenAI GPT-4o',
+    'Groq LPU 500tok/s', 'Gemini 1M context',
+    'Sample-accurate params', 'Zero telemetry',
+    'Ableton Live 11', 'Logic Pro', 'Reaper 7', 'Bitwig 5',
+    'macOS 12+', 'Windows 10+',
+  ];
+
+  // Duplicate for seamless loop
+  const allItems = [...items, ...items];
+
+  allItems.forEach((text, i) => {
+    const item = document.createElement('div');
+    item.className = 'ticker__item';
+    if (i % 3 === 0) {
+      const sep = document.createElement('span');
+      sep.className = 'ticker__sep';
+      item.appendChild(sep);
+    }
+    const span = document.createElement('span');
+    span.textContent = text;
+    item.appendChild(span);
+    track.appendChild(item);
+  });
+})();
+
+/* ──────────────────────────────────────────────────────────
+   10. PLUGIN MOCK TAB SWITCHER
+─────────────────────────────────────────────────────────── */
+function switchTab(tabEl, tabName) {
+  // Deactivate all tabs
+  document.querySelectorAll('.plugin-mock__tab').forEach(t => t.classList.remove('active'));
+  tabEl.classList.add('active');
+
+  // Hide all panels
+  ['chat','settings','providers','about'].forEach(name => {
+    const el = document.getElementById('tab-' + name);
+    if (el) el.style.display = 'none';
+  });
+
+  // Show active
+  const active = document.getElementById('tab-' + tabName);
+  if (active) active.style.display = (tabName === 'chat') ? 'flex' : 'block';
+}
+</script>
+
+</body>
+</html>

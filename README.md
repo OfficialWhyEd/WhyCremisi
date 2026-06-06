@@ -1,6 +1,7 @@
-<p align="center">
-  <img src="assets/banner.png" alt="WhyCremisi" width="100%"/>
-</p>
+<h1 align="center">
+  <img src="assets/logo.png" height="64" alt="WhyCremisi" valign="middle"/>
+  &nbsp;WhyCremisi
+</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/JUCE-7-FF0000?style=flat-square" />
