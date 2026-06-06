@@ -87,7 +87,8 @@ You shouldn't need to know that "filter cutoff" is parameter index 0047 in Serum
 This is the approach:
 
 - **Ask anything.** Mix like Chris Lord-Alge. Master like Stefano Pretolesi. Check controfasi. Rebuild your low end. There are no supported commands — there is only what you can describe.
-- **Native DAW plugins included.** Not just Serum and FabFilter — every native plugin in your DAW works the same way. Logic's stock EQ, Ableton's built-in compressor, any bundled instrument or effect. All of it is mapped, readable and writable.
+- **Every plugin. Including the ones released yesterday.** Not just Serum and FabFilter — native DAW plugins, Serum 2, Pro-Q 4, iZotope, Waves, Native Instruments, anything. Because it reads VST3 parameter indices at runtime, it never needs an update to support a new plugin. Load it, and it's mapped.
+- **A living encyclopedia of professional plugins.** On top of raw index scanning, WhyCremisi ships with a curated dictionary of the most-used modern plugins — human-readable names, ranges, interdependencies, professional usage patterns. It grows over time, and you can add your own entries.
 - **It creates, not just edits.** WhyCremisi can create MIDI regions directly in the timeline, write melodies, generate chord progressions, place audio regions — it's not limited to tweaking what already exists. It can build things from nothing.
 - **It remembers everything.** Every parameter touch, every decision, every session. Not just this session — every session. It knows your history and learns your taste.
 - **It has a personality.** WhyCremisi isn't a search bar. It's a collaborator. It thinks, it replies, it explains its reasoning, it makes suggestions. It pushes back when something doesn't make sense. It has a face that shows you how it feels.
@@ -100,6 +101,46 @@ The goal is to make the gap between what you hear in your head and what comes ou
 <p align="center">
   <img src="assets/screenshot.png" alt="WhyCremisi inside the DAW" width="100%"/>
 </p>
+
+---
+
+## The most advanced plugins in the world. All of them. Right now.
+
+FabFilter Pro-Q 4 just dropped. Serum 2 is out. iZotope Ozone 11, Neutron 5, RX 11. Native Instruments Kontakt 8. Waves' entire catalog. Plugin Alliance, Slate Digital, UAD — anything.
+
+WhyCremisi doesn't need a software update to support them. It doesn't need a new preset file or a mapping patch. The moment you load any plugin in your DAW, WhyCremisi reads every parameter it exposes through the VST3 interface — index by index, in real time. A plugin released today works the same as one released ten years ago.
+
+**And on top of that: a living encyclopedia.**
+
+The Plugin Dictionary is a curated, human-readable knowledge base of the most-used modern plugins — their parameter names, ranges, behaviors, interdependencies, the way professionals use them. It ships with entries for the industry standards and it grows over time:
+
+- You can add your own entries for plugins you use
+- The community contributes mappings via pull requests
+- The AI uses the dictionary to speak intelligently about plugins it already knows, and falls back to raw index scanning for everything else
+
+The dictionary is not a limitation — it's an accelerant. WhyCremisi works with every plugin. It just works *smarter* with the ones in the dictionary.
+
+---
+
+## A full AI agent. Inside your DAW.
+
+This is the part that shouldn't be possible.
+
+WhyCremisi doesn't just call an LLM and paste the response. It runs a **complete AI agent** with access to every tool a modern code agent has — from inside a plugin slot on your master channel.
+
+| Tool | What it can do inside WhyCremisi |
+|---|---|
+| **Web search** | Look up mixing techniques, find reference tracks, research what a specific plugin parameter does |
+| **Bash execution** | Run shell scripts, process audio files, call external tools, automate anything on your system |
+| **Code generation** | Write and run code — generate Max for Live devices, MIDI scripts, automation data |
+| **File system** | Read and write project files, export session reports, load stems, organize your library |
+| **DAW control** | Play, stop, record, mute, automate, create regions, write MIDI — full native control |
+| **Plugin parameters** | Read and write any knob on any plugin, any DAW, in real time |
+| **Session memory** | JSONL log + cross-session memory.json — full recall of everything |
+
+Imagine asking your DAW: *"Search for how Chris Lord-Alge sets up his SSL bus compressor, then apply those settings to my master chain."* WhyCremisi searches the web, reads the result, finds the closest parameters in your loaded plugins, and applies them. Without leaving the DAW. Without switching tabs. Without touching a single knob.
+
+This is not a plugin that wraps an AI. This is an AI agent that happens to live inside a plugin.
 
 ---
 
