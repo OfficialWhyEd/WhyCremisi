@@ -46,42 +46,49 @@ Every other "AI for music production" tool is either a standalone app disconnect
 | No preset mapping needed | ✅ Auto-discovery | ❌ Plugin-specific | — |
 | React UI inside the plugin | ✅ WebView | ❌ | — |
 | Knows the session history | ✅ Flight Recorder | ❌ | ❌ |
-| Works with any DAW | ✅ JUCE/VST3/AU | ⚠️ Limited | ✅ |
+| Streaming AI responses | ✅ Chunk-by-chunk | ❌ | — |
 | Run offline | ✅ Ollama support | ❌ | — |
+| Works with any DAW | ✅ JUCE/VST3/AU | ⚠️ Limited | ✅ |
 
 ---
 
 ## How it works
 
-WhyCremisi doesn't need to know what a plugin is. VST3 exposes every parameter as a numbered index. WhyCremisi reads them all.
+WhyCremisi doesn't need to know what a plugin is. VST3 exposes every parameter as a numbered index. WhyCremisi reads them all. The entire communication stack runs inside the DAW process — no external app, no network roundtrip.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Your DAW session                  │
-│                                                     │
-│  [Serum]  [FabFilter Q3]  [Valhalla]  [OTT]  ...  │
-│     │           │              │         │          │
-│     └───────────┴──────────────┴─────────┘          │
-│                         │                           │
-│              VST3 parameter graph                   │
-│                         │                           │
-│              ┌──────────▼──────────┐                │
-│              │    WhyCremisi       │  ← master ch.  │
-│              │  Universal Bridge   │                │
-│              │  Flight Recorder    │                │
-│              │  React WebView UI   │                │
-│              └──────────┬──────────┘                │
-└─────────────────────────┼───────────────────────────┘
-                          │
-              ┌───────────▼───────────┐
-              │   AI Provider         │
-              │  Groq · Gemini        │
-              │  Claude · OpenAI      │
-              │  OpenRouter · Ollama  │
-              └───────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                     Your DAW session                    │
+│                                                         │
+│  [Serum]  [FabFilter Q3]  [Valhalla]  [OTT]  ...      │
+│     │           │              │         │              │
+│     └───────────┴──────────────┴─────────┘              │
+│                         │   VST3 parameter graph        │
+│              ┌──────────▼──────────┐                    │
+│              │    WhyCremisi       │  ← master channel  │
+│              │                     │                    │
+│              │  AiEngine           │  Ollama / Groq /   │
+│              │  SessionManager     │  Gemini / Claude   │
+│              │  OscBridge          │  OpenAI / OpenRouter│
+│              └──────┬──────────────┘                    │
+└─────────────────────┼─────────────────────────────────────┘
+                      │
+        ┌─────────────┴──────────────┐
+        │                            │
+   OSC UDP :9000               WebSocket :8080
+   (DAW → plugin)         (plugin ↔ React UI)
+        │                            │
+   OSC UDP :9001            WhyCremisiBridge.js
+   (plugin → DAW)          (singleton, auto-reconnect)
+                                     │
+                              React UI (WebView)
+                           transport · tracks · widgets
+                           useWhyCremisi() hook
 ```
 
-**The Flight Recorder** logs every event in the session — parameter changes, transport events, plugin state — and feeds them as context to the AI. The AI doesn't just see the current state: it sees what you've been doing for the last N minutes.
+**The 33ms broadcast loop** — a JUCE `Timer` fires every 33ms (~30fps), pushing DAW state (transport, meter L/R/peak) to every connected WebSocket client. React stays in sync with the DAW in real time without polling.
+
+**The Flight Recorder** — every event in the session is appended to a JSONL file with millisecond timestamps. Parameter changes, transport events, AI prompts and responses, OSC messages, errors — all of it. The AI sees not just the current state but everything that happened since you pressed play.
 
 ---
 
@@ -97,14 +104,101 @@ Phase ① alone is already useful. You can ask the AI to move a parameter and it
 
 ---
 
+## The wire protocol
+
+Every message on the WebSocket is a JSON object:
+
+```json
+{ "type": "ai.prompt", "id": "uuid-v4", "timestamp": 1718123456789, "payload": { ... } }
+```
+
+**DAW → UI** events the plugin broadcasts:
+
+| Message type | What it carries |
+|---|---|
+| `daw.transport` | isPlaying, isRecording, BPM, positionSeconds |
+| `daw.track` | trackId, name, volumeDb, pan, muted, soloed |
+| `daw.meter` | trackId, leftDb, rightDb, peakLeftDb, peakRightDb |
+| `ai.response` | requestId, content, provider, isComplete |
+| `ai.stream` | requestId, chunk, isDone — for streaming responses |
+| `ui.widget.create` | widgetId, widgetType, title, config |
+| `ui.widget.update` | widgetId + updated values |
+| `plugin.error` | code, message, severity |
+
+**UI → DAW** commands the React side can send:
+
+| Message type | Effect |
+|---|---|
+| `daw.command` | play, stop, record, setVolume, etc. |
+| `daw.request` | request track list, session state |
+| `ai.prompt` | dispatch a prompt to the AI provider |
+| `ui.widget.create/remove` | manage dynamic UI widgets |
+| `osc.send` | forward a raw OSC message to the DAW |
+| `config.get / config.set` | read/write plugin config at runtime |
+
+---
+
+## Session memory — how nothing gets lost
+
+```
+~/Library/Application Support/WhyCremisi/
+  sessions/
+    20240615_142301/
+      header.json      ← session metadata, written once at start
+      events.jsonl     ← one JSON object per line, append-only
+      summary.json     ← event counts per type, written at end
+  current.json         ← always-fresh live snapshot of active session
+  memory.json          ← long-term knowledge base, updated across sessions
+```
+
+`events.jsonl` is the core: append-only, zero-overhead, reconstructable. Every `logOscEvent`, `logTransport`, `logParameter`, `logAiPrompt`, `logAiResponse`, `logError` call adds one line. The rate-limiter keeps meter ticks to 1 entry per 500ms and position ticks to 1 per second — so the log stays usable at high sample rates.
+
+`memory.json` accumulates knowledge across sessions. The AI doesn't start from zero each time.
+
+---
+
+## AI providers
+
+| Provider | Default | Notes |
+|---|---|---|
+| **Ollama** | ✅ yes (llama3.2) | Runs at `localhost:11434`, fully offline |
+| **Groq** | — | Fast inference, free tier available |
+| **Gemini** | — | Google, flash and pro models |
+| **Anthropic** | — | Claude 3 family |
+| **OpenAI** | — | GPT-4o and variants |
+| **OpenRouter** | — | Single key, any model |
+
+Config: `temperature 0.7`, `maxTokens 2048`, `timeout 30s`. All providers share the same `sendPromptAsync()` interface — swap with one config change.
+
+---
+
+## BotFace — the mascot that reads the room
+
+The BotFace SVG mascot changes state automatically based on what's happening on the wire:
+
+| Bridge event | BotFace state |
+|---|---|
+| `ai.prompt` sent | `thinking` |
+| `ai.stream` chunk received | `typing` |
+| `ai.response` complete | `success` → `idle` after 2s |
+| `plugin.error` | `error` → `idle` after 3s |
+| Idle | `idle` |
+
+9 emotional states total, animated with framer-motion. The mascot is not decorative — it's the real-time status indicator of everything happening between the plugin, the AI provider, and the DAW.
+
+---
+
 ## Features
 
 - **Universal parameter bridge** — reads and writes any VST3 parameter by index, across all plugins simultaneously
-- **Flight Recorder** — circular buffer of session events, injected as context into every AI prompt
-- **BotFace mascot** — animated SVG mascot with 9 emotional states, lives inside the plugin UI
-- **React WebView UI** — full React app rendered inside a JUCE WebView, hot-reload during development
-- **OSC bridge** — bidirectional real-time communication with the DAW
-- **Multi-provider AI** — swap between Groq, Gemini, Anthropic, OpenAI, OpenRouter, or local Ollama with one config change
+- **Flight Recorder** — append-only JSONL session log + cross-session `memory.json`, injected as context into every AI prompt
+- **Streaming AI responses** — chunk-by-chunk `ai.stream` messages, BotFace animates during generation
+- **BotFace mascot** — animated SVG mascot with 9 emotional states, state machine driven by WebSocket message types
+- **React WebView UI** — full React app rendered inside a JUCE WebView, `useWhyCremisi()` hook for clean integration
+- **WhyCremisiBridge.js** — WebSocket singleton with auto-reconnect (10 attempts, 2s interval), pending request map, typed event emitter
+- **33ms broadcast loop** — JUCE Timer pushes transport + meter to React at ~30fps
+- **Dynamic widget system** — C++ broadcasts `ui.widget.create/update/remove`, React renders them live
+- **Multi-provider AI** — Ollama (offline default) + Groq + Gemini + Claude + OpenAI + OpenRouter
 - **14 automated tests** — CI-ready, build is stable
 - **VST3 + AU + Standalone** — one codebase, three build targets
 
@@ -150,7 +244,9 @@ cp config.example.json config.json
 # → set your preferred provider + key in config.json
 ```
 
-Load WhyCremisi on the **master channel** in your DAW. Open the plugin UI. The bridge starts automatically.
+Load WhyCremisi on the **master channel** in your DAW. Open the plugin UI. The bridge starts automatically — OSC on `:9000`, WebSocket on `:8080`, React connects and sends `plugin.init`.
+
+For **offline use**: install [Ollama](https://ollama.ai), run `ollama pull llama3.2`. No API key needed.
 
 ---
 
@@ -162,14 +258,20 @@ WhyCremisi/
 │   ├── core/
 │   │   ├── PluginProcessor.cpp    # VST3 host + universal parameter scanner
 │   │   ├── PluginEditor.cpp       # JUCE WebView host
+│   │   ├── SessionManager.cpp     # JSONL event log + cross-session memory.json
 │   │   └── tests/                 # 14 automated tests
+│   ├── ai/
+│   │   └── AiEngine.cpp           # 6 providers, sync + async, streaming
 │   └── bridge/
-│       └── WebSocketServer.cpp    # OSC + WebView IPC layer
+│       ├── OscBridge.cpp          # 33ms timer, widget broadcasts, message dispatch
+│       ├── OscHandler.cpp         # UDP OSC receiver (:9000 in, :9001 out)
+│       └── WebSocketServer.cpp    # TCP WebSocket server (:8080)
 ├── webview-ui/                    # React app (UI, BotFace, panels)
 │   ├── src/
-│   │   ├── BotFace.tsx            # Animated mascot — 9 states
+│   │   ├── whycremisi-bridge.js   # WebSocket singleton + useWhyCremisi() hook
+│   │   ├── BotFace.tsx            # Animated mascot — 9 states, framer-motion
 │   │   ├── SessionPanel.tsx       # Flight recorder view
-│   │   └── WidgetSystem.tsx       # Plugin parameter widgets
+│   │   └── WidgetSystem.tsx       # Dynamic plugin parameter widgets
 └── Research/                      # Logo, design system, visual docs
 ```
 
