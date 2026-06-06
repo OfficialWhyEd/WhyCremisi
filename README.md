@@ -23,7 +23,9 @@
   &nbsp;·&nbsp;
   <a href="https://github.com/OfficialWhyEd/WhyCremisi/issues">🐛 Report a bug</a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/OfficialWhyEd/WhyCremisi/discussions">💬 Discuss</a>
+  <a href="https://discord.gg/cQQckfnN">💬 Discord</a>
+  &nbsp;·&nbsp;
+  <a href="https://instagram.com/whyed.music">📸 Instagram</a>
   &nbsp;·&nbsp;
   <a href="https://x.com/OfficialWhyEd">𝕏 Follow</a>
 </p>
@@ -426,9 +428,11 @@ If WhyCremisi made you go "wait, this is actually insane" — that's the right r
 The best way to help this project:
 
 1. **⭐ Star the repo** — it helps with discoverability
-2. **Share on Twitter/X** with what you think is the craziest part
-3. **Post in your DAW's community** — r/ableton, r/edmproduction, r/audioengineering, KVR Audio
-4. **Show it to your music producer friends** — they will not believe it's a plugin
+2. **[Join the Discord](https://discord.gg/cQQckfnN)** — live sessions, dev updates, direct feedback
+3. **[Follow on Instagram](https://instagram.com/whyed.music)** — behind the scenes and demos
+4. **Share on Twitter/X** with what you think is the craziest part
+5. **Post in your DAW's community** — r/ableton, r/edmproduction, r/audioengineering, KVR Audio
+6. **Show it to your music producer friends** — they will not believe it's a plugin
 
 ---
 
