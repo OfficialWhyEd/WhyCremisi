@@ -174,19 +174,19 @@
 
     /* Headline */
     .hero-h1 {
-      font-size: clamp(3.2rem, 6vw, 5.5rem);
+      font-size: clamp(3.6rem, 7vw, 6.8rem);
       font-weight: 900;
-      line-height: 1.0;
-      letter-spacing: -.04em;
-      margin-bottom: .15em;
+      line-height: .93;
+      letter-spacing: -.05em;
+      margin-bottom: .12em;
     }
     .hero-h1-b {
-      font-size: clamp(2.4rem, 4.5vw, 4rem);
-      font-weight: 700;
-      line-height: 1.0;
-      letter-spacing: -.04em;
+      font-size: clamp(3.6rem, 7vw, 6.8rem);
+      font-weight: 900;
+      line-height: .93;
+      letter-spacing: -.05em;
       color: var(--sub);
-      margin-bottom: 1.75rem;
+      margin-bottom: 2rem;
     }
     .hero-h1-b em {
       font-style: italic;
@@ -194,9 +194,8 @@
     }
 
     .hero-sub {
-      font-size: 1rem; line-height: 1.75; color: var(--sub);
-      max-width: 480px; margin-bottom: 2.5rem;
-      border-left: 1px solid var(--border); padding-left: 1.25rem;
+      font-size: 1.05rem; line-height: 1.75; color: var(--sub);
+      max-width: 460px; margin-bottom: 2.5rem;
     }
     .hero-ctas { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 
@@ -288,9 +287,9 @@
     /* ── SECTION BASE ────────────────────────────── */
     section { padding: 7rem 3rem; }
     .section-label {
-      font-family: var(--mono); font-size: .65rem; font-weight: 500;
-      letter-spacing: .14em; text-transform: uppercase;
-      color: var(--crimson); margin-bottom: 1rem;
+      font-family: var(--mono); font-size: .6rem; font-weight: 400;
+      letter-spacing: .12em; text-transform: uppercase;
+      color: var(--dim); margin-bottom: .85rem;
     }
     h2 {
       font-size: clamp(2rem, 4vw, 3.2rem);
@@ -337,10 +336,10 @@
     .prompt-text {
       font-family: var(--mono); font-size: .8rem;
       color: #e0d4e8; line-height: 1.6;
-      background: rgba(255,255,255,.035);
+      background: rgba(180,20,60,.06);
+      border: 1px solid rgba(180,20,60,.22);
       border-radius: 8px; padding: .7rem .9rem;
       margin-bottom: .9rem;
-      border-left: 2px solid var(--crimson);
     }
     .prompt-result { font-size: .85rem; color: var(--sub); line-height: 1.65; }
     .prompt-card.wide { grid-column: span 2; }
@@ -447,7 +446,6 @@
     .manifesto-sub {
       font-size: 1rem; color: var(--sub); line-height: 1.8;
       max-width: 580px; margin-bottom: 3rem;
-      border-left: 2px solid var(--border); padding-left: 1.25rem;
     }
 
     /* ── CTA ─────────────────────────────────────── */
@@ -758,8 +756,8 @@
       .coord-bar { display: none; }
       .eyebrow-platforms { display: none; }
       .eyebrow { gap: 1rem; margin-bottom: 1.75rem; }
-      .hero-h1  { font-size: 2.6rem; }
-      .hero-h1-b { font-size: 1.9rem; }
+      .hero-h1  { font-size: 2.8rem; line-height: .95; }
+      .hero-h1-b { font-size: 2.8rem; line-height: .95; }
       .hero-sub { font-size: .9rem; margin-bottom: 2rem; }
       .mascot-img { height: 80px; }
       .mascot-glow { width: 160px; height: 160px; }
@@ -878,17 +876,15 @@
 
   <div class="hero-text" id="hero-text">
     <div class="eyebrow enter-1">
-      <span><span class="dot-live" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#28c840;margin-right:.4em;animation:blink-live 2.5s ease-in-out infinite;"></span>MASTER CHANNEL · ACTIVE</span>
-      <span class="signal">// UNIVERSAL AI BRIDGE</span>
+      <span><span class="dot-live" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#28c840;margin-right:.4em;animation:blink-live 2.5s ease-in-out infinite;"></span>Active · Master channel</span>
       <span style="background:rgba(180,20,60,0.18);border:1px solid rgba(180,20,60,0.4);border-radius:3px;padding:.1em .5em;font-size:.6rem;letter-spacing:.1em;color:var(--crimson);">BETA</span>
-      <span class="eyebrow-platforms" style="margin-left:auto;">macOS · Windows · Linux · OSC :9000 · WS :8080</span>
     </div>
 
-    <h1 class="hero-h1 enter-2" data-i18n="hero-h1">Your DAW.</h1>
-    <h1 class="hero-h1-b enter-3" data-i18n="hero-h1-b">Now it <em>listens.</em></h1>
+    <h1 class="hero-h1 enter-2" data-i18n="hero-h1">Every plugin.<br/>Every parameter.</h1>
+    <h1 class="hero-h1-b enter-3" data-i18n="hero-h1-b">One <em>sentence.</em></h1>
 
     <p class="hero-sub enter-4" data-i18n="hero-sub">
-      You hear it in your head. Now it can happen in your session. Describe the sound, compose full songs from nothing, fix phases, control every plugin — through natural language, from a single slot on your master channel. No menus. No manuals. Just say it.
+      WhyCremisi sits on your master channel and controls your entire session through natural language. Any plugin, any parameter, the piano roll, transport — just say what you want.
     </p>
 
     <div class="hero-ctas enter-5">
@@ -1658,9 +1654,9 @@
   // ── i18n system ───────────────────────────────────────────────────────────
   const t = {
     en: {
-      'hero-h1':          'Your DAW.',
-      'hero-h1-b':        'Now it <em>listens.</em>',
-      'hero-sub':         'You hear it in your head. Now it can happen in your session. Describe the sound, compose full songs from nothing, fix phases, control every plugin — through natural language, from a single slot on your master channel. No menus. No manuals. Just say it.',
+      'hero-h1':          'Every plugin.<br/>Every parameter.',
+      'hero-h1-b':        'One <em>sentence.</em>',
+      'hero-sub':         'WhyCremisi sits on your master channel and controls your entire session through natural language. Any plugin, any parameter, the piano roll, transport — just say what you want.',
       'arch-label':       'How it works',
       'arch-h2':          'Three layers.<br/><em>One conversation.</em>',
       'arch-lead':        'DAW state broadcast at 33ms. AI response in milliseconds. Every plugin parameter written back in real time.',
@@ -1690,9 +1686,9 @@
       'btn-discord-cta':  'Discord',
     },
     it: {
-      'hero-h1':          'Il tuo DAW.',
-      'hero-h1-b':        'Ora ti <em>ascolta.</em>',
-      'hero-sub':         'Lo senti in testa. Adesso può succedere nella tua sessione. Descrivi il suono, componi canzoni intere dal niente, correggi le fasi, controlla ogni plugin — in linguaggio naturale, da un singolo slot sul master channel. Niente menu. Niente manuali. Digli e basta.',
+      'hero-h1':          'Ogni plugin.<br/>Ogni parametro.',
+      'hero-h1-b':        'Una <em>frase.</em>',
+      'hero-sub':         'WhyCremisi si inserisce sul master channel e controlla tutta la sessione in linguaggio naturale. Qualsiasi plugin, qualsiasi parametro, il piano roll, il transport — dì solo quello che vuoi.',
       'arch-label':       'Come funziona',
       'arch-h2':          'Tre livelli.<br/><em>Una conversazione.</em>',
       'arch-lead':        'Stato del DAW trasmesso ogni 33ms. Risposta AI in millisecondi. Ogni parametro dei plugin scritto in tempo reale.',
