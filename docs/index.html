@@ -1388,8 +1388,15 @@
 </footer>
 
 <script>
-  // ── Motion One shorthand ───────────────────────────────────────────────────
-  const { animate, inView, stagger } = Motion;
+  // ── Motion One (optional — page works without it if CDN fails) ────────────
+  const animate = window.Motion?.animate ?? (() => {});
+  const inView  = window.Motion?.inView  ?? ((el, cb) => {
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) { cb(e); io.unobserve(e.target); } });
+    }, { threshold: 0.08 });
+    (el instanceof Element ? [el] : document.querySelectorAll(el)).forEach(n => io.observe(n));
+  });
+  const stagger = window.Motion?.stagger ?? (delay => (_, i) => i * (delay || 0.1));
 
   // ── Hero parallax ──────────────────────────────────────────────────────────
   const heroText   = document.getElementById('hero-text');
