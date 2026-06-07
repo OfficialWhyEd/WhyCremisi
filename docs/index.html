@@ -702,30 +702,80 @@
 
     /* ── MOBILE ──────────────────────────────────── */
     @media (max-width: 768px) {
-      nav { padding: 1rem 1.25rem; }
+
+      /* Nav */
+      nav { padding: .9rem 1.25rem; }
       .nav-links .nav-link { display: none; }
-      .hero, .cta-section { grid-template-columns: 1fr; padding: 6rem 1.5rem 4rem; gap: 3rem; }
+      .star-text { display: none; }
+      .btn-star { padding: .5rem .7rem; }
+
+      /* Hero */
+      .hero {
+        grid-template-columns: 1fr;
+        padding: 5rem 1.5rem 5rem;
+        gap: 2rem;
+        min-height: unset;
+      }
       .hero-visual { order: -1; }
-      .coord-bar { left: 1.5rem; right: 1.5rem; }
-      section { padding: 5rem 1.5rem; }
-      .screenshot-wrap { margin: 0 1.5rem 3rem; border-radius: 12px; }
-      .prompts-grid { grid-template-columns: 1fr; }
+      .coord-bar { display: none; }
+      .eyebrow-platforms { display: none; }
+      .eyebrow { gap: 1rem; margin-bottom: 1.75rem; }
+      .hero-h1  { font-size: 2.6rem; }
+      .hero-h1-b { font-size: 1.9rem; }
+      .hero-sub { font-size: .9rem; margin-bottom: 2rem; }
+      .mascot-img { height: 80px; }
+      .mascot-glow { width: 160px; height: 160px; }
+      .mascot-wrap { margin-bottom: 1rem; }
+      .terminal-body { min-height: 13rem; font-size: .75rem; padding: 1rem 1.1rem; }
+
+      /* Sections */
+      section { padding: 4rem 1.5rem; }
+      .screenshot-wrap { margin: 0 1.25rem 2.5rem; border-radius: 12px; }
+
+      /* Architecture */
+      .arch-section { padding: 3.5rem 1.5rem 2.5rem; }
+      .arch-svg { display: none; }
+      .arch-svg-wrap { overflow-x: visible; }
+      .arch-stats { flex-direction: column; }
+      .arch-stat { border-right: none; border-bottom: 1px solid var(--border); padding: 1.1rem 1.25rem; }
+      .arch-stat:last-child { border-bottom: none; }
+      .arch-num { font-size: 1.8rem; }
+
+      /* Prompts */
+      .prompts-grid { grid-template-columns: 1fr; gap: 1rem; margin-top: 2.5rem; }
       .prompt-card.wide { grid-column: span 1; }
-      .philosophy-grid { grid-template-columns: 1fr; }
+      .prompt-card { padding: 1.25rem; }
+
+      /* BotFace */
+      .botface-section { grid-template-columns: 1fr; gap: 2.5rem; padding: 4rem 1.5rem; }
+      #botface-svg { width: 160px; height: 160px; }
+      .botface-live-wrap { flex-direction: row; gap: 2rem; align-items: center; justify-content: center; }
+
+      /* Philosophy */
+      .philosophy-grid { grid-template-columns: 1fr; gap: 1rem; }
       .phil-card.tall { grid-row: span 1; }
+      .phil-card { padding: 1.5rem; }
+
+      /* Features */
       .features-grid { grid-template-columns: 1fr; border-radius: 12px; }
       .feat:nth-child(n) { border-right: none; border-bottom: 1px solid var(--border); }
       .feat:last-child { border-bottom: none; }
-      .manifesto-section { padding: 5rem 1.5rem; }
-      .cta-section { padding: 4rem 1.5rem; }
-      footer { flex-direction: column; gap: 1.25rem; text-align: center; padding: 2rem 1.5rem; }
-      .arch-section { padding: 4rem 1.5rem 3rem; }
-      .arch-svg-wrap { overflow-x: auto; }
-      .arch-stats { flex-direction: column; }
-      .arch-stat { border-right: none; border-bottom: 1px solid var(--border); }
-      .arch-stat:last-child { border-bottom: none; }
-      .botface-section { grid-template-columns: 1fr; gap: 3rem; padding: 4rem 1.5rem; }
-      .memory-section { grid-template-columns: 1fr; gap: 3rem; padding: 4rem 1.5rem; }
+
+      /* Memory */
+      .memory-section { grid-template-columns: 1fr; gap: 2.5rem; padding: 4rem 1.5rem; }
+
+      /* Manifesto */
+      .manifesto-section { padding: 4rem 1.5rem; }
+      .manifesto-text { font-size: 1.5rem; }
+
+      /* CTA */
+      .cta-section { grid-template-columns: 1fr; padding: 4rem 1.5rem; gap: 3rem; }
+      .cta-stats { gap: 1.25rem; }
+      .stat-num { font-size: 2.2rem; }
+
+      /* Footer */
+      footer { flex-direction: column; gap: 1rem; text-align: center; padding: 2rem 1.5rem; }
+      .footer-links { justify-content: center; flex-wrap: wrap; gap: 1rem; }
     }
   </style>
 </head>
@@ -748,7 +798,7 @@
     </div>
     <a class="btn-star" href="https://github.com/OfficialWhyEd/WhyCremisi">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-      Star on GitHub
+      <span class="star-text">Star on GitHub</span>
     </a>
   </div>
 </nav>
@@ -793,7 +843,7 @@
       <span><span class="dot-live" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#28c840;margin-right:.4em;animation:blink-live 2.5s ease-in-out infinite;"></span>MASTER CHANNEL · ACTIVE</span>
       <span class="signal">// UNIVERSAL AI BRIDGE</span>
       <span style="background:rgba(180,20,60,0.18);border:1px solid rgba(180,20,60,0.4);border-radius:3px;padding:.1em .5em;font-size:.6rem;letter-spacing:.1em;color:var(--crimson);">BETA</span>
-      <span style="margin-left:auto;">macOS · Windows · Linux · OSC :9000 · WS :8080</span>
+      <span class="eyebrow-platforms" style="margin-left:auto;">macOS · Windows · Linux · OSC :9000 · WS :8080</span>
     </div>
 
     <h1 class="hero-h1 enter-2" data-i18n="hero-h1">Your DAW.</h1>
