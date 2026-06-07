@@ -23,6 +23,7 @@
   <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400&display=swap" rel="stylesheet" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/motion@10.18.0/dist/motion.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -90,6 +91,32 @@
     }
     .btn-star:hover { background: var(--crim2); }
     .btn-star:active { transform: scale(.98); }
+
+    /* ── LANG TOGGLE ────────────────────────────── */
+    .lang-toggle {
+      display: flex; align-items: center;
+      gap: .15rem;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 6px; padding: .2rem .25rem;
+    }
+    .lang-btn {
+      background: none; border: none; cursor: pointer;
+      padding: .2em .55em; border-radius: 4px;
+      font-family: var(--mono); font-size: .6rem;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--dim); transition: color .2s, background .2s;
+      line-height: 1;
+    }
+    .lang-btn.active {
+      color: var(--crimson);
+      background: rgba(180,20,60,.15);
+    }
+    .lang-btn:not(.active):hover { color: var(--text); }
+    .lang-sep {
+      font-family: var(--mono); font-size: .55rem;
+      color: rgba(255,255,255,.12); pointer-events: none;
+    }
 
     /* ── HERO ────────────────────────────────────── */
     .hero {
@@ -714,6 +741,11 @@
     <a class="nav-link" href="https://discord.gg/cQQckfnN">Discord</a>
     <a class="nav-link" href="https://instagram.com/whyed.music">Instagram</a>
     <a class="nav-link" href="https://github.com/OfficialWhyEd/WhyCremisi">Docs</a>
+    <div class="lang-toggle" id="lang-toggle" aria-label="Seleziona lingua">
+      <button class="lang-btn active" data-lang="en">EN</button>
+      <span class="lang-sep">|</span>
+      <button class="lang-btn" data-lang="it">IT</button>
+    </div>
     <a class="btn-star" href="https://github.com/OfficialWhyEd/WhyCremisi">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
       Star on GitHub
@@ -764,10 +796,10 @@
       <span style="margin-left:auto;">macOS · Windows · Linux · OSC :9000 · WS :8080</span>
     </div>
 
-    <h1 class="hero-h1 enter-2">Your DAW.</h1>
-    <h1 class="hero-h1-b enter-3">Now it <em>listens.</em></h1>
+    <h1 class="hero-h1 enter-2" data-i18n="hero-h1">Your DAW.</h1>
+    <h1 class="hero-h1-b enter-3" data-i18n="hero-h1-b">Now it <em>listens.</em></h1>
 
-    <p class="hero-sub enter-4">
+    <p class="hero-sub enter-4" data-i18n="hero-sub">
       You hear it in your head. Now it can happen in your session. Describe the sound, compose full songs from nothing, fix phases, control every plugin — through natural language, from a single slot on your master channel. No menus. No manuals. Just say it.
     </p>
 
@@ -814,9 +846,9 @@
 <!-- ARCHITECTURE -->
 <section class="arch-section reveal">
   <div class="arch-header">
-    <p class="section-label">How it works</p>
-    <h2>Three layers.<br/><em>One conversation.</em></h2>
-    <p class="lead">DAW state broadcast at 33ms. AI response in milliseconds. Every plugin parameter written back in real time.</p>
+    <p class="section-label" data-i18n="arch-label">How it works</p>
+    <h2 data-i18n="arch-h2">Three layers.<br/><em>One conversation.</em></h2>
+    <p class="lead" data-i18n="arch-lead">DAW state broadcast at 33ms. AI response in milliseconds. Every plugin parameter written back in real time.</p>
   </div>
   <div class="arch-svg-wrap">
     <svg class="arch-svg" viewBox="0 0 860 200" xmlns="http://www.w3.org/2000/svg" aria-label="WhyCremisi architecture: DAW to Bridge to AI Engine">
@@ -915,9 +947,9 @@
 
 <!-- WHAT YOU CAN DO -->
 <section>
-  <p class="section-label reveal">What you can do</p>
-  <h2 class="reveal reveal-d1">No limits. If you can say it,<br/><em>it can do it.</em></h2>
-  <p class="lead reveal reveal-d2">There are no supported commands. Just describe what you want — in the language of music, emotion, and sound.</p>
+  <p class="section-label reveal" data-i18n="what-label">What you can do</p>
+  <h2 class="reveal reveal-d1" data-i18n="what-h2">No limits. If you can say it,<br/><em>it can do it.</em></h2>
+  <p class="lead reveal reveal-d2" data-i18n="what-lead">There are no supported commands. Just describe what you want — in the language of music, emotion, and sound.</p>
 
   <div class="prompts-grid">
     <div class="prompt-card reveal">
@@ -961,9 +993,9 @@
 <!-- BOTFACE -->
 <section class="botface-section">
   <div class="botface-text">
-    <p class="section-label reveal">// BotFace</p>
-    <h2 class="reveal reveal-d1">It doesn't just respond.<br/><em>It shows you how it feels.</em></h2>
-    <p class="lead reveal reveal-d2">BotFace is the mascot that thinks, reacts, and feels with you during the session. When it's processing, you see it think. When something goes wrong, it shows concern. It's not decorative — it's a presence.</p>
+    <p class="section-label reveal" data-i18n="bf-label">// BotFace</p>
+    <h2 class="reveal reveal-d1" data-i18n="bf-h2">It doesn't just respond.<br/><em>It shows you how it feels.</em></h2>
+    <p class="lead reveal reveal-d2" data-i18n="bf-lead">BotFace is the mascot that thinks, reacts, and feels with you during the session. When it's processing, you see it think. When something goes wrong, it shows concern. It's not decorative — it's a presence.</p>
 
     <div class="face-states-table reveal reveal-d3" id="face-states-table">
       <div class="face-state-row" data-state="idle">
@@ -1023,8 +1055,8 @@
 
 <!-- PHILOSOPHY -->
 <section>
-  <p class="section-label reveal">Philosophy</p>
-  <h2 class="reveal reveal-d1">Built around one idea:<br/><em>creativity has no limits.</em></h2>
+  <p class="section-label reveal" data-i18n="phil-label">Philosophy</p>
+  <h2 class="reveal reveal-d1" data-i18n="phil-h2">Built around one idea:<br/><em>creativity has no limits.</em></h2>
 
   <div class="philosophy-grid">
     <div class="phil-card tall reveal">
@@ -1061,8 +1093,8 @@
 
 <!-- FEATURES -->
 <section>
-  <p class="section-label reveal">Under the hood</p>
-  <h2 class="reveal reveal-d1">Real engineering.<br/><em>Real numbers.</em></h2>
+  <p class="section-label reveal" data-i18n="feat-label">Under the hood</p>
+  <h2 class="reveal reveal-d1" data-i18n="feat-h2">Real engineering.<br/><em>Real numbers.</em></h2>
 
   <div class="features-grid reveal reveal-d2">
     <div class="feat">
@@ -1102,8 +1134,8 @@
 
 <!-- PLUGINS MARQUEE -->
 <section style="padding:5rem 3rem;">
-  <p class="section-label reveal">Compatible with everything</p>
-  <p class="lead reveal reveal-d1">Reads VST3 parameter indices at runtime — any plugin, any release date, day zero.</p>
+  <p class="section-label reveal" data-i18n="plugins-label">Compatible with everything</p>
+  <p class="lead reveal reveal-d1" data-i18n="plugins-lead">Reads VST3 parameter indices at runtime — any plugin, any release date, day zero.</p>
   <div class="marquee-wrap">
     <div class="plugins-track">
       <span class="plugin-badge"><span class="plugin-dot dot-wip"></span>Serum 2</span>
@@ -1153,10 +1185,10 @@
 <!-- SESSION MEMORY -->
 <section class="memory-section">
   <div class="memory-text">
-    <p class="section-label reveal">// Memory</p>
-    <h2 class="reveal reveal-d1">Every decision.<br/><em>Remembered forever.</em></h2>
-    <p class="lead reveal reveal-d2">Append-only <code>events.jsonl</code> logs every parameter touch with millisecond timestamps. Cross-session <code>memory.json</code> carries your preferences, your taste, your history. Ask it what it did three sessions ago. It knows.</p>
-    <p class="lead reveal reveal-d3" style="margin-top:1rem;">The more sessions you run, the more it knows you. That memory is yours — and it can't be replicated by starting over.</p>
+    <p class="section-label reveal" data-i18n="mem-label">// Memory</p>
+    <h2 class="reveal reveal-d1" data-i18n="mem-h2">Every decision.<br/><em>Remembered forever.</em></h2>
+    <p class="lead reveal reveal-d2" data-i18n="mem-lead">Append-only <code>events.jsonl</code> logs every parameter touch with millisecond timestamps. Cross-session <code>memory.json</code> carries your preferences, your taste, your history. Ask it what it did three sessions ago. It knows.</p>
+    <p class="lead reveal reveal-d3" style="margin-top:1rem;" data-i18n="mem-lead2">The more sessions you run, the more it knows you. That memory is yours — and it can't be replicated by starting over.</p>
   </div>
   <div class="memory-visual reveal reveal-d1">
     <div class="memory-terminal" id="memory-terminal">
@@ -1234,12 +1266,12 @@
 <!-- MANIFESTO -->
 <section class="manifesto-section">
   <div class="manifesto-inner">
-    <span class="manifesto-label reveal">// Mission</span>
-    <p class="manifesto-text reveal reveal-d1">
+    <span class="manifesto-label reveal" data-i18n="manifesto-label">// Mission</span>
+    <p class="manifesto-text reveal reveal-d1" data-i18n="manifesto-text">
       Most tools make you speak their language.<br/>
       <em>This one speaks yours.</em>
     </p>
-    <p class="manifesto-sub reveal reveal-d2">
+    <p class="manifesto-sub reveal reveal-d2" data-i18n="manifesto-sub">
       WhyCremisi is for the producer who can hear what the track needs but can't get there fast enough. For the engineer who knows exactly which word describes the sound but not which plugin to open. For the composer who hears the chord progression in their head but resists the piano roll.<br/><br/>
       The more sessions you run with WhyCremisi, the more it knows your taste — your decisions, your sound, your history. That memory is yours. It compounds. It doesn't reset. And it can't be replicated by starting over.<br/><br/>
       <strong style="color:var(--text);font-weight:700;">The gap between what you imagine and what you produce — we're closing it, one session at a time.</strong>
@@ -1258,12 +1290,12 @@
 <!-- CTA STATS -->
 <section class="cta-section">
   <div class="cta-text">
-    <p class="section-label reveal">Get started</p>
-    <h2 class="reveal reveal-d1">Load on the master channel.<br/><em>Talk to it.</em></h2>
-    <p class="lead reveal reveal-d2">Works offline with Ollama — no API key, no subscription, no cloud. Install JUCE 7, build, drop on the master channel. The bridge starts automatically.</p>
+    <p class="section-label reveal" data-i18n="cta-label">Get started</p>
+    <h2 class="reveal reveal-d1" data-i18n="cta-h2">Load on the master channel.<br/><em>Talk to it.</em></h2>
+    <p class="lead reveal reveal-d2" data-i18n="cta-lead">Works offline with Ollama — no API key, no subscription, no cloud. Install JUCE 7, build, drop on the master channel. The bridge starts automatically.</p>
     <div class="cta-buttons reveal reveal-d3">
-      <a class="btn-primary" href="https://github.com/OfficialWhyEd/WhyCremisi">View on GitHub</a>
-      <a class="btn-ghost" href="https://discord.gg/cQQckfnN">Discord</a>
+      <a class="btn-primary" href="https://github.com/OfficialWhyEd/WhyCremisi" data-i18n="btn-github">View on GitHub</a>
+      <a class="btn-ghost" href="https://discord.gg/cQQckfnN" data-i18n="btn-discord-cta">Discord</a>
     </div>
   </div>
   <div class="cta-stats reveal reveal-d2">
@@ -1306,6 +1338,9 @@
 </footer>
 
 <script>
+  // ── Motion One shorthand ───────────────────────────────────────────────────
+  const { animate, inView, stagger } = Motion;
+
   // ── Hero parallax ──────────────────────────────────────────────────────────
   const heroText   = document.getElementById('hero-text');
   const heroVisual = document.getElementById('hero-visual');
@@ -1318,7 +1353,8 @@
     if (mascot)     mascot.style.transform     = `translate(${x * 0.4}px, ${y * 0.4}px)`;
   });
 
-  // ── Scroll reveal ──────────────────────────────────────────────────────────
+  // ── Scroll reveal (Motion One inView) ─────────────────────────────────────
+  // Basic reveals via CSS still handle .reveal — Motion adds spring to cards
   const reveals = document.querySelectorAll('.reveal');
   const revealIo = new IntersectionObserver(entries => {
     entries.forEach(e => {
@@ -1327,6 +1363,51 @@
   }, { threshold: 0.07 });
   reveals.forEach(el => revealIo.observe(el));
   document.querySelectorAll('.screenshot-wrap').forEach(el => el.classList.add('visible'));
+
+  // ── Staggered card grids (Motion One) ─────────────────────────────────────
+  const cardGroups = [
+    { parent: '.prompts-grid',   children: '.prompt-card' },
+    { parent: '.philosophy-grid',children: '.phil-card'   },
+    { parent: '.features-grid',  children: '.feat'        },
+  ];
+  cardGroups.forEach(({ parent, children }) => {
+    const parentEl = document.querySelector(parent);
+    if (!parentEl) return;
+    // pre-hide
+    const cards = parentEl.querySelectorAll(children);
+    cards.forEach(c => { c.style.opacity = '0'; c.style.transform = 'translateY(22px)'; });
+    inView(parentEl, () => {
+      animate(cards, { opacity: [0, 1], y: [22, 0] }, {
+        duration: 0.65,
+        delay: stagger(0.09),
+        easing: [0.16, 1, 0.3, 1],
+      });
+    }, { amount: 0.08 });
+  });
+
+  // ── Arch stats row (Motion One stagger) ───────────────────────────────────
+  const archStats = document.querySelector('.arch-stats');
+  if (archStats) {
+    const statEls = archStats.querySelectorAll('.arch-stat');
+    statEls.forEach(s => { s.style.opacity = '0'; s.style.transform = 'translateY(16px)'; });
+    inView(archStats, () => {
+      animate(statEls, { opacity: [0, 1], y: [16, 0] }, {
+        duration: 0.6, delay: stagger(0.1), easing: [0.16, 1, 0.3, 1],
+      });
+    }, { amount: 0.3 });
+  }
+
+  // ── Face-state rows (Motion One stagger) ──────────────────────────────────
+  const stateTable = document.getElementById('face-states-table');
+  if (stateTable) {
+    const rows = stateTable.querySelectorAll('.face-state-row');
+    rows.forEach(r => { r.style.opacity = '0'; r.style.transform = 'translateX(-12px)'; });
+    inView(stateTable, () => {
+      animate(rows, { opacity: [0, 1], x: [-12, 0] }, {
+        duration: 0.5, delay: stagger(0.1), easing: [0.16, 1, 0.3, 1],
+      });
+    }, { amount: 0.2 });
+  }
 
   // ── Terminal typewriter ────────────────────────────────────────────────────
   const twBody = document.getElementById('tw-body');
@@ -1505,23 +1586,108 @@
     memIo.observe(memTerminal);
   }
 
-  // ── Param counter animation ────────────────────────────────────────────────
+  // ── Param counter animation (Motion One) ─────────────────────────────────
   const paramEl = document.getElementById('param-count');
   if (paramEl) {
-    const pIo = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) {
-        let n = 0;
-        const target = 847;
-        const interval = setInterval(() => {
-          n = Math.min(n + 15, target);
-          paramEl.textContent = n + '+';
-          if (n >= target) clearInterval(interval);
-        }, 18);
-        pIo.disconnect();
-      }
-    }, { threshold: 0.3 });
-    pIo.observe(paramEl);
+    inView(paramEl, () => {
+      let n = 0;
+      const interval = setInterval(() => {
+        n = Math.min(n + 15, 847);
+        paramEl.textContent = n + '+';
+        if (n >= 847) clearInterval(interval);
+      }, 18);
+    }, { amount: 0.4 });
   }
+
+  // ── i18n system ───────────────────────────────────────────────────────────
+  const t = {
+    en: {
+      'hero-h1':          'Your DAW.',
+      'hero-h1-b':        'Now it <em>listens.</em>',
+      'hero-sub':         'You hear it in your head. Now it can happen in your session. Describe the sound, compose full songs from nothing, fix phases, control every plugin — through natural language, from a single slot on your master channel. No menus. No manuals. Just say it.',
+      'arch-label':       'How it works',
+      'arch-h2':          'Three layers.<br/><em>One conversation.</em>',
+      'arch-lead':        'DAW state broadcast at 33ms. AI response in milliseconds. Every plugin parameter written back in real time.',
+      'what-label':       'What you can do',
+      'what-h2':          'No limits. If you can say it,<br/><em>it can do it.</em>',
+      'what-lead':        'There are no supported commands. Just describe what you want — in the language of music, emotion, and sound.',
+      'bf-label':         '// BotFace',
+      'bf-h2':            "It doesn't just respond.<br/><em>It shows you how it feels.</em>",
+      'bf-lead':          "BotFace is the mascot that thinks, reacts, and feels with you during the session. When it's processing, you see it think. When something goes wrong, it shows concern. It's not decorative — it's a presence.",
+      'phil-label':       'Philosophy',
+      'phil-h2':          'Built around one idea:<br/><em>creativity has no limits.</em>',
+      'feat-label':       'Under the hood',
+      'feat-h2':          'Real engineering.<br/><em>Real numbers.</em>',
+      'plugins-label':    'Compatible with everything',
+      'plugins-lead':     'Reads VST3 parameter indices at runtime — any plugin, any release date, day zero.',
+      'mem-label':        '// Memory',
+      'mem-h2':           'Every decision.<br/><em>Remembered forever.</em>',
+      'mem-lead':         'Append-only <code>events.jsonl</code> logs every parameter touch with millisecond timestamps. Cross-session <code>memory.json</code> carries your preferences, your taste, your history. Ask it what it did three sessions ago. It knows.',
+      'mem-lead2':        "The more sessions you run, the more it knows you. That memory is yours — and it can't be replicated by starting over.",
+      'manifesto-label':  '// Mission',
+      'manifesto-text':   "Most tools make you speak their language.<br/><em>This one speaks yours.</em>",
+      'manifesto-sub':    "WhyCremisi is for the producer who can hear what the track needs but can't get there fast enough. For the engineer who knows exactly which word describes the sound but not which plugin to open. For the composer who hears the chord progression in their head but resists the piano roll.<br/><br/>The more sessions you run with WhyCremisi, the more it knows your taste — your decisions, your sound, your history. That memory is yours. It compounds. It doesn't reset. And it can't be replicated by starting over.<br/><br/><strong style=\"color:var(--text);font-weight:700;\">The gap between what you imagine and what you produce — we're closing it, one session at a time.</strong>",
+      'cta-label':        'Get started',
+      'cta-h2':           'Load on the master channel.<br/><em>Talk to it.</em>',
+      'cta-lead':         'Works offline with Ollama — no API key, no subscription, no cloud. Install JUCE 7, build, drop on the master channel. The bridge starts automatically.',
+      'btn-github':       'View on GitHub',
+      'btn-discord-cta':  'Discord',
+    },
+    it: {
+      'hero-h1':          'Il tuo DAW.',
+      'hero-h1-b':        'Ora ti <em>ascolta.</em>',
+      'hero-sub':         'Lo senti in testa. Adesso può succedere nella tua sessione. Descrivi il suono, componi canzoni intere dal niente, correggi le fasi, controlla ogni plugin — in linguaggio naturale, da un singolo slot sul master channel. Niente menu. Niente manuali. Digli e basta.',
+      'arch-label':       'Come funziona',
+      'arch-h2':          'Tre livelli.<br/><em>Una conversazione.</em>',
+      'arch-lead':        'Stato del DAW trasmesso ogni 33ms. Risposta AI in millisecondi. Ogni parametro dei plugin scritto in tempo reale.',
+      'what-label':       'Cosa puoi fare',
+      'what-h2':          'Nessun limite. Se riesci a dirlo,<br/><em>lo fa.</em>',
+      'what-lead':        "Non esistono comandi supportati. Descrivi solo quello che vuoi — nel linguaggio della musica, dell'emozione e del suono.",
+      'bf-label':         '// BotFace',
+      'bf-h2':            'Non si limita a rispondere.<br/><em>Ti mostra come si sente.</em>',
+      'bf-lead':          "BotFace è la mascotte che pensa, reagisce e sente insieme a te durante la sessione. Quando elabora, lo vedi pensare. Quando qualcosa va storto, lo dimostra. Non è decorativo — è una presenza.",
+      'phil-label':       'Filosofia',
+      'phil-h2':          "Costruito intorno a un'idea:<br/><em>la creatività non ha limiti.</em>",
+      'feat-label':       'Sotto al cofano',
+      'feat-h2':          'Ingegneria vera.<br/><em>Numeri veri.</em>',
+      'plugins-label':    'Compatibile con tutto',
+      'plugins-lead':     'Legge gli indici VST3 a runtime — qualsiasi plugin, qualsiasi data di uscita, dal giorno zero.',
+      'mem-label':        '// Memoria',
+      'mem-h2':           'Ogni decisione.<br/><em>Ricordata per sempre.</em>',
+      'mem-lead':         'Il file <code>events.jsonl</code> in append-only registra ogni tocco di parametro con timestamp al millisecondo. <code>memory.json</code> cross-session porta con sé le tue preferenze, il tuo gusto, la tua storia. Chiedigli cosa ha fatto tre sessioni fa. Lo sa.',
+      'mem-lead2':        "Più sessioni fai, più ti conosce. Quella memoria è tua — e non può essere replicata ricominciando da zero.",
+      'manifesto-label':  '// Missione',
+      'manifesto-text':   "La maggior parte degli strumenti ti chiede di parlare la loro lingua.<br/><em>Questo parla la tua.</em>",
+      'manifesto-sub':    "WhyCremisi è per il producer che riesce a sentire quello che serve al pezzo ma non ci arriva abbastanza in fretta. Per il fonico che sa esattamente quale parola descrive il suono, ma non quale plugin aprire. Per il compositore che sente la progressione in testa ma resiste al piano roll.<br/><br/>Più sessioni fai con WhyCremisi, più impara il tuo gusto — le tue decisioni, il tuo suono, la tua storia. Quella memoria è tua. Si accumula. Non si resetta. E non può essere replicata ricominciando da zero.<br/><br/><strong style=\"color:var(--text);font-weight:700;\">Il divario tra quello che immagini e quello che produci — lo stiamo chiudendo, una sessione alla volta.</strong>",
+      'cta-label':        'Inizia adesso',
+      'cta-h2':           'Caricalo sul master channel.<br/><em>Parlagli.</em>',
+      'cta-lead':         'Funziona offline con Ollama — nessuna API key, nessun abbonamento, nessun cloud. Installa JUCE 7, compila, metti sul master channel. Il bridge parte in automatico.',
+      'btn-github':       'Vedi su GitHub',
+      'btn-discord-cta':  'Unisciti a Discord',
+    },
+  };
+
+  let currentLang = 'en';
+
+  function applyLang(lang) {
+    currentLang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.dataset.i18n;
+      if (t[lang] && t[lang][key] !== undefined) {
+        el.innerHTML = t[lang][key];
+      }
+    });
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === lang);
+    });
+    // Animate the change — fade out/in
+    animate('[data-i18n]', { opacity: [0.3, 1] }, { duration: 0.35, easing: [0.16, 1, 0.3, 1] });
+  }
+
+  document.getElementById('lang-toggle')?.addEventListener('click', e => {
+    const btn = e.target.closest('.lang-btn');
+    if (btn && btn.dataset.lang !== currentLang) applyLang(btn.dataset.lang);
+  });
 </script>
 
 </body>
