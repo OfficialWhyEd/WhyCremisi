@@ -23,7 +23,6 @@
   <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400&display=swap" rel="stylesheet" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/motion@10.18.0/dist/motion.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -273,7 +272,7 @@
     .dot { width: 10px; height: 10px; border-radius: 50%; }
     .dot-r{background:#ff5f57;} .dot-y{background:#febc2e;} .dot-g{background:#28c840;}
     .terminal-title { font-family: 'Satoshi',sans-serif; font-size:.72rem; color: var(--dim); margin-left: auto; letter-spacing:.04em; }
-    .terminal-body { padding: 1.25rem 1.5rem; line-height: 1.85; min-height: 16rem; overflow: hidden; }
+    .terminal-body { padding: 1.25rem 1.5rem; line-height: 1.85; height: 16rem; overflow: hidden; }
     .t-user { color: var(--crimson); }
     .t-ai { color: #c8b8d4; }
     .t-dim { color: var(--dim); }
@@ -504,6 +503,45 @@
     .reveal-d3 { transition-delay: .3s; }
     .reveal-d4 { transition-delay: .4s; }
 
+    /* ── CSS CARD STAGGER ────────────────────────── */
+    /* Prompt cards */
+    .prompts-grid .prompt-card { opacity: 0; transform: translateY(18px); transition: opacity .6s cubic-bezier(0.16,1,0.3,1), transform .6s cubic-bezier(0.16,1,0.3,1); }
+    .prompts-grid.stagger-go .prompt-card:nth-child(1) { opacity:1; transform:none; transition-delay:.04s; }
+    .prompts-grid.stagger-go .prompt-card:nth-child(2) { opacity:1; transform:none; transition-delay:.12s; }
+    .prompts-grid.stagger-go .prompt-card:nth-child(3) { opacity:1; transform:none; transition-delay:.20s; }
+    .prompts-grid.stagger-go .prompt-card:nth-child(4) { opacity:1; transform:none; transition-delay:.28s; }
+    .prompts-grid.stagger-go .prompt-card:nth-child(5) { opacity:1; transform:none; transition-delay:.36s; }
+    .prompts-grid.stagger-go .prompt-card:nth-child(6) { opacity:1; transform:none; transition-delay:.44s; }
+    .prompts-grid.stagger-go .prompt-card:nth-child(7) { opacity:1; transform:none; transition-delay:.52s; }
+    /* Philosophy cards */
+    .philosophy-grid .phil-card { opacity: 0; transform: translateY(18px); transition: opacity .6s cubic-bezier(0.16,1,0.3,1), transform .6s cubic-bezier(0.16,1,0.3,1); }
+    .philosophy-grid.stagger-go .phil-card:nth-child(1) { opacity:1; transform:none; transition-delay:.04s; }
+    .philosophy-grid.stagger-go .phil-card:nth-child(2) { opacity:1; transform:none; transition-delay:.12s; }
+    .philosophy-grid.stagger-go .phil-card:nth-child(3) { opacity:1; transform:none; transition-delay:.20s; }
+    .philosophy-grid.stagger-go .phil-card:nth-child(4) { opacity:1; transform:none; transition-delay:.28s; }
+    .philosophy-grid.stagger-go .phil-card:nth-child(5) { opacity:1; transform:none; transition-delay:.36s; }
+    /* Feature cells */
+    .features-grid .feat { opacity: 0; transform: translateY(18px); transition: opacity .6s cubic-bezier(0.16,1,0.3,1), transform .6s cubic-bezier(0.16,1,0.3,1); }
+    .features-grid.stagger-go .feat:nth-child(1) { opacity:1; transform:none; transition-delay:.04s; }
+    .features-grid.stagger-go .feat:nth-child(2) { opacity:1; transform:none; transition-delay:.12s; }
+    .features-grid.stagger-go .feat:nth-child(3) { opacity:1; transform:none; transition-delay:.20s; }
+    .features-grid.stagger-go .feat:nth-child(4) { opacity:1; transform:none; transition-delay:.28s; }
+    .features-grid.stagger-go .feat:nth-child(5) { opacity:1; transform:none; transition-delay:.36s; }
+    .features-grid.stagger-go .feat:nth-child(6) { opacity:1; transform:none; transition-delay:.44s; }
+    /* Arch stats */
+    .arch-stats .arch-stat { opacity: 0; transform: translateY(14px); transition: opacity .55s cubic-bezier(0.16,1,0.3,1), transform .55s cubic-bezier(0.16,1,0.3,1); }
+    .arch-stats.stagger-go .arch-stat:nth-child(1) { opacity:1; transform:none; transition-delay:.05s; }
+    .arch-stats.stagger-go .arch-stat:nth-child(2) { opacity:1; transform:none; transition-delay:.13s; }
+    .arch-stats.stagger-go .arch-stat:nth-child(3) { opacity:1; transform:none; transition-delay:.21s; }
+    .arch-stats.stagger-go .arch-stat:nth-child(4) { opacity:1; transform:none; transition-delay:.29s; }
+    /* Face state rows */
+    .face-state-row { opacity: 0; transform: translateX(-10px); transition: opacity .5s cubic-bezier(0.16,1,0.3,1), transform .5s cubic-bezier(0.16,1,0.3,1); }
+    #face-states-table.stagger-go .face-state-row:nth-child(1) { opacity:1; transform:none; transition-delay:.04s; }
+    #face-states-table.stagger-go .face-state-row:nth-child(2) { opacity:1; transform:none; transition-delay:.12s; }
+    #face-states-table.stagger-go .face-state-row:nth-child(3) { opacity:1; transform:none; transition-delay:.20s; }
+    #face-states-table.stagger-go .face-state-row:nth-child(4) { opacity:1; transform:none; transition-delay:.28s; }
+    #face-states-table.stagger-go .face-state-row:nth-child(5) { opacity:1; transform:none; transition-delay:.36s; }
+
     /* ── ARCHITECTURE SVG ───────────────────────── */
     .arch-section { padding: 6rem 3rem 5rem; }
     .arch-header { margin-bottom: 4rem; }
@@ -726,7 +764,7 @@
       .mascot-img { height: 80px; }
       .mascot-glow { width: 160px; height: 160px; }
       .mascot-wrap { margin-bottom: 1rem; }
-      .terminal-body { min-height: 13rem; font-size: .75rem; padding: 1rem 1.1rem; }
+      .terminal-body { height: 13rem; font-size: .75rem; padding: 1rem 1.1rem; }
 
       /* Sections */
       section { padding: 4rem 1.5rem; }
@@ -1388,83 +1426,40 @@
 </footer>
 
 <script>
-  // ── Motion One (optional — page works without it if CDN fails) ────────────
-  const animate = window.Motion?.animate ?? (() => {});
-  const inView  = window.Motion?.inView  ?? ((el, cb) => {
-    const io = new IntersectionObserver(entries => {
-      entries.forEach(e => { if (e.isIntersecting) { cb(e); io.unobserve(e.target); } });
-    }, { threshold: 0.08 });
-    (el instanceof Element ? [el] : document.querySelectorAll(el)).forEach(n => io.observe(n));
-  });
-  const stagger = window.Motion?.stagger ?? (delay => (_, i) => i * (delay || 0.1));
-
-  // ── Hero parallax ──────────────────────────────────────────────────────────
+  // ── Hero parallax (desktop only) ──────────────────────────────────────────
   const heroText   = document.getElementById('hero-text');
   const heroVisual = document.getElementById('hero-visual');
   const mascot     = document.getElementById('mascot');
-  document.addEventListener('mousemove', e => {
-    const x = (e.clientX / window.innerWidth  - 0.5) * 18;
-    const y = (e.clientY / window.innerHeight - 0.5) * 10;
-    if (heroText)   heroText.style.transform   = `translate(${-x * 0.3}px, ${-y * 0.3}px)`;
-    if (heroVisual) heroVisual.style.transform = `translate(${x * 0.25}px, ${y * 0.25}px)`;
-    if (mascot)     mascot.style.transform     = `translate(${x * 0.4}px, ${y * 0.4}px)`;
-  });
+  if (window.innerWidth > 768) {
+    document.addEventListener('mousemove', e => {
+      const x = (e.clientX / window.innerWidth  - 0.5) * 18;
+      const y = (e.clientY / window.innerHeight - 0.5) * 10;
+      if (heroText)   heroText.style.transform   = `translate(${-x * 0.3}px, ${-y * 0.3}px)`;
+      if (heroVisual) heroVisual.style.transform = `translate(${x * 0.25}px, ${y * 0.25}px)`;
+      if (mascot)     mascot.style.transform     = `translate(${x * 0.4}px, ${y * 0.4}px)`;
+    });
+  }
 
-  // ── Scroll reveal (Motion One inView) ─────────────────────────────────────
-  // Basic reveals via CSS still handle .reveal — Motion adds spring to cards
-  const reveals = document.querySelectorAll('.reveal');
+  // ── Scroll reveal (.reveal → .visible) ────────────────────────────────────
   const revealIo = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (e.isIntersecting) { e.target.classList.add('visible'); revealIo.unobserve(e.target); }
     });
   }, { threshold: 0.07 });
-  reveals.forEach(el => revealIo.observe(el));
+  document.querySelectorAll('.reveal').forEach(el => revealIo.observe(el));
   document.querySelectorAll('.screenshot-wrap').forEach(el => el.classList.add('visible'));
 
-  // ── Staggered card grids (Motion One) ─────────────────────────────────────
-  const cardGroups = [
-    { parent: '.prompts-grid',   children: '.prompt-card' },
-    { parent: '.philosophy-grid',children: '.phil-card'   },
-    { parent: '.features-grid',  children: '.feat'        },
-  ];
-  cardGroups.forEach(({ parent, children }) => {
-    const parentEl = document.querySelector(parent);
-    if (!parentEl) return;
-    // pre-hide
-    const cards = parentEl.querySelectorAll(children);
-    cards.forEach(c => { c.style.opacity = '0'; c.style.transform = 'translateY(22px)'; });
-    inView(parentEl, () => {
-      animate(cards, { opacity: [0, 1], y: [22, 0] }, {
-        duration: 0.65,
-        delay: stagger(0.09),
-        easing: [0.16, 1, 0.3, 1],
-      });
-    }, { amount: 0.08 });
+  // ── CSS stagger: add .stagger-go when grid enters viewport ────────────────
+  const staggerTargets = ['.prompts-grid', '.philosophy-grid', '.features-grid', '.arch-stats', '#face-states-table'];
+  const staggerIo = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) { e.target.classList.add('stagger-go'); staggerIo.unobserve(e.target); }
+    });
+  }, { threshold: 0.08 });
+  staggerTargets.forEach(sel => {
+    const el = document.querySelector(sel);
+    if (el) staggerIo.observe(el);
   });
-
-  // ── Arch stats row (Motion One stagger) ───────────────────────────────────
-  const archStats = document.querySelector('.arch-stats');
-  if (archStats) {
-    const statEls = archStats.querySelectorAll('.arch-stat');
-    statEls.forEach(s => { s.style.opacity = '0'; s.style.transform = 'translateY(16px)'; });
-    inView(archStats, () => {
-      animate(statEls, { opacity: [0, 1], y: [16, 0] }, {
-        duration: 0.6, delay: stagger(0.1), easing: [0.16, 1, 0.3, 1],
-      });
-    }, { amount: 0.3 });
-  }
-
-  // ── Face-state rows (Motion One stagger) ──────────────────────────────────
-  const stateTable = document.getElementById('face-states-table');
-  if (stateTable) {
-    const rows = stateTable.querySelectorAll('.face-state-row');
-    rows.forEach(r => { r.style.opacity = '0'; r.style.transform = 'translateX(-12px)'; });
-    inView(stateTable, () => {
-      animate(rows, { opacity: [0, 1], x: [-12, 0] }, {
-        duration: 0.5, delay: stagger(0.1), easing: [0.16, 1, 0.3, 1],
-      });
-    }, { amount: 0.2 });
-  }
 
   // ── Terminal typewriter ────────────────────────────────────────────────────
   const twBody = document.getElementById('tw-body');
@@ -1643,17 +1638,21 @@
     memIo.observe(memTerminal);
   }
 
-  // ── Param counter animation (Motion One) ─────────────────────────────────
+  // ── Param counter animation ───────────────────────────────────────────────
   const paramEl = document.getElementById('param-count');
   if (paramEl) {
-    inView(paramEl, () => {
-      let n = 0;
-      const interval = setInterval(() => {
-        n = Math.min(n + 15, 847);
-        paramEl.textContent = n + '+';
-        if (n >= 847) clearInterval(interval);
-      }, 18);
-    }, { amount: 0.4 });
+    const pIo = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        let n = 0;
+        const interval = setInterval(() => {
+          n = Math.min(n + 15, 847);
+          paramEl.textContent = n + '+';
+          if (n >= 847) clearInterval(interval);
+        }, 18);
+        pIo.disconnect();
+      }
+    }, { threshold: 0.3 });
+    pIo.observe(paramEl);
   }
 
   // ── i18n system ───────────────────────────────────────────────────────────
@@ -1737,8 +1736,6 @@
     document.querySelectorAll('.lang-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.lang === lang);
     });
-    // Animate the change — fade out/in
-    animate('[data-i18n]', { opacity: [0.3, 1] }, { duration: 0.35, easing: [0.16, 1, 0.3, 1] });
   }
 
   document.getElementById('lang-toggle')?.addEventListener('click', e => {
