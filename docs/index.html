@@ -477,6 +477,202 @@
     .reveal-d3 { transition-delay: .3s; }
     .reveal-d4 { transition-delay: .4s; }
 
+    /* ── ARCHITECTURE SVG ───────────────────────── */
+    .arch-section { padding: 6rem 3rem 5rem; }
+    .arch-header { margin-bottom: 4rem; }
+    .arch-svg-wrap {
+      max-width: 860px; margin: 0 auto;
+      position: relative;
+    }
+    .arch-svg { width: 100%; height: auto; display: block; }
+
+    /* SVG node styles */
+    .daw-box, .bridge-box, .ai-box {
+      fill: var(--surface); stroke: var(--border); stroke-width: 1;
+    }
+    .bridge-box {
+      stroke: rgba(180,20,60,.5); stroke-width: 1.5;
+      animation: bridge-pulse 3s ease-in-out infinite;
+    }
+    @keyframes bridge-pulse {
+      0%,100% { stroke-opacity: .5; }
+      50%      { stroke-opacity: 1; }
+    }
+    .plugin-inner { fill: rgba(255,255,255,.04); stroke: var(--border); stroke-width: .8; }
+    .plugin-inner.active { stroke: rgba(180,20,60,.4); fill: rgba(180,20,60,.04); }
+    .svg-label { fill: var(--sub); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .svg-label-bold { fill: var(--text); font-family: 'Satoshi', sans-serif; font-weight: 700; font-size: 13px; }
+    .svg-label-tiny { fill: var(--dim); font-family: 'JetBrains Mono', monospace; font-size: 9.5px; }
+    .svg-label-crim { fill: var(--crimson); font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: .06em; }
+    .data-track { fill: none; stroke: rgba(180,20,60,.18); stroke-width: 1.5; stroke-dasharray: 5 5; }
+    .resp-track { fill: none; stroke: rgba(180,20,60,.35); stroke-width: 1.5; }
+    .provider-dot { fill: var(--dim); }
+    .provider-dot.live { fill: #28c840; animation: dot-blink 2.5s ease-in-out infinite; }
+    @keyframes dot-blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+    .query-dot  { fill: rgba(180,20,60,.75); }
+    .resp-dot   { fill: var(--crimson); }
+
+    .arch-stats {
+      display: flex; gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+      margin-top: 2.5rem;
+    }
+    .arch-stat {
+      flex: 1; padding: 1.5rem 2rem;
+      border-right: 1px solid var(--border);
+    }
+    .arch-stat:last-child { border-right: none; }
+    .arch-num {
+      display: block; font-size: 2.2rem; font-weight: 900;
+      letter-spacing: -.05em; color: var(--text); line-height: 1;
+    }
+    .arch-unit {
+      font-family: var(--mono); font-size: .62rem;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--dim); margin-top: .3rem; display: block;
+    }
+
+    /* ── BOTFACE SECTION ─────────────────────────── */
+    .botface-section {
+      padding: 6rem 3rem;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 6rem; align-items: center;
+    }
+    .botface-live-wrap {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 1.5rem; margin-bottom: 2rem;
+    }
+    #botface-svg { filter: drop-shadow(0 0 30px rgba(180,20,60,.25)); }
+    .face-ring { animation: ring-breathe 4s ease-in-out infinite; }
+    @keyframes ring-breathe { 0%,100%{r:48;opacity:.3} 50%{r:50;opacity:.6} }
+    .eye, .pupil { transition: transform .45s cubic-bezier(0.16,1,0.3,1); }
+    .mouth-path { transition: d .45s cubic-bezier(0.16,1,0.3,1); }
+    .state-pill {
+      font-family: var(--mono); font-size: .62rem;
+      letter-spacing: .1em; text-transform: uppercase;
+      padding: .3em .8em; border-radius: 100px;
+      border: 1px solid rgba(180,20,60,.4);
+      color: var(--crimson); background: rgba(180,20,60,.06);
+      transition: all .4s cubic-bezier(0.16,1,0.3,1);
+    }
+    .face-states-table {
+      display: flex; flex-direction: column; gap: .7rem;
+    }
+    .face-state-row {
+      display: flex; align-items: center; gap: 1.25rem;
+      padding: .85rem 1.1rem;
+      border: 1px solid var(--border); border-radius: 10px;
+      transition: border-color .3s, background .3s;
+    }
+    .face-state-row.active-state {
+      border-color: rgba(180,20,60,.4);
+      background: rgba(180,20,60,.04);
+    }
+    .fsr-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--dim); flex-shrink: 0;
+      transition: background .3s;
+    }
+    .face-state-row.active-state .fsr-dot { background: var(--crimson); }
+    .fsr-name {
+      font-family: var(--mono); font-size: .7rem; font-weight: 500;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--sub); min-width: 70px;
+      transition: color .3s;
+    }
+    .face-state-row.active-state .fsr-name { color: var(--text); }
+    .fsr-desc { font-size: .8rem; color: var(--dim); line-height: 1.5; }
+
+    /* ── MEMORY SECTION ──────────────────────────── */
+    .memory-section {
+      padding: 6rem 3rem;
+      display: grid; grid-template-columns: 2fr 3fr;
+      gap: 5rem; align-items: start;
+    }
+    .memory-visual { position: relative; }
+    .memory-terminal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden;
+      font-family: var(--mono); font-size: .75rem;
+      box-shadow: 0 24px 48px rgba(0,0,0,.4);
+    }
+    .mt-bar {
+      display: flex; align-items: center; gap: .5rem;
+      padding: .65rem 1rem;
+      background: rgba(255,255,255,.025);
+      border-bottom: 1px solid var(--border);
+    }
+    .mt-title { font-size: .7rem; color: var(--dim); margin-left: auto; letter-spacing: .04em; }
+    .mt-body { padding: 1rem 1.25rem; }
+    .mt-session-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: .85rem; padding-bottom: .6rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .mt-session-id { color: var(--crimson); font-size: .7rem; letter-spacing: .06em; }
+    .mt-session-count { color: var(--dim); font-size: .68rem; }
+    .jsonl-line {
+      display: flex; gap: .75rem; margin-bottom: .4rem;
+      opacity: 0; transform: translateX(-8px);
+      transition: opacity .4s cubic-bezier(0.16,1,0.3,1),
+                  transform .4s cubic-bezier(0.16,1,0.3,1);
+    }
+    .jsonl-line.visible { opacity: 1; transform: translateX(0); }
+    .jl-ts { color: var(--dim); flex-shrink: 0; font-size: .68rem; }
+    .jl-type { flex-shrink: 0; font-size: .7rem; }
+    .jl-type.osc  { color: #7eb8f7; }
+    .jl-type.ai   { color: #c8b8d4; }
+    .jl-type.param { color: #28c840; }
+    .jl-type.transport { color: #febc2e; }
+    .jl-val { color: var(--sub); font-size: .68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mt-memory-bar {
+      margin-top: 1rem; padding-top: .85rem;
+      border-top: 1px solid var(--border);
+    }
+    .mt-mb-label { display: flex; justify-content: space-between; margin-bottom: .4rem; }
+    .mt-mb-key { color: var(--dim); font-size: .68rem; }
+    .mt-mb-val { color: var(--crimson); font-size: .68rem; }
+    .progress-track {
+      height: 2px; background: rgba(255,255,255,.07);
+      border-radius: 1px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; width: 0%;
+      background: var(--crimson); border-radius: 1px;
+      transition: width 1.8s cubic-bezier(0.16,1,0.3,1);
+    }
+    .progress-fill.loaded { width: 73%; }
+    .session-bars {
+      display: flex; align-items: flex-end; gap: 3px;
+      height: 40px; margin-top: .85rem;
+    }
+    .sbar {
+      flex: 1; background: rgba(180,20,60,.25);
+      border-radius: 2px 2px 0 0;
+      transform: scaleY(0); transform-origin: bottom;
+      transition: transform .6s cubic-bezier(0.16,1,0.3,1);
+    }
+    .sbar.loaded { transform: scaleY(1); }
+    .sbar.current { background: var(--crimson); }
+
+    /* ── TYPEWRITER CURSOR ───────────────────────── */
+    .tw-cursor {
+      display: inline-block; width: 7px; height: 1em;
+      background: var(--crimson); vertical-align: text-bottom;
+      animation: blink 1.1s step-end infinite; margin-left: 1px;
+    }
+
+    /* ── REDUCED MOTION ──────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+
     /* ── MOBILE ──────────────────────────────────── */
     @media (max-width: 768px) {
       nav { padding: 1rem 1.25rem; }
@@ -496,6 +692,13 @@
       .manifesto-section { padding: 5rem 1.5rem; }
       .cta-section { padding: 4rem 1.5rem; }
       footer { flex-direction: column; gap: 1.25rem; text-align: center; padding: 2rem 1.5rem; }
+      .arch-section { padding: 4rem 1.5rem 3rem; }
+      .arch-svg-wrap { overflow-x: auto; }
+      .arch-stats { flex-direction: column; }
+      .arch-stat { border-right: none; border-bottom: 1px solid var(--border); }
+      .arch-stat:last-child { border-bottom: none; }
+      .botface-section { grid-template-columns: 1fr; gap: 3rem; padding: 4rem 1.5rem; }
+      .memory-section { grid-template-columns: 1fr; gap: 3rem; padding: 4rem 1.5rem; }
     }
   </style>
 </head>
@@ -590,18 +793,7 @@
         <div class="dot dot-g"></div>
         <span class="terminal-title">WhyCremisi · master channel</span>
       </div>
-      <div class="terminal-body">
-        <div class="t-line t-dim"># session: 6 plugins loaded · Ollama online · llama3.2</div>
-        <div class="t-line" style="height:.7rem"></div>
-        <div class="t-line"><span class="t-user">you → </span>Mix this like Chris Lord-Alge</div>
-        <div class="t-line t-dim">  scanning 847 params across 6 plugins...</div>
-        <div class="t-line t-ai">  SSL Bus Comp → ratio 4:1, attack 10ms, release Auto</div>
-        <div class="t-line t-ai">  OTT → drive +0.8, upward comp engaged</div>
-        <div class="t-line t-ai">  Pro-Q 4 → mid-forward shelf +1.4dB @ 3.2kHz</div>
-        <div class="t-line t-dim">  11 params written · logged to events.jsonl</div>
-        <div class="t-line" style="height:.7rem"></div>
-        <div class="t-line"><span class="t-user">you → </span>Write a verse, C minor, 8 bars<span class="cursor"></span></div>
-      </div>
+      <div class="terminal-body" id="tw-body"></div>
     </div>
   </div>
 
@@ -618,6 +810,108 @@
 <div class="screenshot-wrap reveal">
   <img src="screenshot.png" alt="WhyCremisi inside the DAW" loading="lazy" />
 </div>
+
+<!-- ARCHITECTURE -->
+<section class="arch-section reveal">
+  <div class="arch-header">
+    <p class="section-label">How it works</p>
+    <h2>Three layers.<br/><em>One conversation.</em></h2>
+    <p class="lead">DAW state broadcast at 33ms. AI response in milliseconds. Every plugin parameter written back in real time.</p>
+  </div>
+  <div class="arch-svg-wrap">
+    <svg class="arch-svg" viewBox="0 0 860 200" xmlns="http://www.w3.org/2000/svg" aria-label="WhyCremisi architecture: DAW to Bridge to AI Engine">
+      <defs>
+        <path id="q-path-1" d="M 220,85 L 310,85"/>
+        <path id="q-path-2" d="M 550,85 L 640,85"/>
+        <path id="r-path-1" d="M 310,115 L 220,115"/>
+        <path id="r-path-2" d="M 640,115 L 550,115"/>
+      </defs>
+
+      <!-- DAW Session node -->
+      <rect class="daw-box" x="10" y="50" width="210" height="100" rx="10"/>
+      <text class="svg-label-tiny" x="22" y="70">01 // DAW SESSION</text>
+      <text class="svg-label-bold" x="22" y="93">Your DAW</text>
+      <rect class="plugin-inner" x="22" y="103" width="85" height="18" rx="4"/>
+      <text class="svg-label-tiny" x="30" y="116">OSC :9000</text>
+      <rect class="plugin-inner active" x="117" y="103" width="85" height="18" rx="4"/>
+      <text class="svg-label-crim" x="125" y="116">WS :8080</text>
+
+      <!-- Track lines -->
+      <line class="data-track" x1="220" y1="85" x2="310" y2="85"/>
+      <line class="data-track" x1="550" y1="85" x2="640" y2="85"/>
+      <line class="resp-track" x1="220" y1="115" x2="310" y2="115"/>
+      <line class="resp-track" x1="550" y1="115" x2="640" y2="115"/>
+
+      <text class="svg-label-tiny" x="265" y="78" text-anchor="middle">query</text>
+      <text class="svg-label-tiny" x="595" y="78" text-anchor="middle">query</text>
+      <text class="svg-label-crim" x="265" y="134" text-anchor="middle">response</text>
+      <text class="svg-label-crim" x="595" y="134" text-anchor="middle">response</text>
+
+      <!-- Bridge node (center) -->
+      <rect class="bridge-box" x="310" y="32" width="240" height="136" rx="10"/>
+      <text class="svg-label-tiny" x="322" y="52">02 // BRIDGE</text>
+      <text class="svg-label-bold" x="322" y="76">WhyCremisi</text>
+      <text class="svg-label" x="322" y="95">SessionManager</text>
+      <rect class="plugin-inner" x="322" y="104" width="104" height="16" rx="3"/>
+      <text class="svg-label-tiny" x="330" y="116">events.jsonl</text>
+      <rect class="plugin-inner" x="436" y="104" width="96" height="16" rx="3"/>
+      <text class="svg-label-tiny" x="444" y="116">memory.json</text>
+      <text class="svg-label-tiny" x="322" y="155">33ms broadcast · param write · widget push</text>
+
+      <!-- AI Engine node -->
+      <rect class="ai-box" x="640" y="50" width="210" height="100" rx="10"/>
+      <text class="svg-label-tiny" x="652" y="70">03 // AI ENGINE</text>
+      <text class="svg-label-bold" x="652" y="93">6 Providers</text>
+      <circle class="provider-dot live" cx="655" cy="112" r="3.5"/>
+      <text class="svg-label-tiny" x="663" y="116">Ollama</text>
+      <circle class="provider-dot" cx="712" cy="112" r="3.5"/>
+      <text class="svg-label-tiny" x="720" y="116">Groq</text>
+      <circle class="provider-dot" cx="760" cy="112" r="3.5"/>
+      <text class="svg-label-tiny" x="768" y="116">Gemini</text>
+      <circle class="provider-dot" cx="655" cy="132" r="3.5"/>
+      <text class="svg-label-tiny" x="663" y="136">Claude</text>
+      <circle class="provider-dot" cx="712" cy="132" r="3.5"/>
+      <text class="svg-label-tiny" x="720" y="136">OpenAI</text>
+      <circle class="provider-dot" cx="760" cy="132" r="3.5"/>
+      <text class="svg-label-tiny" x="768" y="136">OpenRouter</text>
+
+      <!-- Animated query dots -->
+      <circle class="query-dot" r="5">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="0s"><mpath href="#q-path-1"/></animateMotion>
+      </circle>
+      <circle class="query-dot" r="5">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="1.2s"><mpath href="#q-path-2"/></animateMotion>
+      </circle>
+
+      <!-- Animated response dots -->
+      <circle class="resp-dot" r="5">
+        <animateMotion dur="2.8s" repeatCount="indefinite" begin="0.6s"><mpath href="#r-path-1"/></animateMotion>
+      </circle>
+      <circle class="resp-dot" r="5">
+        <animateMotion dur="2.8s" repeatCount="indefinite" begin="1.8s"><mpath href="#r-path-2"/></animateMotion>
+      </circle>
+    </svg>
+
+    <div class="arch-stats">
+      <div class="arch-stat">
+        <span class="arch-num" id="param-count">847+</span>
+        <span class="arch-unit">params scanned per session</span>
+      </div>
+      <div class="arch-stat">
+        <span class="arch-num">33<span style="font-size:1.2rem;color:var(--crimson)">ms</span></span>
+        <span class="arch-unit">DAW state broadcast interval</span>
+      </div>
+      <div class="arch-stat">
+        <span class="arch-num">6</span>
+        <span class="arch-unit">AI providers — offline + cloud</span>
+      </div>
+      <div class="arch-stat">
+        <span class="arch-num">∞</span>
+        <span class="arch-unit">plugins — any VST3/AU, day zero</span>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- WHAT YOU CAN DO -->
 <section>
@@ -661,6 +955,67 @@
       <div class="prompt-text">"Use Logic's stock compressor on the drums, push the attack"</div>
       <div class="prompt-result">Native DAW plugins are first-class. Logic stock EQ, Ableton's built-in compressor, any bundled instrument — all mapped identically to Serum 2 or FabFilter Pro-Q 4. And because WhyCremisi reads VST3 parameter indices at runtime, any plugin released today works immediately. No update required. No mapping file. Just load it.</div>
     </div>
+  </div>
+</section>
+
+<!-- BOTFACE -->
+<section class="botface-section">
+  <div class="botface-text">
+    <p class="section-label reveal">// BotFace</p>
+    <h2 class="reveal reveal-d1">It doesn't just respond.<br/><em>It shows you how it feels.</em></h2>
+    <p class="lead reveal reveal-d2">BotFace is the mascot that thinks, reacts, and feels with you during the session. When it's processing, you see it think. When something goes wrong, it shows concern. It's not decorative — it's a presence.</p>
+
+    <div class="face-states-table reveal reveal-d3" id="face-states-table">
+      <div class="face-state-row" data-state="idle">
+        <div class="fsr-dot"></div>
+        <div class="fsr-name">Idle</div>
+        <div class="fsr-desc">Watching. Waiting. Eyes scan slowly left and right.</div>
+      </div>
+      <div class="face-state-row" data-state="thinking">
+        <div class="fsr-dot"></div>
+        <div class="fsr-name">Thinking</div>
+        <div class="fsr-desc">Pupils shift up. Ring pulses. Processing your request.</div>
+      </div>
+      <div class="face-state-row" data-state="typing">
+        <div class="fsr-dot"></div>
+        <div class="fsr-name">Typing</div>
+        <div class="fsr-desc">Eyes focused forward. Writing parameters back in real time.</div>
+      </div>
+      <div class="face-state-row" data-state="success">
+        <div class="fsr-dot"></div>
+        <div class="fsr-name">Success</div>
+        <div class="fsr-desc">Slight smile. Ring brightens. Parameters written successfully.</div>
+      </div>
+      <div class="face-state-row" data-state="error">
+        <div class="fsr-dot"></div>
+        <div class="fsr-name">Error</div>
+        <div class="fsr-desc">Eyes drop. Expression changes. Something went wrong — it's on it.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="botface-live-wrap reveal reveal-d1">
+    <svg id="botface-svg" viewBox="0 0 120 120" width="220" height="220" xmlns="http://www.w3.org/2000/svg">
+      <circle class="face-ring" cx="60" cy="60" r="48" fill="none" stroke="rgba(180,20,60,.5)" stroke-width="1"/>
+      <circle cx="60" cy="60" r="38" fill="rgba(13,10,15,1)" stroke="rgba(180,20,60,.25)" stroke-width="1"/>
+      <ellipse cx="44" cy="54" rx="9" ry="9" fill="rgba(180,20,60,.08)" stroke="rgba(180,20,60,.3)" stroke-width=".8"/>
+      <ellipse cx="76" cy="54" rx="9" ry="9" fill="rgba(180,20,60,.08)" stroke="rgba(180,20,60,.3)" stroke-width=".8"/>
+      <circle class="pupil" id="pupil-l" cx="44" cy="54" r="4.5" fill="var(--crimson)"/>
+      <circle class="pupil" id="pupil-r" cx="76" cy="54" r="4.5" fill="var(--crimson)"/>
+      <path id="mouth" d="M 46,74 Q 60,78 74,74" fill="none" stroke="rgba(180,20,60,.6)" stroke-width="1.5" stroke-linecap="round"/>
+      <g id="think-dots" opacity="0">
+        <circle cx="52" cy="85" r="2.5" fill="var(--crimson)">
+          <animate attributeName="opacity" values="0.2;1;0.2" dur="1s" begin="0s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx="60" cy="85" r="2.5" fill="var(--crimson)">
+          <animate attributeName="opacity" values="0.2;1;0.2" dur="1s" begin="0.3s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx="68" cy="85" r="2.5" fill="var(--crimson)">
+          <animate attributeName="opacity" values="0.2;1;0.2" dur="1s" begin="0.6s" repeatCount="indefinite"/>
+        </circle>
+      </g>
+    </svg>
+    <div class="state-pill" id="state-pill">idle</div>
   </div>
 </section>
 
@@ -795,6 +1150,87 @@
   </div>
 </section>
 
+<!-- SESSION MEMORY -->
+<section class="memory-section">
+  <div class="memory-text">
+    <p class="section-label reveal">// Memory</p>
+    <h2 class="reveal reveal-d1">Every decision.<br/><em>Remembered forever.</em></h2>
+    <p class="lead reveal reveal-d2">Append-only <code>events.jsonl</code> logs every parameter touch with millisecond timestamps. Cross-session <code>memory.json</code> carries your preferences, your taste, your history. Ask it what it did three sessions ago. It knows.</p>
+    <p class="lead reveal reveal-d3" style="margin-top:1rem;">The more sessions you run, the more it knows you. That memory is yours — and it can't be replicated by starting over.</p>
+  </div>
+  <div class="memory-visual reveal reveal-d1">
+    <div class="memory-terminal" id="memory-terminal">
+      <div class="mt-bar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <span class="mt-title">events.jsonl · session #47</span>
+      </div>
+      <div class="mt-body">
+        <div class="mt-session-header">
+          <span class="mt-session-id">SID: wc-2026-06-07-1431</span>
+          <span class="mt-session-count">47 sessions total</span>
+        </div>
+        <div class="jsonl-line" style="transition-delay:.0s">
+          <span class="jl-ts">14:31:04</span>
+          <span class="jl-type osc">OSC</span>
+          <span class="jl-val">transport.bpm → 128 · playing:true</span>
+        </div>
+        <div class="jsonl-line" style="transition-delay:.14s">
+          <span class="jl-ts">14:31:07</span>
+          <span class="jl-type ai">AI</span>
+          <span class="jl-val">prompt: "mix this like CLA"</span>
+        </div>
+        <div class="jsonl-line" style="transition-delay:.28s">
+          <span class="jl-ts">14:31:08</span>
+          <span class="jl-type param">PARAM</span>
+          <span class="jl-val">SSL Comp → ratio:4 attack:10ms</span>
+        </div>
+        <div class="jsonl-line" style="transition-delay:.42s">
+          <span class="jl-ts">14:31:08</span>
+          <span class="jl-type param">PARAM</span>
+          <span class="jl-val">Pro-Q 4 → shelf+1.4dB@3.2kHz</span>
+        </div>
+        <div class="jsonl-line" style="transition-delay:.56s">
+          <span class="jl-ts">14:31:09</span>
+          <span class="jl-type transport">WRITE</span>
+          <span class="jl-val">11 params written · 847 scanned</span>
+        </div>
+        <div class="mt-memory-bar">
+          <div class="mt-mb-label">
+            <span class="mt-mb-key">memory.json — session knowledge</span>
+            <span class="mt-mb-val">73%</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="mem-progress"></div>
+          </div>
+        </div>
+        <div style="margin-top:.85rem;">
+          <div class="mt-mb-label" style="margin-bottom:.4rem;">
+            <span class="mt-mb-key">session history</span>
+            <span class="mt-mb-val">47 sessions</span>
+          </div>
+          <div class="session-bars" id="session-bars">
+            <div class="sbar" style="height:28%"></div>
+            <div class="sbar" style="height:52%"></div>
+            <div class="sbar" style="height:38%"></div>
+            <div class="sbar" style="height:68%"></div>
+            <div class="sbar" style="height:44%"></div>
+            <div class="sbar" style="height:79%"></div>
+            <div class="sbar" style="height:58%"></div>
+            <div class="sbar" style="height:72%"></div>
+            <div class="sbar" style="height:54%"></div>
+            <div class="sbar" style="height:88%"></div>
+            <div class="sbar" style="height:63%"></div>
+            <div class="sbar" style="height:83%"></div>
+            <div class="sbar current" style="height:100%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- MANIFESTO -->
 <section class="manifesto-section">
   <div class="manifesto-inner">
@@ -870,7 +1306,7 @@
 </footer>
 
 <script>
-  // Hero parallax — title and mascot move in opposite directions
+  // ── Hero parallax ──────────────────────────────────────────────────────────
   const heroText   = document.getElementById('hero-text');
   const heroVisual = document.getElementById('hero-visual');
   const mascot     = document.getElementById('mascot');
@@ -882,17 +1318,210 @@
     if (mascot)     mascot.style.transform     = `translate(${x * 0.4}px, ${y * 0.4}px)`;
   });
 
-  // Scroll reveal
+  // ── Scroll reveal ──────────────────────────────────────────────────────────
   const reveals = document.querySelectorAll('.reveal');
-  const io = new IntersectionObserver(entries => {
+  const revealIo = new IntersectionObserver(entries => {
     entries.forEach(e => {
-      if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); }
+      if (e.isIntersecting) { e.target.classList.add('visible'); revealIo.unobserve(e.target); }
     });
   }, { threshold: 0.07 });
-  reveals.forEach(el => io.observe(el));
-
-  // Screenshot visible immediately
+  reveals.forEach(el => revealIo.observe(el));
   document.querySelectorAll('.screenshot-wrap').forEach(el => el.classList.add('visible'));
+
+  // ── Terminal typewriter ────────────────────────────────────────────────────
+  const twBody = document.getElementById('tw-body');
+  if (twBody) {
+    const scenes = [
+      [
+        { cls:'t-dim',  text:'# session: 6 plugins loaded · Ollama online · llama3.2' },
+        { blank: true },
+        { cls:'t-user', prompt:'you → ', after:'Mix this like Chris Lord-Alge' },
+        { cls:'t-dim',  text:'  scanning 847 params across 6 plugins...' },
+        { cls:'t-ai',   text:'  SSL Bus Comp → ratio 4:1, attack 10ms, release Auto' },
+        { cls:'t-ai',   text:'  OTT → drive +0.8, upward comp engaged' },
+        { cls:'t-ai',   text:'  Pro-Q 4 → mid-forward shelf +1.4dB @ 3.2kHz' },
+        { cls:'t-dim',  text:'  11 params written · logged to events.jsonl' },
+        { blank: true },
+        { cls:'t-user', prompt:'you → ', after:'Write a verse, C minor, 8 bars', cursor: true },
+      ],
+      [
+        { cls:'t-dim',  text:'# session: piano roll open · Ableton Live 12' },
+        { blank: true },
+        { cls:'t-user', prompt:'you → ', after:'Write a dark pop chorus, A minor, 128 BPM' },
+        { cls:'t-dim',  text:'  opening piano roll...' },
+        { cls:'t-ai',   text:'  composing 8-bar chorus · root A3 · i–VI–III–VII' },
+        { cls:'t-ai',   text:'  note velocities: kick 100, snare 85, hi-hat 65' },
+        { cls:'t-ai',   text:'  melody range: E4–C5 · countermelody below' },
+        { cls:'t-dim',  text:'  64 notes written to piano roll' },
+        { blank: true },
+        { cls:'t-user', prompt:'you → ', after:'Add a bass line that follows the root', cursor: true },
+      ],
+      [
+        { cls:'t-dim',  text:'# session: master chain · FabFilter + Ozone 11' },
+        { blank: true },
+        { cls:'t-user', prompt:'you → ', after:'Master this like Stefano Pretolesi' },
+        { cls:'t-dim',  text:'  analyzing master chain params...' },
+        { cls:'t-ai',   text:'  Pro-L 2 → ceiling -0.3, transient: 0.8, release: Auto' },
+        { cls:'t-ai',   text:'  Pro-Q 4 → low shelf -1.2dB@90Hz · air +0.8@12kHz' },
+        { cls:'t-ai',   text:'  Ozone Imager → stereo width 1.15 (side), 0.9 (mid)' },
+        { cls:'t-dim',  text:'  Italian hi-fi warmth applied · 14 params written' },
+        { blank: true },
+        { cls:'t-user', prompt:'you → ', after:'What did you do 5 minutes ago?', cursor: true },
+      ],
+    ];
+
+    let sceneIdx = 0, lineIdx = 0;
+
+    function clearTerminal() { twBody.innerHTML = ''; }
+
+    function buildStaticLine(line) {
+      if (line.blank) {
+        const d = document.createElement('div');
+        d.className = 't-line'; d.style.height = '.7rem';
+        twBody.appendChild(d); return null;
+      }
+      const d = document.createElement('div');
+      d.className = 't-line ' + (line.cls || '');
+      d.textContent = line.text;
+      twBody.appendChild(d); return null;
+    }
+
+    function buildTypedLine(line, cb) {
+      const d = document.createElement('div');
+      d.className = 't-line';
+      const prompt = document.createElement('span');
+      prompt.className = line.cls;
+      prompt.textContent = line.prompt;
+      d.appendChild(prompt);
+      const target = document.createElement('span');
+      d.appendChild(target);
+      if (line.cursor) {
+        const cur = document.createElement('span');
+        cur.className = 'cursor';
+        d.appendChild(cur);
+      }
+      twBody.appendChild(d);
+      let ci = 0;
+      function type() {
+        if (ci < line.after.length) {
+          target.textContent += line.after[ci++];
+          setTimeout(type, 38 + Math.random() * 28);
+        } else { cb(); }
+      }
+      setTimeout(type, 200);
+    }
+
+    function runScene() {
+      const scene = scenes[sceneIdx];
+      if (lineIdx >= scene.length) {
+        setTimeout(() => {
+          sceneIdx = (sceneIdx + 1) % scenes.length;
+          lineIdx = 0;
+          clearTerminal();
+          runScene();
+        }, 3400);
+        return;
+      }
+      const line = scene[lineIdx++];
+      if (line.after) {
+        buildTypedLine(line, () => {
+          const delay = line.cursor ? 0 : 160;
+          setTimeout(runScene, delay);
+        });
+      } else {
+        buildStaticLine(line);
+        setTimeout(runScene, line.blank ? 30 : 130);
+      }
+    }
+
+    runScene();
+  }
+
+  // ── BotFace state cycler ───────────────────────────────────────────────────
+  const botfaceSvg = document.getElementById('botface-svg');
+  if (botfaceSvg) {
+    const configs = {
+      idle:     { lx:44, ly:54, rx:76, ry:54, mouth:'M 46,74 Q 60,78 74,74', think:0 },
+      thinking: { lx:41, ly:51, rx:73, ry:51, mouth:'M 46,75 Q 60,76 74,75', think:1 },
+      typing:   { lx:44, ly:54, rx:76, ry:54, mouth:'M 46,73 Q 60,73 74,73', think:0 },
+      success:  { lx:44, ly:56, rx:76, ry:56, mouth:'M 46,74 Q 60,82 74,74', think:0 },
+      error:    { lx:44, ly:57, rx:76, ry:57, mouth:'M 46,76 Q 60,72 74,76', think:0 },
+    };
+    const order = ['idle','thinking','typing','success','idle','error','idle'];
+    const durations = [2000, 2600, 2200, 2400, 1800, 2200, 2000];
+    let si = 0;
+    const pupilL    = document.getElementById('pupil-l');
+    const pupilR    = document.getElementById('pupil-r');
+    const mouthEl   = document.getElementById('mouth');
+    const thinkDots = document.getElementById('think-dots');
+    const statePill = document.getElementById('state-pill');
+    const stateRows = document.querySelectorAll('.face-state-row');
+
+    function applyState(name) {
+      const c = configs[name]; if (!c) return;
+      if (pupilL) { pupilL.setAttribute('cx', c.lx); pupilL.setAttribute('cy', c.ly); }
+      if (pupilR) { pupilR.setAttribute('cx', c.rx); pupilR.setAttribute('cy', c.ry); }
+      if (mouthEl) mouthEl.setAttribute('d', c.mouth);
+      if (thinkDots) thinkDots.setAttribute('opacity', c.think);
+      if (statePill) statePill.textContent = name;
+      stateRows.forEach(r => r.classList.toggle('active-state', r.dataset.state === name));
+    }
+
+    function cycle() {
+      applyState(order[si]);
+      const wait = durations[si];
+      si = (si + 1) % order.length;
+      setTimeout(cycle, wait);
+    }
+
+    const bfSection = botfaceSvg.closest('section');
+    if (bfSection) {
+      const bfIo = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) { cycle(); bfIo.disconnect(); }
+      }, { threshold: 0.2 });
+      bfIo.observe(bfSection);
+    }
+  }
+
+  // ── Memory section observers ───────────────────────────────────────────────
+  const memTerminal = document.getElementById('memory-terminal');
+  if (memTerminal) {
+    const jlLines     = memTerminal.querySelectorAll('.jsonl-line');
+    const memProgress = document.getElementById('mem-progress');
+    const sessionBars = document.getElementById('session-bars');
+
+    const memIo = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        jlLines.forEach(l => l.classList.add('visible'));
+        if (memProgress) setTimeout(() => memProgress.classList.add('loaded'), 400);
+        if (sessionBars) {
+          sessionBars.querySelectorAll('.sbar').forEach((b, i) => {
+            setTimeout(() => b.classList.add('loaded'), 600 + i * 65);
+          });
+        }
+        memIo.disconnect();
+      }
+    }, { threshold: 0.15 });
+    memIo.observe(memTerminal);
+  }
+
+  // ── Param counter animation ────────────────────────────────────────────────
+  const paramEl = document.getElementById('param-count');
+  if (paramEl) {
+    const pIo = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        let n = 0;
+        const target = 847;
+        const interval = setInterval(() => {
+          n = Math.min(n + 15, target);
+          paramEl.textContent = n + '+';
+          if (n >= target) clearInterval(interval);
+        }, 18);
+        pIo.disconnect();
+      }
+    }, { threshold: 0.3 });
+    pIo.observe(paramEl);
+  }
 </script>
 
 </body>
