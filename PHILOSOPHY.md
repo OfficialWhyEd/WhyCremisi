@@ -42,7 +42,7 @@ The more sessions you run with WhyCremisi, the more it knows you. `memory.json` 
 ### 3. Brand Associations
 - **For the creative mind** — not for the IT department
 - **For the moment of inspiration** — not for the system administration task
-- **For the producer who has a sound in their head** — and now has the tools to get it out, fast
+- **For the producer who thinks like CLA or Pretolesi** — and now has the tools to act like one
 
 ### 4. Perceived Quality
 Every element — code, UI, copy, documentation, community — must feel like it was built by someone who cares obsessively about quality. No spelling errors in the UI. No broken features in the demo. No generic placeholder text. No excuses.
@@ -57,7 +57,7 @@ WhyCremisi creates emotional connection through:
 
 - **BotFace** — the mascot that thinks, reacts, and feels with you during the session. When it's thinking, you see it think. When something goes wrong, it shows concern. It's not decorative. It's a presence.
 - **Conversational AI** — not a search bar, not a command line. A collaborator. With an opinion. With memory. With personality.
-- **The moment of "wait, it actually works"** — the first time a user describes the sound they want and watches parameters move in real time, that is an emotional moment. That moment is the product.
+- **The moment of "wait, it actually works"** — the first time a user says *"mix this like CLA"* and watches parameters move in real time, that is an emotional moment. That moment is the product.
 - **Language** — every word in the UI, the README, the landing page, the Discord — must feel like it was written by someone who loves music and believes in this tool.
 
 ---

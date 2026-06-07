@@ -133,9 +133,9 @@ WhyCremisi was built around one belief: **creativity has no limits, and neither 
 
 Most audio software asks you to learn its language — menu structures, preset names, parameter ranges. WhyCremisi flips this. You speak in the language of music and emotion. The software figures out the rest.
 
-You shouldn't need to know that "filter cutoff" is parameter index 0047 in Serum. You should be able to say *"make it darker"* and have it happen. You shouldn't need to reconstruct a mastering chain from memory — you should be able to describe the sound you want and watch it apply, knob by knob, in your actual session.
+You shouldn't need to know that "filter cutoff" is parameter index 0047 in Serum. You should be able to say *"make it darker"* and have it happen. You shouldn't need to reconstruct a mastering chain from memory — you should be able to say *"master this like Pretolesi"* and watch it apply, knob by knob, in your actual session.
 
-- **Ask anything.** No supported commands. Say *"give it that aggressive rock mix sound"* or *"check the controfasi"* or *"rebuild the low end."* The language of music, not menus.
+- **Ask anything.** No supported commands. Say *"mix this like Chris Lord-Alge"* or *"check the controfasi"* or *"rebuild the low end."* The language of music, not menus.
 - **Every plugin. Including yesterday's.** Serum 2, Pro-Q 4, Ozone 11, native DAW plugins — anything. VST3 parameter indices are read at runtime. Load a plugin and it's mapped. No update needed.
 - **A living encyclopedia.** A curated dictionary of the most-used modern plugins — human-readable names, ranges, interdependencies, how pros use them. You can add entries. The community contributes via PRs.
 - **Creates, not just edits.** Piano roll access. Full songs from scratch — verse, chorus, bridge, every instrument, every note — written directly into the timeline. Or just rewrite bars 5–8 and leave the rest.
@@ -159,8 +159,8 @@ No supported commands — just describe what you want. WhyCremisi figures out wh
 
 | What you say | What happens |
 |---|---|
-| *"Give the drums that punchy rock mix sound — heavy parallel compression, mid-forward"* | Parallel compression on drums, mid-forward guitars, punchy low end — applied to your session's plugins |
-| *"Master this clean — controlled low end, hi-fi warmth, no harshness"* | Clean limiting, controlled low end, warm top end — on your actual master chain |
+| *"Mix this track the way Chris Lord-Alge would"* | Parallel compression on drums, mid-forward guitars, punchy low end — applied to your session's plugins |
+| *"Master this like Stefano Pretolesi"* | Clean limiting, controlled low end, Italian hi-fi warmth — on your actual master chain |
 | *"Check phases across all tracks — fix cancellations"* | Analyzes polarity across plugins, flags and corrects phase issues before they kill your low end |
 | *"Mute the kick, drop the vocal 3dB, start recording"* | Native transport + fader control — no clicking, no menus |
 | *"What did we change in the last 3 sessions on this track?"* | Full recall from `memory.json` + `events.jsonl` — every parameter touch, every decision |
@@ -270,7 +270,7 @@ WhyCremisi doesn't just call an LLM and paste the response. It runs a **complete
 | **Plugin parameters** | Read and write any knob on any plugin, any DAW, in real time |
 | **Session memory** | JSONL log + cross-session memory.json — full recall of everything |
 
-Imagine asking your DAW: *"Search for how top rock engineers set up an SSL bus compressor, then apply those settings to my master chain."* WhyCremisi searches the web, reads the result, finds the closest parameters in your loaded plugins, and applies them. Without leaving the DAW. Without switching tabs. Without touching a single knob.
+Imagine asking your DAW: *"Search for how Chris Lord-Alge sets up his SSL bus compressor, then apply those settings to my master chain."* WhyCremisi searches the web, reads the result, finds the closest parameters in your loaded plugins, and applies them. Without leaving the DAW. Without switching tabs. Without touching a single knob.
 
 This is not a plugin that wraps an AI. This is an AI agent that happens to live inside a plugin.
 
