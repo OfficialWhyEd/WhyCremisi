@@ -164,6 +164,11 @@ export default function App() {
   // a toccare l'audio, quindi è lui a dire com'è messo. Prima ogni pulsante
   // teneva un proprio interruttore e si accendeva comunque.
   const [stereoState, setStereoState] = useState({ mono: false, sideOnly: false, phaseInvert: false, width: 1 })
+  // Stato reale della catena interna. Il plugin lo trasmette a ogni
+  // cambiamento (dsp.state) e finora nessuno lo ascoltava: il rack mostrava
+  // due interruttori senza onClick e un menu "Saturation" per un modulo che
+  // nel DSP non esiste.
+  const [dspState, setDspState] = useState({ eqBypassed: true, compBypassed: true, limitBypassed: true })
   // C'è davvero segnale? Sotto questa soglia le misure non hanno senso e
   // vanno mostrate come non disponibili invece che come zero — e soprattutto
   // non si deve dare alcun consiglio di mix sul silenzio.
@@ -172,6 +177,9 @@ export default function App() {
   // Il modificatore cambia con la piattaforma: ⌘ su Mac, Ctrl altrove.
   const tastoComando = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '')
     ? '⌘' : 'Ctrl'
+
+  // Vero quando tutti e tre i moduli della catena sono attivi.
+  const tuttoAttivo = !dspState.eqBypassed && !dspState.compBypassed && !dspState.limitBypassed
 
   // ── Le cifre si leggono, le barre scorrono ────────────────────────
   //
@@ -504,6 +512,11 @@ export default function App() {
       if (payload) setStereoState(payload)
     })
 
+    // Stato della catena interna: quali moduli sono attivi davvero.
+    const unsubDsp = whycremisi.on('dsp.state', (payload) => {
+      if (payload) setDspState(prev => ({ ...prev, ...payload }))
+    })
+
     // CPU usage
     const unsubCpu = whycremisi.on('plugin.cpu', (payload) => {
       setCpuUsage(payload)
@@ -585,7 +598,7 @@ export default function App() {
       window.removeEventListener('whycremisi-botstate', onBotState)
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
-      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubStereo(); unsubCpu(); unsubUsage(); unsubActionLog(); unsubPersAction(); unsubPersContext()
+      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubStereo(); unsubDsp(); unsubCpu(); unsubUsage(); unsubActionLog(); unsubPersAction(); unsubPersContext()
       unsubWsStyle(); unsubWsMemory(); unsubWsBootstrap(); unsubWsRefresh()
       whycremisi.disconnect()
     }
@@ -1814,7 +1827,11 @@ export default function App() {
            <div className="flex-1 flex p-3 gap-4 overflow-hidden">
              {/* Gain fader */}
              <div className="w-14 flex flex-col items-center gap-1">
-               <span className="text-xs font-mono" style={{ color: 'var(--amber)' }}>+12</span>
+               {/* Estremi della scala. In fondo c'era scritto "−INF", ma il
+                   cursore copre −60…+12 dB e a fondo corsa vale −60, non
+                   meno infinito: la scala diceva una cosa che il controllo
+                   non fa. */}
+               <span className="num font-mono" style={{ fontSize: 'var(--t-micro)', color: 'var(--amber)' }}>+12</span>
                <div
                  className="flex-1 w-8 border relative flex flex-col justify-end p-1 cursor-ns-resize"
                  style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}
@@ -1840,9 +1857,12 @@ export default function App() {
                   transition={{ duration:0.1 }}
                 />
               </div>
-<span className="text-xs font-mono" style={{ color: 'var(--amber)' }}>-INF</span>
-               <span className="text-xs font-bold mt-1" style={{ color: 'var(--text-primary)' }}>{gainDb > 0 ? `+${gainDb}` : gainDb}dB</span>
-               <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>Guadagno</span>
+               <span className="num font-mono" style={{ fontSize: 'var(--t-micro)', color: 'var(--amber)' }}>−60</span>
+               <span className="num font-bold mt-1 whitespace-nowrap" style={{ fontSize: 'var(--t-dato)', color: 'var(--text-primary)', lineHeight: 1 }}>
+                 {gainDb > 0 ? `+${gainDb.toFixed(1)}` : gainDb.toFixed(1)}
+                 <span style={{ fontSize: 'var(--t-micro)', color: 'var(--text-muted)', marginLeft: '0.15em' }}>dB</span>
+               </span>
+               <span className="etichetta" style={{ color: 'var(--text-muted)' }}>Guadagno</span>
                {/* MIDI Learn button */}
                <motion.button
                  className={`w-full mt-1 py-0.5 text-[9px] font-bold uppercase tracking-wider border rounded-sm ${midiLearnWidget === 'masterGain' ? 'bg-[#FF6B35] text-black border-[#FF6B35] pulse-glow' : 'hover:border-[#FF6B35] hover:text-[#FF6B35]'}`}
@@ -1860,37 +1880,81 @@ export default function App() {
 
              {/* Controls cluster */}
              <div className="flex-1 flex flex-col gap-4 min-w-0">
-               {/* Toggles */}
-               <div className="space-y-3">
-                 {[
-                   { label:'Deep Neural', state: botState !== 'idle' },
-                   { label:'Master Chain', state: dawConnected }
-                 ].map(({ label, state: on }) => (
-                   <div key={label} className="flex items-center justify-between">
-                     <span className="text-xs font-bold uppercase truncate" style={{ color: 'var(--text-secondary)' }}>{label}</span>
-                     <motion.div
-                       className={`w-4 h-4 border flex items-center justify-center cursor-pointer flex-shrink-0`}
-                       style={{ borderColor: on ? 'color-mix(in srgb, var(--cremisi) 60%, transparent)' : 'var(--text-muted)' }}
-                       whileHover={{ scale:1.1 }}
-                     >
-                       <div className={`w-2 h-2 rounded-full ${on ? 'bg-[#DC143C] led-red-active' : ''}`} style={{ backgroundColor: on ? undefined : 'var(--bg-elevated)' }} />
-                     </motion.div>
-                   </div>
-                 ))}
-               </div>
+               {/* ── La catena, con lo stato vero ────────────────────
+                   Qui c'erano due caselle "Deep Neural" e "Master Chain"
+                   con il cursore a manina e l'ingrandimento al passaggio
+                   del mouse, ma senza alcun onClick: erano spie travestite
+                   da interruttori, e cliccarle non faceva niente. Sotto,
+                   un menu "Saturation → CRIMSON_TUBE" con la freccia del
+                   menu a tendina, per un modulo che nel DSP non esiste.
 
-               {/* Sat type */}
-               <div className="border-t pt-3" style={{ borderColor: 'var(--border)' }}>
-                 <span className="text-xs uppercase opacity-60 block mb-1" style={{ color: 'var(--amber)' }}>Saturation</span>
-                 <div className="px-2 py-1 text-xs flex justify-between items-center border" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--amber)' }}>
-                  <span>CRIMSON_TUBE</span>
-                  <span className="material-symbols-outlined text-[9px]">expand_more</span>
-                </div>
+                   Al loro posto ci sono i tre moduli che esistono davvero,
+                   con lo stato che riporta il plugin e un interruttore che
+                   li accende e li spegne per davvero. */}
+               <div>
+                 <div className="flex items-baseline justify-between mb-2">
+                   <span className="etichetta" style={{ color: 'var(--amber)' }}>Catena</span>
+                   <button
+                     // Nel bridge "enabled" su questi comandi significa
+                     // "bypass attivo": passare tuttoAttivo spegne tutto,
+                     // il contrario accende tutto.
+                     onClick={() => dawCmd('dspBypassAll', { enabled: tuttoAttivo })}
+                     className="etichetta transition-colors hover:text-white"
+                     style={{ color: 'var(--text-muted)' }}
+                     title={tuttoAttivo ? 'Spegne tutti i moduli' : 'Accende tutti i moduli'}
+                   >
+                     {tuttoAttivo ? 'Spegni tutto' : 'Accendi tutto'}
+                   </button>
+                 </div>
+
+                 <div className="space-y-1.5">
+                   {[
+                     { nome: 'EQ',          attivo: !dspState.eqBypassed,    cmd: 'eqBypass' },
+                     { nome: 'Compressore', attivo: !dspState.compBypassed,  cmd: 'compBypass' },
+                     { nome: 'Limiter',     attivo: !dspState.limitBypassed, cmd: 'limiter' },
+                   ].map(({ nome, attivo, cmd }) => (
+                     <button
+                       key={nome}
+                       role="switch"
+                       aria-checked={attivo}
+                       onClick={() => dawCmd(cmd, cmd === 'limiter' ? { enabled: !attivo } : { enabled: attivo })}
+                       className="w-full flex items-center justify-between px-2 py-1.5 border rounded-sm transition-colors"
+                       style={{
+                         backgroundColor: attivo ? 'var(--bg-card)' : 'transparent',
+                         borderColor: attivo ? 'color-mix(in srgb, var(--cremisi) 55%, transparent)' : 'var(--border)',
+                         color: attivo ? 'var(--text-primary)' : 'var(--text-muted)',
+                       }}
+                       title={attivo ? `${nome} attivo — clic per escluderlo` : `${nome} escluso — clic per attivarlo`}
+                     >
+                       <span style={{ fontSize: 'var(--t-micro)', fontWeight: 600 }}>{nome}</span>
+                       <span
+                         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                         style={{ backgroundColor: attivo ? 'var(--cremisi)' : 'var(--bg-elevated)' }}
+                       />
+                     </button>
+                   ))}
+                 </div>
+
+                 {/* Una riga di stato, non due interruttori finti. */}
+                 <div className="mt-2.5 pt-2.5 border-t flex flex-col gap-1" style={{ borderColor: 'var(--border)' }}>
+                   {[
+                     { nome: 'AI', acceso: botState !== 'idle', stato: botState !== 'idle' ? 'al lavoro' : 'in attesa' },
+                     { nome: 'DAW', acceso: dawConnected, stato: dawConnected ? 'collegata' : 'non collegata' },
+                   ].map(({ nome, acceso, stato }) => (
+                     <div key={nome} className="flex items-center justify-between" style={{ fontSize: 'var(--t-micro)' }}>
+                       <span className="etichetta" style={{ color: 'var(--text-muted)' }}>{nome}</span>
+                       <span className="flex items-center gap-1.5" style={{ color: acceso ? 'var(--text-secondary)' : 'var(--text-dim)' }}>
+                         {stato}
+                         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: acceso ? 'var(--green)' : 'var(--bg-elevated)' }} />
+                       </span>
+                     </div>
+                   ))}
+                 </div>
               </div>
 
               {/* Mask Logo — audio reactive */}
-              <div className="flex-1 flex items-center justify-start -ml-2">
-                <MaskLogo audioLevel={(meterL + meterR) / 2} className="w-44 h-44" />
+              <div className="flex-1 flex items-center justify-center min-h-0">
+                <MaskLogo audioLevel={(meterL + meterR) / 2} className="w-32 h-32" />
               </div>
              </div>
            </div>
@@ -1898,16 +1962,20 @@ export default function App() {
            {/* Peak meter strip */}
            <div className="h-10 border-t flex items-center px-3 gap-2" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
              <div className="flex-1 h-2 flex gap-[1px]" style={{ backgroundColor: 'var(--bg-card)' }}>
+               {/* Le tacche seguono il livello e basta. Prima pulsavano con
+                   un'animazione infinita indipendente dall'audio: si
+                   muovevano anche in silenzio, facendo sembrare che stesse
+                   passando del segnale. */}
                {meterBars.map((bar, i) => (
                  <motion.div key={i} className="flex-1 h-full"
-                   animate={{ opacity: bar.active ? 1 : 0.12, scaleY: bar.active ? [1,1.15,1] : 1 }}
-                   transition={{ scaleY: { repeat:Infinity, duration:0.4+i*0.05, delay:i*0.04 } }}
+                   animate={{ opacity: bar.active ? 1 : 0.12 }}
+                   transition={{ duration: 0.08 }}
                    style={{ backgroundColor: bar.color }}
                  />
                ))}
              </div>
-             <span className="text-xs font-mono font-bold" style={{ color: peak > -1 ? 'var(--cremisi)' : 'var(--text-secondary)' }}>
-               {peak > -1 ? 'PEAK!' : 'OK'}
+             <span className="etichetta" style={{ color: letture.peak > -1 ? 'var(--cremisi)' : 'var(--text-muted)' }}>
+               {letture.peak > -1 ? 'Picco!' : sonoro ? 'Ok' : '—'}
              </span>
            </div>
          </section>
