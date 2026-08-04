@@ -8,6 +8,8 @@ Questo file elenca le cose aperte **fuori** dalla roadmap dei 100 step (`Documen
 
 ## Alta priorità
 
+- [ ] **Interfaccia multilingua** (chiesto il 04/08/2026) — la lingua si sceglie dalle impostazioni, ma al primo avvio va indovinata: prima la lingua di sistema, in subordine quella di Ableton. Oggi le stringhe stanno scritte a mano dentro i componenti — il 04/08 la parte principale è stata portata in italiano, il rack è ancora in inglese — quindi serve prima un meccanismo di traduzione, non altre sostituzioni a mano.
+
 - [ ] **Verificare il plugin dentro un DAW su Windows** — lo standalone si apre con la UI React funzionante e il VST3 passa i test automatici, ma dentro Reaper e Ableton non è ancora stato provato: caricamento, apertura UI, comandi OSC. Serve copiare il `.vst3` in `C:\Program Files\Common Files\VST3\`, cosa che richiede permessi da amministratore.
 - [ ] **Ricompilare su Mac dopo il merge** — il ramo unificato è stato verificato solo su Windows. Su macOS vanno riprovati il blocco `if(APPLE)` del `CMakeLists.txt` e il formato AU.
 - [ ] **Allineare la versione di JUCE** — su Mac è stato usato JUCE 8.0.12, su Windows c'è 8.0.4. Le API della WebView differiscono fra le due.
