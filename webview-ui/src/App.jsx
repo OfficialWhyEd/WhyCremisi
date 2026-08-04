@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { whycremisi, ConnectionState } from './whycremisi-bridge'
 import { BotFace } from './components/BotFace'
+import { useValoriLenti } from './components/useValoreLento'
 import { MaskLogo } from './components/MaskLogo'
 import { SessionPanel } from './components/SessionPanel'
 import { SetupScreen } from './components/SetupScreen'
@@ -39,7 +40,7 @@ export default function App() {
 
   // ── messages ──────────────────────────────────────────────────────
   const [messages, setMessages] = useState([
-    { id: 1, type: 'system', text: '[--:--:--] WHYCREMISI NEURAL MATRIX ONLINE' },
+    { id: 1, type: 'system', text: '[--:--:--] WHYCREMISI ATTIVO' },
   ])
   const chatEndRef  = useRef(null)
   const [inputVal, setInputVal] = useState('')
@@ -159,10 +160,34 @@ export default function App() {
   const [rolloff, setRolloff] = useState(0)
   // Energia percentuale delle dieci bande, dai bassi agli acuti.
   const [bandEnergy, setBandEnergy] = useState([])
+  // Stato dello stadio stereo, riportato dal plugin dopo ogni comando: è lui
+  // a toccare l'audio, quindi è lui a dire com'è messo. Prima ogni pulsante
+  // teneva un proprio interruttore e si accendeva comunque.
+  const [stereoState, setStereoState] = useState({ mono: false, sideOnly: false, phaseInvert: false, width: 1 })
   // C'è davvero segnale? Sotto questa soglia le misure non hanno senso e
   // vanno mostrate come non disponibili invece che come zero — e soprattutto
   // non si deve dare alcun consiglio di mix sul silenzio.
   const sonoro = rms > -55
+
+  // Il modificatore cambia con la piattaforma: ⌘ su Mac, Ctrl altrove.
+  const tastoComando = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '')
+    ? '⌘' : 'Ctrl'
+
+  // ── Le cifre si leggono, le barre scorrono ────────────────────────
+  //
+  //  I meter arrivano dal plugin una trentina di volte al secondo. Le barre
+  //  devono muoversi a quel ritmo, ma le *cifre* aggiornate trenta volte al
+  //  secondo non si leggono: l'occhio non fa in tempo a fissarle e restano
+  //  un tremolio continuo. Qui se ne prende un campione sei volte al
+  //  secondo, tutte insieme — così la riga si aggiorna in blocco invece di
+  //  agitarsi un numero alla volta — e a segnale fermo non si ridisegna.
+  //
+  //  Le cifre vanno poi scritte con la classe `.num`, che le rende a
+  //  larghezza fissa: senza, passare da 1 a 8 sposta il numero di lato.
+  const letture = useValoriLenti(
+    { meterL, meterR, lufs, peak, rms, correlation, lufsShort, gainReduction },
+    { hz: 6, soglia: 0.02 }
+  )
   const [cpuUsage, setCpuUsage] = useState({ cpuPercent: 0, peakTimeUs: 0 })
   // Token spesi dall'inizio della sessione, aggiornati a ogni risposta.
   const [tokenUsage, setTokenUsage] = useState({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0, total: 0 })
@@ -260,7 +285,7 @@ export default function App() {
     const stateUnsub = whycremisi.onStateChange((s) => {
       setConnStatus(s)
       if (s === ConnectionState.CONNECTED) {
-        sysMsg(`[${ts()}] WEBSOCKET CONNECTED TO PLUGIN`)
+        sysMsg(`[${ts()}] COLLEGATO AL PLUGIN`)
         setBotState('success')
         setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
         // Chi comanda sull'accesso è il plugin, non il browser.
@@ -309,12 +334,12 @@ export default function App() {
         whycremisi.send({ type: 'config.get', payload: { key: 'ai.status' } })
       }
       if (s === ConnectionState.DISCONNECTED || s === ConnectionState.ERROR) {
-        sysMsg(`[${ts()}] CONNECTION LOST — RECONNECTING...`)
+        sysMsg(`[${ts()}] CONNESSIONE PERSA — RICONNESSIONE…`)
         setBotState('sad')
-        addToast('WebSocket connection lost — reconnecting...', 'error')
+        addToast('Connessione persa — riconnessione in corso…', 'error')
       }
       if (s === ConnectionState.CONNECTED) {
-        addToast('Connected to WhyCremisi plugin', 'success')
+        addToast('Collegato al plugin WhyCremisi', 'success')
       }
       if (s === ConnectionState.RECONNECTING) {
         setBotState('loading')
@@ -473,6 +498,12 @@ export default function App() {
       if (payload.bandEnergyPercent) setBandEnergy(payload.bandEnergyPercent)
     })
 
+    // Stato dello stadio stereo dopo ogni comando: mono, solo lati,
+    // inversione di fase, ampiezza.
+    const unsubStereo = whycremisi.on('dsp.stereo', (payload) => {
+      if (payload) setStereoState(payload)
+    })
+
     // CPU usage
     const unsubCpu = whycremisi.on('plugin.cpu', (payload) => {
       setCpuUsage(payload)
@@ -554,7 +585,7 @@ export default function App() {
       window.removeEventListener('whycremisi-botstate', onBotState)
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
-      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubCpu(); unsubUsage(); unsubActionLog(); unsubPersAction(); unsubPersContext()
+      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubStereo(); unsubCpu(); unsubUsage(); unsubActionLog(); unsubPersAction(); unsubPersContext()
       unsubWsStyle(); unsubWsMemory(); unsubWsBootstrap(); unsubWsRefresh()
       whycremisi.disconnect()
     }
@@ -1003,16 +1034,20 @@ export default function App() {
         <div className="flex items-center gap-2">
           <MaskLogo audioLevel={(meterL + meterR) / 2} className="w-8 h-8 flex-shrink-0" />
           <h1 className="text-sm font-black tracking-tighter uppercase leading-none" style={{ color: 'var(--cremisi)' }}>WHYCREMISI</h1>
-          <nav className="flex gap-4 uppercase tracking-[0.1em] font-bold text-xs">
-            {['COMMAND','MASTER','TELEMETRY','SESSIONS'].map(tab => (
-              <a key={tab} role="tab" aria-selected={activeTab === tab}
+          {/* Le schede si chiamano in italiano come tutto il resto. L'id
+              interno resta in inglese perché è la chiave dello stato: a
+              cambiare è quello che si legge, non quello che si confronta.
+              Sono pulsanti, non link: non portano da nessuna parte. */}
+          <nav className="flex gap-4" role="tablist">
+            {[['COMMAND','Comandi'],['MASTER','Master'],['TELEMETRY','Telemetria'],['SESSIONS','Sessioni']].map(([tab, nome]) => (
+              <button key={tab} role="tab" aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
-                className={`border-b pb-0.5 cursor-pointer hover:text-[#FFB000] transition-colors`}
-                style={{ 
+                className="etichetta border-b pb-0.5 cursor-pointer transition-colors hover:text-[#FFB000]"
+                style={{
                   color: activeTab === tab ? 'var(--amber)' : 'var(--text-secondary)',
                   borderColor: activeTab === tab ? 'var(--amber)' : 'transparent'
                 }}
-              >{tab}</a>
+              >{nome}</button>
             ))}
           </nav>
         </div>
@@ -1040,20 +1075,26 @@ export default function App() {
 
           <div className="w-px h-4" style={{ backgroundColor: 'var(--bg-elevated)' }} />
 
-          {/* Audio stats */}
-          <div className="flex items-center gap-2">
+          {/* Dati del motore audio. Compaiono solo quando ci sono: prima
+              erano quattro colonne con un trattino sotto ciascuna, che
+              occupavano la parte migliore della barra senza dire niente.
+              Un'intestazione senza contenuto non è uno stato vuoto, è
+              rumore. */}
+          {(pluginStats.sampleRate || pluginStats.bufferSize || cpuUsage.cpuPercent) ? (
+            <div className="flex items-center gap-3">
               {[
-                ['SR',  pluginStats.sampleRate ? `${(pluginStats.sampleRate/1000).toFixed(0)}k` : '—'],
-                ['BUF', pluginStats.bufferSize ?? '—'],
-                ['LAT', pluginStats.latencyMs  ? `${pluginStats.latencyMs.toFixed(0)}ms` : '—'],
-                ['CPU', cpuUsage.cpuPercent ? `${cpuUsage.cpuPercent.toFixed(1)}%` : '—'],
-              ].map(([k, v]) => (
-              <div key={k} className="flex flex-col items-center leading-none">
-                <span className="text-xs font-mono uppercase" style={{ color: 'var(--text-secondary)' }}>{k}</span>
-                <span className="text-xs font-bold text-white tracking-tight">{v}</span>
-              </div>
-            ))}
-          </div>
+                ['SR',  pluginStats.sampleRate ? `${(pluginStats.sampleRate/1000).toFixed(0)} kHz` : null],
+                ['Buf', pluginStats.bufferSize ? `${pluginStats.bufferSize}` : null],
+                ['Lat', pluginStats.latencyMs  ? `${pluginStats.latencyMs.toFixed(0)} ms` : null],
+                ['CPU', cpuUsage.cpuPercent ? `${cpuUsage.cpuPercent.toFixed(0)} %` : null],
+              ].filter(([, v]) => v !== null).map(([k, v]) => (
+                <div key={k} className="flex items-baseline gap-1 leading-none">
+                  <span className="etichetta" style={{ color: 'var(--text-muted)' }}>{k}</span>
+                  <span className="num font-medium" style={{ fontSize: 'var(--t-micro)', color: 'var(--text-primary)' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {/* Token spesi nella sessione. Compare solo dopo la prima
               risposta, per non mostrare uno zero fisso a vuoto. */}
@@ -1154,29 +1195,46 @@ export default function App() {
       </header>
 
       {/* ── SIDEBAR ────────────────────────────────────────────────── */}
-      <aside className="fixed left-0 top-9 h-[calc(100vh-2.25rem)] w-12 flex flex-col items-center py-2 z-40" style={{ backgroundColor: 'var(--bg-panel)', borderRight: '1px solid var(--border)' }}>
-        <div className="text-xs font-mono uppercase mb-4 rotate-180 select-none" style={{ color: 'var(--text-secondary)', writingMode:'vertical-lr' }}>
-          MOD
-        </div>
-        {sideModules.map(mod => (
-          <motion.button
-            key={mod.id}
-            aria-label={mod.label}
-            className={`w-full py-2 flex flex-col items-center gap-0.5 transition-colors border-l-2 ${
-              activeMod === mod.id ? 'border-[#DC143C]' : 'border-transparent hover:text-[#FFB000]'
-            }`}
-            style={{
-              color: activeMod === mod.id ? 'var(--cremisi)' : 'var(--text-secondary)',
-              backgroundColor: activeMod === mod.id ? 'var(--bg-card)' : 'transparent'
-            }}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.94 }}
-            onClick={() => setActiveMod(mod.id)}
-          >
-            <span className="material-symbols-outlined text-base">{mod.icon}</span>
-            <span className="text-xs font-bold uppercase font-mono">{mod.label}</span>
-          </motion.button>
-        ))}
+      {/* La barra era larga 48 px con etichette da 12 px: "TRANSPORT" e
+          "ACTIONS" non ci stavano e uscivano dal bordo, tagliate a metà
+          parola — si leggeva "RANSPORT". Ora la barra è larga quanto serve
+          alla parola più lunga, e l'etichetta scende alla misura minima
+          leggibile invece di traboccare.
+          Via anche la scritta "MOD" ruotata di 180°, che si leggeva dal
+          basso verso l'alto e non diceva niente. */}
+      <aside
+        className="fixed left-0 top-9 h-[calc(100vh-2.25rem)] w-[4.5rem] flex flex-col items-stretch py-2 z-40"
+        style={{ backgroundColor: 'var(--bg-panel)', borderRight: '1px solid var(--border)' }}
+        aria-label="Moduli"
+      >
+        {sideModules.map(mod => {
+          const attivo = activeMod === mod.id
+          return (
+            <motion.button
+              key={mod.id}
+              aria-label={mod.label}
+              aria-current={attivo ? 'true' : undefined}
+              title={mod.label}
+              className="w-full py-2.5 flex flex-col items-center gap-1 transition-colors border-l-2"
+              style={{
+                borderLeftColor: attivo ? 'var(--cremisi)' : 'transparent',
+                color: attivo ? 'var(--cremisi)' : 'var(--text-secondary)',
+                backgroundColor: attivo ? 'var(--bg-card)' : 'transparent'
+              }}
+              whileHover={{ backgroundColor: attivo ? 'var(--bg-card)' : 'var(--bg-hover-card)' }}
+              whileTap={{ scale: 0.96 }}
+              onClick={() => setActiveMod(mod.id)}
+            >
+              <span className="material-symbols-outlined text-lg" aria-hidden="true">{mod.icon}</span>
+              <span
+                className="font-semibold uppercase leading-none"
+                style={{ fontSize: '0.625rem', letterSpacing: '0.02em' }}
+              >
+                {mod.label}
+              </span>
+            </motion.button>
+          )
+        })}
       </aside>
 
       {/* ── SESSION PANEL — absolute overlay, mai sposta il main ──── */}
@@ -1188,7 +1246,7 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="fixed top-9 left-12 right-0 bottom-0 z-30"
+            className="fixed top-9 left-[4.5rem] right-0 bottom-0 z-30"
             style={{ backgroundColor: 'var(--bg-primary)' }}
           >
             <SessionPanel />
@@ -1205,7 +1263,7 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="fixed top-9 left-12 right-0 bottom-9 z-30 overflow-y-auto custom-scrollbar p-4"
+            className="fixed top-9 left-[4.5rem] right-0 bottom-9 z-30 overflow-y-auto custom-scrollbar p-4"
             style={{ backgroundColor: 'var(--bg-primary)' }}
           >
             <div className="max-w-full space-y-4">
@@ -1361,7 +1419,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* ── MAIN GRID — sempre nel DOM, mai mosso ──────────────────── */}
-      <main className="ml-12 mt-0 h-[calc(100vh-2.25rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden relative z-10" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <main className="ml-[4.5rem] mt-0 h-[calc(100vh-2.25rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden relative z-10" style={{ backgroundColor: 'var(--bg-primary)' }}>
 
         {/* ── AI CHAT CONSOLE (9/12 × 4/6) ──────────────────────── */}
         <section className="col-span-9 row-span-4 border flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
@@ -1486,7 +1544,7 @@ export default function App() {
                            />
                          </div>
                          <div>
-                           <span className="text-xs font-bold tracking-tighter uppercase block" style={{ color: 'var(--cremisi)' }}>AI MASTERING ADVISORY</span>
+                           <span className="text-xs font-bold tracking-tighter uppercase block" style={{ color: 'var(--cremisi)' }}>Suggerimento di mastering</span>
                            <span className="text-xs tracking-[0.2em]" style={{ color: 'var(--text-secondary)' }}>NODE: CREMISI_X9 · PRIORITY: HIGH</span>
                          </div>
                        </div>
@@ -1579,7 +1637,7 @@ export default function App() {
                             />
                           )}
                         </p>
-                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} suggestion={currentSuggestion} layout={boxLayout} clippingCount={clippingCount} cpuUsage={cpuUsage} rms={rms} lufsShort={lufsShort} scopePoints={scopePoints} gainReduction={gainReduction} />}
+                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} suggestion={currentSuggestion} layout={boxLayout} clippingCount={clippingCount} cpuUsage={cpuUsage} rms={rms} lufsShort={lufsShort} scopePoints={scopePoints} gainReduction={gainReduction} stereoState={stereoState} />}
                       </div>
                     </motion.div>
                   )
@@ -1597,7 +1655,7 @@ export default function App() {
               <input
                 ref={inputRef}
                 className="w-full bg-transparent border-none text-white font-mono text-xs focus:ring-0 focus:outline-none placeholder-[#4d4d4d] p-0 disabled:opacity-40"
-                placeholder={botState === 'thinking' || botState === 'typing' ? 'PROCESSING...' : 'Ask the AI anything about your mix...'}
+                placeholder={botState === 'thinking' || botState === 'typing' ? 'PROCESSING...' : 'Chiedi qualsiasi cosa sul tuo mix…'}
                 value={inputVal}
                 onChange={e => setInputVal(e.target.value)}
                 onKeyDown={handleCommand}
@@ -1605,15 +1663,18 @@ export default function App() {
               />
               {(botState === 'idle' || botState === 'sad' || botState === 'loading') && <div className="terminal-cursor" />}
             </div>
+            {/* Il tasto giusto per la piattaforma: qui c'era ⌘ fisso, che su
+                Windows indica una scorciatoia che non esiste. E le due voci
+                dicevano tutte e due "clear" pur facendo cose diverse. */}
             <div className="kbd-hint mr-2 hidden md:flex">
-              <kbd>&#8984;</kbd><kbd>K</kbd> clear
+              <kbd>{tastoComando}</kbd><kbd>K</kbd> svuota
               <span className="mx-1">·</span>
-              <kbd>Esc</kbd> clear
+              <kbd>Esc</kbd> annulla
               <span className="mx-1">·</span>
-              <kbd>&#8593;</kbd><kbd>&#8595;</kbd> history
+              <kbd>&#8593;</kbd><kbd>&#8595;</kbd> cronologia
             </div>
             {connStatus !== ConnectionState.CONNECTED && connStatus !== ConnectionState.DISCONNECTED && (
-              <span className="queued-indicator text-[9px]">QUEUED</span>
+              <span className="queued-indicator etichetta">In coda</span>
             )}
 <div className="flex gap-1.5" style={{ color: 'var(--text-secondary)' }}>
               <motion.button whileHover={{ scale:1.1 }} whileTap={{ scale:0.9 }}
@@ -1651,7 +1712,7 @@ export default function App() {
                 onClick={() => setShowChainPanel(p => !p)}
                 whileTap={{ scale: 0.95 }}
               >CHAIN</motion.button>
-              <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>STEREO MASTER</span>
+              <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>Stereo master</span>
             </div>
           </div>
 
@@ -1659,11 +1720,11 @@ export default function App() {
            {showChainPanel && (
              <div className="border-b px-3 py-2 space-y-1 max-h-40 overflow-y-auto" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border)' }}>
                <div className="flex justify-between items-center mb-1">
-                 <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--orange)' }}>Plugin Chain</span>
-                 <span className="text-[9px]" style={{ color: 'var(--text-faint)' }}>{pluginChain.length} plugins</span>
+                 <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--orange)' }}>Catena plugin</span>
+                 <span className="text-[9px]" style={{ color: 'var(--text-faint)' }}>{pluginChain.length} plugin</span>
                </div>
                {pluginChain.length === 0 ? (
-                 <div className="text-[9px] italic" style={{ color: 'var(--text-dim)' }}>No plugins configured. Add your DAW plugins here so the AI knows what's in your chain.</div>
+                 <div className="text-[9px] italic" style={{ color: 'var(--text-dim)' }}>Nessun plugin indicato. Elencando qui i plugin della tua DAW, l'AI sa cosa c'è nella catena.</div>
                ) : (
                  pluginChain.map((p, i) => (
                    <div key={p.id || i} className="flex justify-between items-center text-[10px] font-mono">
@@ -1781,7 +1842,7 @@ export default function App() {
               </div>
 <span className="text-xs font-mono" style={{ color: 'var(--amber)' }}>-INF</span>
                <span className="text-xs font-bold mt-1" style={{ color: 'var(--text-primary)' }}>{gainDb > 0 ? `+${gainDb}` : gainDb}dB</span>
-               <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>GAIN</span>
+               <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>Guadagno</span>
                {/* MIDI Learn button */}
                <motion.button
                  className={`w-full mt-1 py-0.5 text-[9px] font-bold uppercase tracking-wider border rounded-sm ${midiLearnWidget === 'masterGain' ? 'bg-[#FF6B35] text-black border-[#FF6B35] pulse-glow' : 'hover:border-[#FF6B35] hover:text-[#FF6B35]'}`}
@@ -1856,14 +1917,17 @@ export default function App() {
 
             {/* ── L/R STEREO METERS ─────────────────────────────────── */}
            <div className="w-52 flex-shrink-0 border-r flex flex-col justify-center px-4 py-2 gap-1.5" style={{ borderColor: 'var(--border)' }}>
-             <div className="text-[11px] font-bold uppercase tracking-widest mb-0.5" style={{ color: 'var(--amber)' }}>STEREO MASTER</div>
-             {[['L', meterL], ['R', meterR]].map(([ch, val]) => {
-               const pct = Math.max(0, Math.min(100, val * 100))
-               const db = (val * 72 - 60).toFixed(1)
+             <div className="etichetta mb-0.5" style={{ color: 'var(--amber)' }}>Stereo master</div>
+             {/* La barra segue il valore pieno a trenta fotogrammi, la cifra
+                 quello campionato: la prima deve scorrere, la seconda si
+                 deve poter leggere. */}
+             {[['L', meterL, letture.meterL], ['R', meterR, letture.meterR]].map(([ch, vivo, lento]) => {
+               const pct = Math.max(0, Math.min(100, vivo * 100))
+               const db = (lento * 72 - 60)
                const barColor = pct > 88 ? '#DC143C' : pct > 70 ? '#FFB000' : '#00FFaa'
                return (
                  <div key={ch} className="flex items-center gap-2">
-                   <span className="text-xs font-bold w-3" style={{ color: 'var(--text-secondary)' }}>{ch}</span>
+                   <span className="font-bold w-3" style={{ fontSize: 'var(--t-micro)', color: 'var(--text-secondary)' }}>{ch}</span>
                    <div className="flex-1 h-3 bg-[#111] relative overflow-hidden rounded-sm">
                      <motion.div
                        className="h-full absolute left-0 top-0 rounded-sm"
@@ -1875,12 +1939,14 @@ export default function App() {
                        <div key={p} className="absolute top-0 bottom-0 w-[0.5px]" style={{ left: `${p}%`, backgroundColor: 'var(--border-light)' }} />
                      ))}
                    </div>
-                   <span className="text-xs font-mono w-10 text-right font-medium" style={{ color: 'var(--text-secondary)' }}>{db}dB</span>
+                   <span className="num font-mono w-14 text-right" style={{ fontSize: 'var(--t-micro)', color: 'var(--text-secondary)' }}>
+                     {db <= -59.9 ? '−∞' : `${db.toFixed(1)} dB`}
+                   </span>
                  </div>
                )
              })}
-             <div className="flex justify-between mt-0.5 text-[10px] font-mono" style={{ color: 'var(--text-dim)' }}>
-               <span>-60</span><span>-12</span><span>-6</span><span>0</span>
+             <div className="flex justify-between mt-0.5 num font-mono" style={{ fontSize: 'var(--t-micro)', color: 'var(--text-dim)' }}>
+               <span>−60</span><span>−12</span><span>−6</span><span>0</span>
              </div>
            </div>
 
@@ -1908,22 +1974,24 @@ export default function App() {
                  animate={{ opacity:[1,0.3,1] }} transition={{ repeat: Infinity, duration: 0.8 }}
                >● RECORDING</motion.div>
              )}
-             <div className="flex items-center justify-between text-xs font-mono">
-               <span style={{ color: 'var(--text-secondary)' }}>POS</span>
-               <span className="text-white font-medium">
+             <div className="flex items-center justify-between font-mono" style={{ fontSize: 'var(--t-micro)' }}>
+               <span className="etichetta" style={{ color: 'var(--text-muted)' }}>Pos</span>
+               <span className="num" style={{ color: 'var(--text-primary)' }}>
                  {Math.floor(transport.position / 60).toString().padStart(2,'0')}:{(transport.position % 60).toFixed(0).toString().padStart(2,'0')}
                </span>
              </div>
-             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] font-mono">
+             {/* Anche qui: si mostra solo ciò che esiste. La correlazione
+                 c'è sempre quando passa audio, il resto dipende dal motore. */}
+             <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono" style={{ fontSize: 'var(--t-micro)' }}>
                {[
-                 ['SR', pluginStats.sampleRate ? `${(pluginStats.sampleRate / 1000).toFixed(0)}k` : '—'],
-                 ['BUF', pluginStats.bufferSize ? `${pluginStats.bufferSize}` : '—'],
-                 ['LAT', pluginStats.latencyMs ? `${pluginStats.latencyMs.toFixed(0)}ms` : '—'],
-                 ['CORR', correlation.toFixed(2)],
-               ].map(([k, v]) => (
-                 <div key={k} className="flex items-center gap-1">
-                   <span style={{ color: 'var(--text-dim)' }}>{k}</span>
-                   <span className="text-white font-medium">{v}</span>
+                 ['SR', pluginStats.sampleRate ? `${(pluginStats.sampleRate / 1000).toFixed(0)}k` : null],
+                 ['Buf', pluginStats.bufferSize ? `${pluginStats.bufferSize}` : null],
+                 ['Lat', pluginStats.latencyMs ? `${pluginStats.latencyMs.toFixed(0)} ms` : null],
+                 ['Corr', sonoro ? letture.correlation.toFixed(2) : null],
+               ].filter(([, v]) => v !== null).map(([k, v]) => (
+                 <div key={k} className="flex items-baseline gap-1">
+                   <span className="etichetta" style={{ color: 'var(--text-dim)' }}>{k}</span>
+                   <span className="num" style={{ color: 'var(--text-primary)' }}>{v}</span>
                  </div>
                ))}
              </div>
@@ -1932,11 +2000,14 @@ export default function App() {
            {/* ── REAL-TIME SPECTRUM ANALYZER ─────────────────────────── */}
            <div className="w-60 flex-shrink-0 border-r flex flex-col justify-center px-3 py-2 gap-1" style={{ borderColor: 'var(--border)' }}>
              <div className="flex justify-between items-center mb-0.5">
-               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--cyan)' }}>SPECTRUM</span>
+               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--cyan)' }}>Spettro</span>
                <span className="text-[9px] font-mono" style={{ color: 'var(--text-tertiary)' }}>φ {correlation.toFixed(2)}</span>
              </div>
+            {/* Senza spettro non si disegna niente. Prima il ripiego era
+                un'onda animata con Math.sin(Date.now()): a plugin scollegato
+                o in silenzio sembrava che stesse passando audio. */}
             <div className="h-10 flex items-end gap-[1px] rounded-sm overflow-hidden">
-              {(spectrum.length > 0 ? spectrum.slice(0, 96) : Array.from({ length: 96 }, (_, i) => 0.1 + Math.sin(i * 0.2 + Date.now() * 0.0005) * 0.05)).map((mag, i) => (
+              {spectrum.length > 0 ? spectrum.slice(0, 96).map((mag, i) => (
                 <motion.div
                   key={i}
                   className="flex-1 rounded-[0.5px]"
@@ -1946,7 +2017,9 @@ export default function App() {
                   animate={{ height: `${Math.max(4, mag * 100)}%` }}
                   transition={{ duration: 0.06 }}
                 />
-              ))}
+              )) : (
+                <div className="w-full h-px self-center" style={{ backgroundColor: 'var(--border)' }} />
+              )}
             </div>
 <div className="flex justify-between text-[8px] font-mono mt-0.5" style={{ color: 'var(--text-dim)' }}>
                <span>20Hz</span><span>200Hz</span><span>2kHz</span><span>20kHz</span>
@@ -1958,11 +2031,11 @@ export default function App() {
              <div className="flex items-center justify-between px-4 py-1.5 border-b" style={{ borderColor: 'var(--border-subtle)', backgroundColor: 'var(--bg-primary)' }}>
                <div className="flex items-center gap-2">
                  <div className="w-1.5 h-1.5 rounded-full bg-[#DC143C]" />
-                 <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--cremisi)' }}>FLIGHT RECORDER</span>
+                 <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--cremisi)' }}>Registro di sessione</span>
                </div>
                <button onClick={() => setActiveTab('SESSIONS')}
                  className="text-[10px] hover:text-[#FFB000] transition-colors uppercase tracking-wider font-medium" style={{ color: 'var(--text-secondary)' }}>
-                 FULL LOG →
+                 Registro completo →
                </button>
              </div>
             <div className="flex-1 overflow-y-auto flex flex-col-reverse px-3 py-2 gap-1.5 custom-scrollbar">
@@ -2008,7 +2081,7 @@ export default function App() {
            {/* ── AI ACTION LOG + UNDO/REDO ────────────────────────── */}
            <div className="w-40 flex-shrink-0 flex flex-col justify-center px-3 py-2 gap-1 overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
              <div className="flex items-center justify-between mb-1">
-               <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--green)' }}>ACTIONS</span>
+               <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--green)' }}>Azioni</span>
                <div className="flex gap-0.5">
                  <motion.button
                    className="text-[11px] px-1.5 py-0.5 border"
@@ -2034,7 +2107,7 @@ export default function App() {
              </div>
              <div className="flex-1 overflow-y-auto max-h-24 space-y-0.5 custom-scrollbar">
                {actionLog.length === 0 ? (
-                 <div className="text-[8px] italic" style={{ color: 'var(--text-dim)' }}>No AI actions yet</div>
+                 <div className="text-[8px] italic" style={{ color: 'var(--text-dim)' }}>Nessuna azione ancora</div>
                ) : (
                  actionLog.slice(0, 6).map((a, i) => (
                    <div key={a.timestamp + '-' + i} className="text-[9px] font-mono flex justify-between items-center group px-1 -mx-1 rounded-sm transition-colors">
@@ -2075,7 +2148,7 @@ export default function App() {
             <div className="flex justify-between"><span>Messages</span><span style={{ color: 'var(--text-muted)' }}>{messages.length}</span></div>
             <div className="flex justify-between"><span>Conn</span><span style={{ color: connStatus === 'connected' ? 'var(--green)' : 'var(--cremisi)' }}>{connStatus}</span></div>
             <div className="mt-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
-              <div className="text-[8px] text-center" style={{ color: 'var(--text-muted)' }}>Shift+D to close</div>
+              <div className="text-[8px] text-center" style={{ color: 'var(--text-muted)' }}>Shift+D per chiudere</div>
             </div>
           </motion.div>
         )}
@@ -2083,15 +2156,19 @@ export default function App() {
 
 {/* ── FOOTER ─────────────────────────────────────────────────── */}
        <footer className="fixed bottom-0 left-0 w-full z-50 flex justify-between items-center h-9 border-t px-5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-primary)' }}>
-         <div className="flex items-center gap-5 text-xs font-mono">
+         {/* Le cifre vengono dal campione lento e sono a larghezza fissa:
+             prima si aggiornavano trenta volte al secondo e cambiavano
+             anche larghezza, quindi tremolavano e si spostavano di lato. */}
+         <div className="flex items-center gap-5 font-mono" style={{ fontSize: 'var(--t-micro)' }}>
            {[
-             { icon:'equalizer', label:`LUFS: ${lufs.toFixed(1)}`, color:'var(--amber)' },
-             { icon:'priority_high', label:`PEAK: ${peak.toFixed(1)}dB`, color: peak>-1?'var(--cremisi)':'var(--text-muted)' },
-             { icon:'speed', label:`L: ${(meterL*100).toFixed(0)}%  R: ${(meterR*100).toFixed(0)}%`, color:'var(--text-muted)' }
-           ].map(({ icon, label, color }) => (
-             <div key={label} className="flex items-center gap-1.5" style={{ color }}>
-               <span className="material-symbols-outlined text-sm">{icon}</span>
-               <span>{label}</span>
+             { icon:'equalizer', etichetta:'LUFS', valore: letture.lufs > -60 ? letture.lufs.toFixed(1) : '−∞', larghezza:'3.2em', color:'var(--amber)' },
+             { icon:'priority_high', etichetta:'Picco', valore: letture.peak > -60 ? `${letture.peak.toFixed(1)} dB` : '−∞', larghezza:'4.4em', color: letture.peak > -1 ? 'var(--cremisi)' : 'var(--text-muted)' },
+             { icon:'speed', etichetta:'L / R', valore: `${Math.round(letture.meterL*100)}% · ${Math.round(letture.meterR*100)}%`, larghezza:'5.4em', color:'var(--text-muted)' }
+           ].map(({ icon, etichetta, valore, larghezza, color }) => (
+             <div key={etichetta} className="flex items-center gap-1.5" style={{ color }}>
+               <span className="material-symbols-outlined text-sm" aria-hidden="true">{icon}</span>
+               <span className="etichetta" style={{ color: 'var(--text-muted)' }}>{etichetta}</span>
+               <span className="num" style={{ display: 'inline-block', minWidth: larghezza }}>{valore}</span>
              </div>
            ))}
          </div>
@@ -2100,13 +2177,13 @@ export default function App() {
             <button onClick={exportSession}
               className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 border rounded-sm transition-colors"
               style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}
-              title="Export session as JSON"
-            >EXPORT</button>
+              title="Esporta la sessione in JSON"
+            >Esporta</button>
             <button onClick={importSession}
               className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 border rounded-sm transition-colors"
               style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}
               title="Import session from JSON"
-            >IMPORT</button>
+            >Importa</button>
           </div>
           <div className="flex items-center gap-4">
             <motion.span className="text-xs font-mono uppercase tracking-widest"
@@ -2114,7 +2191,7 @@ export default function App() {
               animate={{ opacity:[0.7,1,0.7] }}
               transition={{ repeat:Infinity, duration:2.5 }}
             >
-              {connStatus === ConnectionState.CONNECTED ? '◉ CONNECTED // READY' : '◌ OFFLINE // AWAITING SIGNAL'}
+              {connStatus === ConnectionState.CONNECTED ? '◉ Collegato' : '◌ Non collegato'}
             </motion.span>
            <motion.div
              className="h-3 w-3"

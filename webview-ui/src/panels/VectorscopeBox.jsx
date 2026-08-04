@@ -92,9 +92,15 @@ function ScopeCanvas({ points, correlation, size = 132 }) {
   )
 }
 
-export default function VectorscopeBox({ correlation = 0, scopePoints = [], onDawCmd, ...rest }) {
-  const [midSide, setMidSide] = useState(false)
-  const [phaseInvert, setPhaseInvert] = useState(false)
+export default function VectorscopeBox({ correlation = 0, scopePoints = [], stereoState = null, onDawCmd, ...rest }) {
+  // Lo stato lo tiene il plugin, che è quello che tocca l'audio. Prima
+  // ciascun pulsante teneva il proprio interruttore locale: si accendeva
+  // comunque, anche quando il comando non arrivava da nessuna parte —
+  // e infatti non arrivava, perché veniva spedito a un indirizzo OSC
+  // inventato che nessuna DAW ascolta.
+  const sideOnly    = stereoState?.sideOnly ?? false
+  const phaseInvert = stereoState?.phaseInvert ?? false
+  const mono        = stereoState?.mono ?? false
 
   const segnale = scopePoints && scopePoints.length >= 4
 
@@ -161,17 +167,21 @@ export default function VectorscopeBox({ correlation = 0, scopePoints = [], onDa
 
           <div className="flex gap-1 mt-auto">
             {[
-              { attivo: midSide, testo: 'M/S', tinta: '#AA44FF',
-                click: () => { setMidSide(!midSide); onDawCmd('midSide', { enabled: !midSide }) } },
-              { attivo: phaseInvert, testo: 'Ø', tinta: '#DC143C',
-                click: () => { setPhaseInvert(!phaseInvert); onDawCmd('phaseInvert', { enabled: !phaseInvert }) } },
-              { attivo: false, testo: 'Mono', tinta: '#00FFaa',
-                click: () => onDawCmd('mono') },
+              // "Lati": si ascolta solo quello che sta fuori dal centro.
+              { attivo: sideOnly, testo: 'Lati', tinta: '#AA44FF', aiuto: 'Ascolta solo il segnale laterale',
+                click: () => onDawCmd('midSide', { enabled: !sideOnly }) },
+              // Inversione di fase del destro: se in mono il suono diventa
+              // più pieno invece che più magro, c'era un problema di fase.
+              { attivo: phaseInvert, testo: 'Ø', tinta: '#DC143C', aiuto: 'Inverte la fase del canale destro',
+                click: () => onDawCmd('phaseInvert', { enabled: !phaseInvert }) },
+              { attivo: mono, testo: 'Mono', tinta: '#00FFaa', aiuto: 'Somma in mono per provare la compatibilità',
+                click: () => onDawCmd('mono', { enabled: !mono }) },
             ].map(b => (
               <motion.button
                 key={b.testo}
                 whileTap={{ scale: 0.96 }}
                 onClick={b.click}
+                title={b.aiuto}
                 className="flex-1 rounded-full py-1 text-[9px] font-bold tracking-tight transition-all duration-300"
                 style={b.attivo
                   ? { backgroundColor: b.tinta, color: '#0a0a0a' }

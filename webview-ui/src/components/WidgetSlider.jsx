@@ -9,7 +9,7 @@ function WidgetSlider({ id, label, min, max, default: defaultValue, onRemove }) 
     const newValue = parseFloat(e.target.value)
     setValue(newValue)
     
-    whycremisi.sendDAWCommand('setParameter', { widgetId: id, value: newValue })
+    whycremisi.setWidgetValue(id, newValue)
   }
 
   return (

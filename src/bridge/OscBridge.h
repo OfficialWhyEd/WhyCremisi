@@ -273,6 +273,25 @@ private:
     std::atomic<juce::int64> aiStartedAtMs {0};
     static constexpr juce::int64 aiStalloMs = 120000;   // 2 minuti
 
+    // Ultima volta che la DAW ci ha parlato. OSC viaggia su UDP e non
+    // conferma niente: l'unico modo onesto di sapere se dall'altra parte
+    // c'e' qualcuno e' se qualcosa e' mai arrivato indietro. Serve a non
+    // rispondere "fatto" all'AI quando il comando e' partito verso il nulla.
+    std::atomic<juce::int64> lastOscFromDawMs {0};
+    static constexpr juce::int64 dawSilenzioMs = 30000;
+
+public:
+    /** Vero se la DAW ha inviato qualcosa di recente. Falso non significa
+        che il comando fallira', ma che non abbiamo alcuna prova che qualcuno
+        stia ascoltando — e va detto invece di dare per scontato. */
+    bool dawHaRisposto() const
+    {
+        const auto t = lastOscFromDawMs.load();
+        return t > 0 && (juce::Time::currentTimeMillis() - t) < dawSilenzioMs;
+    }
+
+private:
+
     // AI thread (async dispatch)
     std::unique_ptr<std::thread> aiThread;
 

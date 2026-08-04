@@ -1,10 +1,111 @@
 @import "tailwindcss";
 
+/* ── Font locali ────────────────────────────────────────────────────
+   Caricati dal bundle, non dalla rete: il plugin deve funzionare anche
+   su una macchina di studio senza internet. `font-display: block` per le
+   icone perché il ripiego non è un'altra icona, è la parola scritta:
+   meglio uno spazio vuoto per un istante che "priority_high" stampato in
+   mezzo alla barra di stato. */
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/space-grotesk.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  src: url('/fonts/material-symbols.woff2') format('woff2');
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: block;
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
 @theme {
   --font-sans: "Space Grotesk", sans-serif;
-  --font-mono: monospace;
+  /* Le misure vanno lette in colonna: una monospaziata vera, non il
+     ripiego generico "monospace" che su Windows diventa Courier New. */
+  --font-mono: "JetBrains Mono", "Cascadia Mono", "Consolas", ui-monospace, monospace;
   --color-cremisi: #DC143C;
   --color-amber: #FFB000;
+}
+
+/* ── Scala tipografica ──────────────────────────────────────────────
+   Cinque gradini, non nove misure decise una alla volta.
+
+   L'interfaccia usava 7, 8, 9, 10, 12, 14, 16 e 24 px senza un criterio:
+   testo a 7 px illeggibile accanto a testo a 12 px, e nessun rapporto
+   riconoscibile fra i due. Il pavimento sale a 11 px — sotto, su uno
+   schermo di studio a un metro di distanza, non si legge.
+
+   `--t-micro` esiste solo per le sigle sempre maiuscole (LUFS, dB, SR):
+   parole intere non vanno mai scritte a quella misura. */
+:root {
+  --t-micro: 0.6875rem; /* 11px — sigle e unità di misura */
+  --t-corpo: 0.8125rem; /* 13px — testo normale, etichette */
+  --t-forte: 0.9375rem; /* 15px — intestazioni di pannello */
+  --t-dato:  1.375rem;  /* 22px — la misura che conta, in evidenza */
+  --t-titolo: 1.75rem;  /* 28px — un solo titolo per schermata */
+
+  /* Spaziatura fra lettere: le maiuscole hanno bisogno di respiro, il
+     testo normale no. Il valore unico applicato ovunque era il motivo
+     per cui anche le frasi in minuscolo sembravano "spalmate". */
+  --sp-maiuscole: 0.08em;
+  --sp-normale: -0.01em;
+}
+
+/* Cifre a larghezza fissa. Senza, un valore che passa da 1 a 8 cambia
+   larghezza e il numero si sposta lateralmente a ogni aggiornamento:
+   è metà dello sfarfallio percepito, anche a valori quasi fermi. */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: 0;
+}
+
+/* Etichetta in maiuscolo: un solo posto che decide misura, peso e
+   spaziatura, invece di ripeterli a mano su ogni elemento. */
+.etichetta {
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--sp-maiuscole);
+  text-transform: uppercase;
+}
+
+/* Ogni controllo raggiungibile da tastiera deve mostrarlo. Prima il
+   focus non era visibile da nessuna parte: navigando con Tab non si
+   capiva dove si fosse. */
+:where(button, [role="button"], a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Chi ha chiesto meno movimento non deve vedersi arrivare addosso le
+   animazioni dei meter e dei pannelli. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 :root,

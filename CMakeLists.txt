@@ -132,6 +132,7 @@ target_sources(WhyCremisiVSTPlugin
         src/dsp/EQBand.cpp
         src/dsp/Compressor.cpp
         src/dsp/Limiter.cpp
+        src/dsp/StereoStage.cpp
         src/dsp/Analyzer.cpp
         src/dsp/DSPEngine.cpp
         src/daw/ReaperDawHandler.cpp
@@ -222,6 +223,7 @@ if(BUILD_UNIT_TESTS)
             src/dsp/EQBand.cpp
             src/dsp/Compressor.cpp
             src/dsp/Limiter.cpp
+            src/dsp/StereoStage.cpp
             src/dsp/Analyzer.cpp
             src/dsp/DSPEngine.cpp
             src/daw/ReaperDawHandler.cpp

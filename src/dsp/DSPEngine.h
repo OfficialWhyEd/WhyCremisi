@@ -3,6 +3,7 @@
 #include "EQBand.h"
 #include "Compressor.h"
 #include "Limiter.h"
+#include "StereoStage.h"
 #include "Analyzer.h"
 #include <memory>
 #include <vector>
@@ -26,6 +27,9 @@ public:
     std::vector<std::unique_ptr<EQBand>> eqBands;
     std::unique_ptr<Compressor> compressor;
     std::unique_ptr<Limiter> limiter;
+    // Mono, inversione di fase e ampiezza del campo: i tre controlli sotto
+    // il vectorscope, che finora non avevano niente da comandare.
+    std::unique_ptr<StereoStage> stereo;
     std::unique_ptr<Analyzer> analyzer;
 
     // Module indices for bypass

@@ -427,6 +427,18 @@ class WhyCremisiBridge {
   }
 
   /**
+   * L'utente ha mosso una manopola o un cursore.
+   *
+   * Il plugin ascolta il tipo `widget.valueChange` (vedi OscBridge:
+   * dispatchWidgetChange). I widget mandavano invece un `daw.command` con
+   * azione `setParameter`, che nessun gestore conosce: si muoveva il
+   * controllo sullo schermo e al plugin non arrivava niente.
+   */
+  setWidgetValue(widgetId, value) {
+    return this.sendMessage('widget.valueChange', { widgetId, value });
+  }
+
+  /**
    * Aggiorna widget
    */
   updateWidget(widgetId, values) {

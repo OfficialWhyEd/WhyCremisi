@@ -8,6 +8,7 @@ DSPEngine::DSPEngine()
 
     compressor = std::make_unique<Compressor>();
     limiter = std::make_unique<Limiter>();
+    stereo = std::make_unique<StereoStage>();
     analyzer = std::make_unique<Analyzer>();
 }
 
@@ -28,6 +29,7 @@ void DSPEngine::reset()
         band->reset();
     compressor->reset();
     limiter->reset();
+    stereo->reset();
 }
 
 void DSPEngine::process(juce::AudioBuffer<float>& buffer)
@@ -46,6 +48,12 @@ void DSPEngine::process(juce::AudioBuffer<float>& buffer)
     // Limiter
     if (!bypass[LimitModule])
         limiter->process(buffer);
+
+    // Stadio stereo. Sta in fondo, prima dell'analizzatore, perche' e' uno
+    // strumento di verifica: quando si preme Mono si vuole sentire — e
+    // vedere sul vectorscope — come regge in mono cio' che esce davvero,
+    // non cio' che entrava. Da solo si salta quando non e' impostato niente.
+    stereo->process(buffer);
 
     // Analyzer (always active for metering)
     analyzer->process(buffer);

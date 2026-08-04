@@ -78,17 +78,20 @@ OscBridge::OscBridge(int oscReceivePort, int wsListenPort)
 
     // OSC → WebSocket: set callback for incoming OSC from DAW (float values)
     oscHandler->setCallback([this](const juce::String& address, float value) {
+        lastOscFromDawMs.store (juce::Time::currentTimeMillis());
         onOscReceived(address, value);
     });
 
     // OSC → WebSocket: set callback for incoming OSC string values (track names, etc.)
     oscHandler->setStringCallback([this](const juce::String& address, const juce::String& value) {
+        lastOscFromDawMs.store (juce::Time::currentTimeMillis());
         onOscStringReceived(address, value);
     });
 
     // Messaggi con piu' argomenti: e' la forma con cui AbletonOSC risponde
     // sulle tracce, e senza questa non ne veniva letto nessuno.
     oscHandler->setMultiCallback([this](const juce::String& address, const std::vector<float>& args) {
+        lastOscFromDawMs.store (juce::Time::currentTimeMillis());
         handleAbletonMultiArg(address, args);
     });
 
@@ -1143,27 +1146,69 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
             sendOscToDaw("/whycremisi/drive", v);
         }
     }
-    else if (command == "midSide")
+    // ── Controlli stereo ────────────────────────────────────────────
+    //
+    //  Prima questi cinque comandi mandavano un messaggio OSC a
+    //  /whycremisi/mono, /whycremisi/midside, /whycremisi/phaseinvert e
+    //  /whycremisi/width: indirizzi di un namespace inventato che nessuna
+    //  DAW ascolta. Il pulsante si accendeva, il pacchetto partiva verso il
+    //  nulla, l'audio non cambiava. Ora agiscono sulla catena del plugin,
+    //  che l'audio ce l'ha in mano, e lo stato applicato torna alla UI.
+    else if (command == "midSide" || command == "phaseInvert" || command == "mono"
+          || command == "narrow"  || command == "widen")
     {
-        if (payload.contains("enabled"))
-            sendOscToDaw("/whycremisi/midside", payload["enabled"].get<bool>() ? 1.0f : 0.0f);
-    }
-    else if (command == "phaseInvert")
-    {
-        if (payload.contains("enabled"))
-            sendOscToDaw("/whycremisi/phaseinvert", payload["enabled"].get<bool>() ? 1.0f : 0.0f);
-    }
-    else if (command == "mono")
-    {
-        sendOscToDaw("/whycremisi/mono", 1.0f);
-    }
-    else if (command == "narrow")
-    {
-        sendOscToDaw("/whycremisi/width", 0.0f);
-    }
-    else if (command == "widen")
-    {
-        sendOscToDaw("/whycremisi/width", 1.0f);
+        auto* dsp = getDspEngine();
+        if (dsp && dsp->stereo)
+        {
+            auto& st = *dsp->stereo;
+            const bool attivo = payload.contains("enabled") && payload["enabled"].is_boolean()
+                              ? payload["enabled"].get<bool>()
+                              : true;
+
+            if (command == "midSide")
+            {
+                // "M/S" nel pannello del vectorscope significa ascoltare i
+                // lati: e' la prova che dice cosa c'e' fuori dal centro.
+                st.setSideOnly (attivo);
+                if (attivo) st.setMonoSum (false);
+            }
+            else if (command == "phaseInvert")
+            {
+                st.setPhaseInvert (attivo);
+            }
+            else if (command == "mono")
+            {
+                // Interruttore, non colpo singolo: si preme per sentire il
+                // mix in mono e si ripreme per tornare indietro.
+                const bool nuovo = payload.contains("enabled") ? attivo : ! st.isMonoSum();
+                st.setMonoSum (nuovo);
+                if (nuovo) st.setSideOnly (false);
+            }
+            else if (command == "narrow")
+            {
+                st.setWidth (juce::jmax (0.0f, st.getWidth() - 0.25f));
+            }
+            else if (command == "widen")
+            {
+                st.setWidth (juce::jmin (2.0f, st.getWidth() + 0.25f));
+            }
+
+            log ("[STEREO] mono=" + juce::String (st.isMonoSum() ? 1 : 0)
+               + " lati=" + juce::String (st.isSideOnly() ? 1 : 0)
+               + " fase=" + juce::String (st.isPhaseInvert() ? 1 : 0)
+               + " ampiezza=" + juce::String (st.getWidth(), 2));
+
+            // Lo stato vero torna indietro: la UI non deve indovinare cosa
+            // e' stato applicato tenendo un suo interruttore per conto suo.
+            nlohmann::json stato;
+            stato["type"] = "dsp.stereo";
+            stato["timestamp"] = juce::Time::currentTimeMillis();
+            stato["payload"]["mono"]        = st.isMonoSum();
+            stato["payload"]["sideOnly"]    = st.isSideOnly();
+            stato["payload"]["phaseInvert"] = st.isPhaseInvert();
+            stato["payload"]["width"]       = st.getWidth();
+            wsServer->broadcast (stato);
+        }
     }
     else if (command == "targetLoudness")
     {
@@ -2730,37 +2775,83 @@ void OscBridge::setAiEngine(AiEngine* engine)
         result.toolCallId = call.id;
         result.name = call.name;
 
-        auto sendDawCmd = [&](const std::string& action, const nlohmann::json& params = {}) {
-            nlohmann::json msg;
-            msg["type"] = "daw.command";
-            msg["payload"]["command"] = action;
+        // ── Il comando dell'AI deve arrivare alla DAW ────────────────
+        //
+        //  Qui stava il difetto piu' grave dell'intero plugin. Questa
+        //  funzione faceva wsServer->broadcast(), cioe' mandava il comando
+        //  *ai client WebSocket* — la UI React. Ma la UI il tipo
+        //  "daw.command" lo invia soltanto, non lo ascolta mai: il
+        //  messaggio non arrivava a nessuno.
+        //
+        //  Il gestore vero, quello che traduce in OSC verso la DAW, e'
+        //  dispatchDawCommand(), ed e' lo stesso che serve la UI quando
+        //  l'utente preme un pulsante. Non veniva mai chiamato.
+        //
+        //  Risultato: dodici strumenti su diciassette — tutto il trasporto,
+        //  le tracce, i marker, i plugin — non facevano niente, e siccome
+        //  ognuno rispondeva "fatto", il modello ci costruiva sopra il
+        //  ragionamento successivo e riferiva azioni mai avvenute.
+        //
+        //  Restituisce false quando non c'e' modo di consegnare il comando,
+        //  cosi' l'esito puo' essere onesto invece che ottimista.
+        auto sendDawCmd = [&](const std::string& action, const nlohmann::json& params = {}) -> bool {
+            nlohmann::json payload;
+            payload["command"] = action;
             for (auto& [k, v] : params.items())
-                msg["payload"][k] = v;
-            wsServer->broadcast(msg);
+                payload[k] = v;
+
+            dispatchDawCommand (payload);
+
+            // La UI riceve comunque una copia, ma come *notifica*: serve al
+            // registro delle azioni e a tenere allineati i controlli, non a
+            // far viaggiare il comando.
+            nlohmann::json notifica;
+            notifica["type"] = "daw.command.applied";
+            notifica["timestamp"] = juce::Time::currentTimeMillis();
+            notifica["payload"] = payload;
+            wsServer->broadcast (notifica);
+
+            return true;
+        };
+
+        // Esito onesto di un comando verso la DAW.
+        //
+        //  OSC viaggia su UDP: nessuno conferma niente, quindi "e' partito"
+        //  non vuol dire "e' arrivato". Prima ogni strumento rispondeva
+        //  "Playback started" a prescindere. Ora si distingue: se la DAW ci
+        //  ha parlato di recente il comando ha davvero un destinatario; se
+        //  non l'ha mai fatto lo si dice, perche' l'AI possa avvisare invece
+        //  di dare per riuscita un'azione che potrebbe non essere avvenuta.
+        auto esitoDaw = [&](const juce::String& fatto) -> juce::String {
+            if (dawHaRisposto())
+                return fatto;
+            return fatto + " — comando inviato via OSC, ma questa DAW non ha mai risposto: "
+                           "non posso confermare che sia stato eseguito. Su Ableton serve AbletonOSC, "
+                           "su Reaper il control surface OSC.";
         };
 
         // Transport
         if (call.name == "daw.transport.play") {
             sendDawCmd("play");
             result.success = true;
-            result.output = "Playback started";
+            result.output = esitoDaw ("Riproduzione avviata").toStdString();
         }
         else if (call.name == "daw.transport.stop") {
             sendDawCmd("stop");
             result.success = true;
-            result.output = "Playback stopped";
+            result.output = esitoDaw ("Riproduzione fermata").toStdString();
         }
         else if (call.name == "daw.transport.record") {
             bool arm = call.arguments.contains("arm") && call.arguments["arm"].get<bool>();
             sendDawCmd("record", {{"arm", arm}});
             result.success = true;
-            result.output = arm ? "Recording armed" : "Recording stopped";
+            result.output = esitoDaw (arm ? "Registrazione armata" : "Registrazione fermata").toStdString();
         }
         else if (call.name == "daw.transport.setTempo") {
             float bpm = call.arguments["bpm"].get<float>();
             sendDawCmd("setTempo", {{"bpm", bpm}});
             result.success = true;
-            result.output = "Tempo set to " + std::to_string(bpm) + " BPM";
+            result.output = esitoDaw ("Tempo impostato a " + juce::String (bpm, 1) + " BPM").toStdString();
         }
         // Track controls
         else if (call.name == "daw.track.setVolume") {
@@ -2768,59 +2859,64 @@ void OscBridge::setAiEngine(AiEngine* engine)
             float vol = call.arguments["volume"].get<float>();
             sendDawCmd("setVolume", {{"track", track}, {"volume", vol}});
             result.success = true;
-            result.output = "Track " + std::to_string(track) + " volume set to " + std::to_string(vol) + "dB";
+            result.output = esitoDaw ("Volume della traccia " + juce::String (track)
+                                    + " impostato a " + juce::String (vol, 1) + " dB").toStdString();
         }
         else if (call.name == "daw.track.setPan") {
             int track = call.arguments["track"].get<int>();
             float pan = call.arguments["pan"].get<float>();
             sendDawCmd("setPan", {{"track", track}, {"pan", pan}});
             result.success = true;
-            result.output = "Track " + std::to_string(track) + " pan set to " + std::to_string(pan);
+            result.output = esitoDaw ("Pan della traccia " + juce::String (track)
+                                    + " impostato a " + juce::String (pan, 2)).toStdString();
         }
         else if (call.name == "daw.track.mute") {
             int track = call.arguments["track"].get<int>();
             bool mute = call.arguments["mute"].get<bool>();
-            sendDawCmd("mute", {{"track", track}, {"mute", mute}});
+            // "muteTrack", non "mute": il gestore conosce solo il primo nome,
+            // e con l'altro il comando cadeva comunque nel vuoto.
+            sendDawCmd("muteTrack", {{"track", track}, {"mute", mute}});
             result.success = true;
-            result.output = "Track " + std::to_string(track) + (mute ? " muted" : " unmuted");
+            result.output = esitoDaw ("Traccia " + juce::String (track)
+                                    + (mute ? " silenziata" : " riattivata")).toStdString();
         }
         else if (call.name == "daw.track.solo") {
             int track = call.arguments["track"].get<int>();
             bool solo = call.arguments["solo"].get<bool>();
-            sendDawCmd("solo", {{"track", track}, {"solo", solo}});
+            sendDawCmd("soloTrack", {{"track", track}, {"solo", solo}});
             result.success = true;
-            result.output = "Track " + std::to_string(track) + (solo ? " soloed" : " unsoloed");
+            result.output = esitoDaw ("Traccia " + juce::String (track)
+                                    + (solo ? " in solo" : " tolta dal solo")).toStdString();
         }
-        // Plugin controls
-        else if (call.name == "daw.plugin.setParam") {
-            int track = call.arguments["track"].get<int>();
-            std::string plugin = call.arguments["plugin"].get<std::string>();
-            std::string param = call.arguments["param"].get<std::string>();
-            float value = call.arguments["value"].get<float>();
-            sendDawCmd("setPluginParam", {{"track", track}, {"plugin", plugin}, {"param", param}, {"value", value}});
-            result.success = true;
-            result.output = plugin + " " + param + " set to " + std::to_string(value);
-        }
-        else if (call.name == "daw.plugin.bypass") {
-            int track = call.arguments["track"].get<int>();
-            std::string plugin = call.arguments["plugin"].get<std::string>();
-            bool bypass = call.arguments["bypass"].get<bool>();
-            sendDawCmd("bypassPlugin", {{"track", track}, {"plugin", plugin}, {"bypass", bypass}});
-            result.success = true;
-            result.output = plugin + (bypass ? " bypassed" : " enabled");
+        // ── Plugin di terze parti ────────────────────────────────────
+        //
+        //  Non e' implementato. Il controllo dei plugin esterni richiede di
+        //  ospitare i VST3 e di mapparne i parametri (Paper 03), e di quel
+        //  lavoro nel codice non c'e' ancora niente.
+        //
+        //  Prima questi due strumenti rispondevano "Pro-Q3 Band2_Gain set to
+        //  -3.5" e successo: il modello lo prendeva per vero e ci costruiva
+        //  sopra i passi successivi, riferendo all'utente modifiche mai
+        //  avvenute. Meglio un no chiaro, che il modello puo' spiegare.
+        else if (call.name == "daw.plugin.setParam" || call.name == "daw.plugin.bypass") {
+            result.success = false;
+            result.output = "Il controllo dei plugin di terze parti non e' ancora implementato: "
+                            "WhyCremisi non ospita i VST3 esterni e non ne conosce i parametri. "
+                            "Posso agire sulla catena interna (dsp.*) e sui comandi della DAW.";
         }
         // Markers
         else if (call.name == "daw.marker.goto") {
             std::string marker = call.arguments["marker"].get<std::string>();
             sendDawCmd("gotoMarker", {{"marker", marker}});
             result.success = true;
-            result.output = "Navigated to marker " + marker;
+            result.output = esitoDaw ("Spostato al marker " + juce::String (marker)).toStdString();
         }
         else if (call.name == "daw.marker.set") {
             std::string name = call.arguments.contains("name") ? call.arguments["name"].get<std::string>() : "";
             sendDawCmd("setMarker", {{"name", name}});
             result.success = true;
-            result.output = name.empty() ? "Marker set" : "Marker '" + name + "' set";
+            result.output = esitoDaw (name.empty() ? juce::String ("Marker inserito")
+                                                   : "Marker \"" + juce::String (name) + "\" inserito").toStdString();
         }
         // ── Catena DSP interna ──────────────────────────────────────
         else if (call.name == "dsp.compressor.set") {

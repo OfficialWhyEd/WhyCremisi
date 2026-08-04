@@ -28,33 +28,47 @@ export default function ClippingBox({ peak, onDawCmd, clippingCount = 0, ...rest
             <div className="absolute top-0 bottom-0 w-px bg-[#FFB000]" style={{ left: `${((clipThreshold + 60) / 72) * 100}%` }} />
           </div>
         </div>
+        {/* Il cursore muove il tetto vero del limiter, non solo la linea
+            sul grafico: prima cambiava un valore che restava dentro questo
+            componente e non toccava nulla. */}
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-[#888] font-mono uppercase">Threshold</span>
-          <input type="range" min="-18" max="0" step="0.5" value={clipThreshold}
-            onChange={(e) => setClipThreshold(parseFloat(e.target.value))}
+          <span className="text-[9px] text-[#888] font-mono uppercase">Tetto</span>
+          <input type="range" min="-18" max="0" step="0.1" value={clipThreshold}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value)
+              setClipThreshold(v)
+              onDawCmd('ceiling', { value: v })
+            }}
             className="flex-1 h-1 accent-[#FF6B35] cursor-pointer"
           />
-          <span className="text-[10px] text-white font-mono w-8 text-right">{clipThreshold.toFixed(1)} dB</span>
+          <span className="text-[10px] text-white font-mono w-12 text-right tabular-nums">{clipThreshold.toFixed(1)} dB</span>
         </div>
         <div className="flex justify-between items-center text-[9px] font-mono text-[#888]">
           <span>CLIPS: <span className="text-[#FF6B35] font-bold">{clippingCount}</span></span>
           <span className="text-[#666]">RESET ON STOP</span>
         </div>
+        {/* Prima qui c'erano SOFT CLIP e HARD CLIP: due comandi che nessun
+            gestore conosceva: si premevano, non succedeva niente. Al loro
+            posto ci sono i controlli del limiter, che esiste davvero, e i
+            due tetti che si usano per le piattaforme di streaming. */}
         <div className="flex gap-1">
-          <motion.button whileTap={{ scale: 0.95 }}
-            className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#DC143C]"
-            onClick={() => onDawCmd('softClip', { enabled: true })}>
-            SOFT CLIP
+          <motion.button whileTap={{ scale: 0.97 }}
+            className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00FFaa] hover:text-white transition-colors"
+            title="Accende il limiter della catena interna"
+            onClick={() => onDawCmd('limiter', { enabled: true })}>
+            Limiter on
           </motion.button>
-          <motion.button whileTap={{ scale: 0.95 }}
-            className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FF6B35]"
-            onClick={() => onDawCmd('hardClip', { enabled: true })}>
-            HARD CLIP
+          <motion.button whileTap={{ scale: 0.97 }}
+            className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF] hover:text-white transition-colors"
+            title="Tetto a −1 dBTP, il riferimento per lo streaming"
+            onClick={() => { setClipThreshold(-1); onDawCmd('ceiling', { value: -1 }) }}>
+            −1 dB
           </motion.button>
-          <motion.button whileTap={{ scale: 0.95 }}
-            className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#00E5FF]"
-            onClick={() => onDawCmd('ceiling', { value: -1 })}>
-            -1dB CEIL
+          <motion.button whileTap={{ scale: 0.97 }}
+            className="flex-1 py-1 text-[9px] font-bold uppercase tracking-wider border text-[#888] border-[#333] hover:border-[#FFB000] hover:text-white transition-colors"
+            title="Tetto a −0,3 dBTP, per master più spinti"
+            onClick={() => { setClipThreshold(-0.3); onDawCmd('ceiling', { value: -0.3 }) }}>
+            −0,3 dB
           </motion.button>
         </div>
       </div>
