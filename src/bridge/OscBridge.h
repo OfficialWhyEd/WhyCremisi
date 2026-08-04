@@ -256,6 +256,15 @@ private:
     DawType detectedDawType = static_cast<DawType>(0);
     std::atomic<bool> aiProcessing {false};
 
+    // Quando e' iniziata la richiesta in corso. Serve a distinguere "sta
+    // ancora lavorando" da "e' rimasto incastrato": se il flag e' alto da piu'
+    // del tempo massimo concesso a una risposta, quella richiesta e' morta e
+    // va sbloccata. Senza questo, un solo fallimento non gestito rendeva il
+    // plugin muto per il resto della sessione, rispondendo a ogni prompt
+    // "AI is already processing a request".
+    std::atomic<juce::int64> aiStartedAtMs {0};
+    static constexpr juce::int64 aiStalloMs = 120000;   // 2 minuti
+
     // AI thread (async dispatch)
     std::unique_ptr<std::thread> aiThread;
 

@@ -1,5 +1,6 @@
-import { useState, useEffect, useId } from 'react'
-import { motion } from 'framer-motion'
+import { useId } from 'react'
+import { motion, useTransform } from 'framer-motion'
+import { useAudioMouth } from './useAudioMouth'
 
 const JAW_LINE     = 258
 const JAW_MAX_OPEN = 28
@@ -9,25 +10,20 @@ const EYES = [
   { cx: 241, cy: 194, rx: 21, ry: 16 },
 ]
 
-const BASE_BLUR = 3
-const MAX_BLUR  = 9
-
 export function MaskLogo({ audioLevel = 0, className = 'w-10 h-10' }) {
   const uid = useId().replace(/:/g, 'x')
-  const [smooth, setSmooth] = useState(0)
 
-  useEffect(() => {
-    const raw = Math.min(1, Math.max(0, audioLevel))
-    setSmooth(prev =>
-      raw > prev
-        ? prev * 0.30 + raw * 0.70   // fast attack
-        : prev * 0.85 + raw * 0.15   // slow release
-    )
-  }, [audioLevel])
+  // L'apertura arriva come MotionValue: si aggiorna a ogni fotogramma senza
+  // far ridisegnare il componente. Prima ogni campione dei meter provocava un
+  // render dell'intero SVG, e sopra ci girava anche una transizione di 40 ms
+  // che ripartiva da capo ogni volta: da lì il movimento a scatti.
+  const apertura = useAudioMouth(audioLevel)
 
-  const jawOffset  = smooth > 0.03 ? smooth * JAW_MAX_OPEN : 0
-  const eyeBlur    = BASE_BLUR + smooth * (MAX_BLUR - BASE_BLUR)
-  const eyeOpacity = 0.15 + smooth * 0.50
+  const mascella  = useTransform(apertura, v => v * JAW_MAX_OPEN)
+  const occhi     = useTransform(apertura, v => 0.18 + v * 0.55)
+  // Gli occhi si allargano appena sugli accenti: lega lo sguardo al movimento
+  // della bocca invece di lasciarli due luci fisse.
+  const respiro   = useTransform(apertura, v => 1 + v * 0.12)
 
   const src = '/whycremisi-mask.png'
 
@@ -42,7 +38,7 @@ export function MaskLogo({ audioLevel = 0, className = 'w-10 h-10' }) {
             <rect x="0" y={JAW_LINE} width="400" height={400 - JAW_LINE} />
           </clipPath>
           <filter id={`eg-${uid}`} x="-80%" y="-80%" width="260%" height="260%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation={eyeBlur} result="blur" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -50,28 +46,27 @@ export function MaskLogo({ audioLevel = 0, className = 'w-10 h-10' }) {
           </filter>
         </defs>
 
-        {/* Static head */}
+        {/* Testa, ferma */}
         <image href={src} x="0" y="0" width="400" height="400" clipPath={`url(#hc-${uid})`} />
 
-        {/* Animated jaw */}
+        {/* Mascella. Il ritaglio sta sul gruppo esterno e resta fermo alla
+            linea del mento; a scorrere è l'immagine dentro. In questo modo la
+            mascella scende senza lasciare una fascia vuota sotto il viso. */}
         <g clipPath={`url(#jc-${uid})`}>
-          <motion.g
-            animate={{ y: jawOffset }}
-            transition={{ duration: 0.04, ease: 'linear' }}
-          >
+          <motion.g style={{ y: mascella }}>
             <image href={src} x="0" y="0" width="400" height="400" />
           </motion.g>
         </g>
 
-        {/* Eye glow */}
+        {/* Bagliore degli occhi */}
         {EYES.map((e, i) => (
-          <ellipse
+          <motion.ellipse
             key={i}
             cx={e.cx} cy={e.cy}
             rx={e.rx} ry={e.ry}
             fill="white"
-            opacity={eyeOpacity}
             filter={`url(#eg-${uid})`}
+            style={{ opacity: occhi, scale: respiro, originX: `${e.cx}px`, originY: `${e.cy}px` }}
           />
         ))}
       </svg>

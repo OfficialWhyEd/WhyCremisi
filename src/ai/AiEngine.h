@@ -40,6 +40,17 @@ public:
         Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq
     };
 
+    // ── Nome canonico di un provider ───────────────────────────
+    //
+    //  Un'unica coppia di funzioni per tradurre fra enum e stringa, usata da
+    //  UI, salvataggio e ripristino. Prima ogni punto del codice aveva la sua
+    //  lista scritta a mano: il salvataggio scriveva "Ollama" con la
+    //  maiuscola, il ripristino confrontava con "ollama" minuscolo, e nessun
+    //  confronto andava mai a segno. Risultato: le impostazioni sembravano
+    //  salvate ma a ogni riavvio il provider tornava a quello predefinito.
+    static juce::String providerToId (Provider p);
+    static Provider providerFromId (const juce::String& id, Provider fallback = Provider::Ollama);
+
     struct Config {
         Provider provider = Provider::Ollama;
         juce::String apiKey;
@@ -105,6 +116,11 @@ public:
     juce::StringArray getAvailableModels();
     bool testConnection();
     juce::String getLastError() const { return lastError; }
+
+    // Motivo dell'ultimo fallimento riportato dal fornitore. Serve al bridge
+    // per dire alla UI *cosa* e' andato storto invece di consegnare una
+    // risposta vuota.
+    juce::String getProviderLastError() const;
     bool isConfigured() const { return configured; }
 
     // ── Consumo ────────────────────────────────────────────────
@@ -190,7 +206,12 @@ private:
     juce::String dawName;
     ActionCallback actionCallback;
 
-    std::unique_ptr<AIProvider> currentProvider;
+    // shared_ptr e non unique_ptr: una richiesta in streaming dura anche
+    // decine di secondi e non puo' tenere occupato engineMutex per tutto quel
+    // tempo, altrimenti ogni cambio di modello o di provider fatto nel
+    // frattempo blocca l'interfaccia. Si prende una copia del puntatore sotto
+    // il lock, si rilascia, e la rete la si aspetta liberi.
+    std::shared_ptr<AIProvider> currentProvider;
     std::unique_ptr<AIProvider> createProvider(Provider type);
     void ensureProvider();
     void syncProviderConfig();

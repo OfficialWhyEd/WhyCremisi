@@ -53,6 +53,108 @@ static juce::String extractError(const juce::String& raw)
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  Apertura di uno stream con diagnosi
+// ═══════════════════════════════════════════════════════════════════
+//
+//  Prima ogni provider apriva lo stream cosi':
+//
+//      auto stream = url.withPOSTData(...).createInputStream(options);
+//      if (!stream) { onChunk("", true); return; }
+//
+//  con due difetti che rendevano il plugin muto. Il primo: il motivo del
+//  fallimento non usciva mai da qui. Il secondo, peggiore: una risposta di
+//  errore del servizio (401 chiave sbagliata, 429 quota finita, 404 modello
+//  inesistente) *non* produce uno stream nullo — produce uno stream valido
+//  che contiene il JSON dell'errore. Il ciclo di lettura cercava righe
+//  "data: ", non ne trovava, finiva senza aver letto niente e chiudeva con
+//  una risposta vuota e nessuna spiegazione.
+//
+//  Qui si legge il codice di stato prima di tutto e si traduce in una frase
+//  che l'utente possa capire e su cui possa agire.
+
+struct StreamOpenResult
+{
+    std::unique_ptr<juce::InputStream> stream;
+    int statusCode = 0;
+    juce::String error;   // vuoto se e' andata bene
+};
+
+static juce::String describeHttpFailure (int status, const juce::String& body,
+                                         const juce::String& servizio)
+{
+    const juce::String dettaglio = body.isNotEmpty() ? extractError (body) : juce::String();
+
+    juce::String testa;
+    switch (status)
+    {
+        case 401:
+        case 403:
+            testa = "Credenziali rifiutate da " + servizio
+                  + ". Controlla la chiave o rifai l'accesso.";
+            break;
+        case 404:
+            testa = "Endpoint o modello non trovato su " + servizio
+                  + ". Il modello selezionato potrebbe non esistere piu'.";
+            break;
+        case 429:
+            testa = "Troppe richieste verso " + servizio
+                  + ": quota o limite di frequenza esaurito. Riprova fra poco.";
+            break;
+        case 400:
+            testa = "Richiesta rifiutata da " + servizio + ".";
+            break;
+        default:
+            if (status >= 500)
+                testa = servizio + " ha un problema al momento (errore " + juce::String (status) + ").";
+            else
+                testa = servizio + " ha risposto con l'errore " + juce::String (status) + ".";
+            break;
+    }
+
+    return dettaglio.isNotEmpty() ? testa + " (" + dettaglio + ")" : testa;
+}
+
+static StreamOpenResult openStreamingPost (const juce::String& urlStr,
+                                           const juce::String& jsonBody,
+                                           const juce::String& headers,
+                                           int timeoutMs,
+                                           const juce::String& servizio)
+{
+    StreamOpenResult esito;
+
+    juce::URL url (urlStr);
+    auto options = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+        .withConnectionTimeoutMs (timeoutMs > 0 ? timeoutMs : 30000)
+        .withExtraHeaders (headers)
+        .withNumRedirectsToFollow (5)
+        .withStatusCode (&esito.statusCode);
+
+    esito.stream = url.withPOSTData (jsonBody).createInputStream (options);
+
+    if (esito.stream == nullptr)
+    {
+        esito.error = "Impossibile contattare " + servizio
+                    + ". Verifica la connessione"
+                    + (urlStr.contains ("localhost") || urlStr.contains ("127.0.0.1")
+                        ? juce::String (" e che il servizio locale sia acceso su ") + urlStr
+                        : juce::String ("."));
+        return esito;
+    }
+
+    if (esito.statusCode >= 400)
+    {
+        // Il corpo dell'errore e' corto: leggerlo tutto costa nulla e dice
+        // esattamente cosa non e' piaciuto al servizio.
+        auto corpo = esito.stream->readEntireStreamAsString();
+        esito.error = describeHttpFailure (esito.statusCode, corpo, servizio);
+        esito.stream.reset();
+        return esito;
+    }
+
+    return esito;
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  OpenAI Provider (also base for OpenRouter, Groq)
 // ═══════════════════════════════════════════════════════════════════
 
@@ -151,8 +253,12 @@ AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, 
 
 void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk)
 {
-    if (!onChunk || config.apiKey.isEmpty()) {
-        if (onChunk) onChunk("", true);
+    if (!onChunk) return;
+    beginRequest();
+
+    if (config.apiKey.isEmpty()) {
+        lastError = "Nessuna chiave configurata per " + getName() + ".";
+        onChunk("", true);
         return;
     }
 
@@ -169,17 +275,20 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
             body["tools"] = tools;
     }
 
-    juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n" + getExtraHeaders();
-    juce::URL url(getApiUrl());
+    juce::String authHeader = "Content-Type: application/json\r\nAuthorization: Bearer "
+                            + config.apiKey + "\r\n" + getExtraHeaders();
 
-    auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-        .withConnectionTimeoutMs(config.timeoutMs)
-        .withExtraHeaders(authHeader)
-        .withNumRedirectsToFollow(5);
+    auto apertura = openStreamingPost (getApiUrl(), body.dump(), authHeader,
+                                       config.timeoutMs, getName());
+    if (apertura.stream == nullptr) {
+        lastError = apertura.error;
+        lastStatusCode = apertura.statusCode;
+        onChunk("", true);
+        return;
+    }
+    auto stream = std::move (apertura.stream);
 
-    auto stream = url.withPOSTData(body.dump()).createInputStream(options);
-    if (!stream) { onChunk("", true); return; }
-
+    bool ricevutoQualcosa = false;
     juce::String line;
     char ch;
     while (stream->isExhausted() == false && !abortRequested.load()) {
@@ -189,7 +298,12 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
                 juce::String data = line.substring(6).trim();
                 if (data == "[DONE]") break;
                 auto j = parseJsonSafe(data);
+                if (j.contains("error")) {
+                    lastError = extractError (data);
+                    break;
+                }
                 if (j.contains("choices") && j["choices"].is_array() && !j["choices"].empty()) {
+                    ricevutoQualcosa = true;
                     auto delta = j["choices"][0]["delta"];
                     if (delta.contains("content") && !delta["content"].is_null()) {
                         juce::String content = juce::String(delta["content"].get<std::string>());
@@ -215,14 +329,38 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
         }
     }
 
-    if (!abortRequested.load())
-        onChunk("", true);
+    lastAborted = abortRequested.load();
+    if (lastAborted)
+        lastError = "Richiesta annullata.";
+    else if (!ricevutoQualcosa && lastError.isEmpty())
+        lastError = getName() + " ha chiuso la connessione senza inviare nulla.";
+
+    // Il segnale di fine va dato *sempre*, anche quando si annulla: prima
+    // l'annullamento saltava questa riga e il bridge restava convinto che una
+    // richiesta fosse ancora in corso, rifiutando tutte le successive con
+    // "AI is already processing".
+    onChunk("", true);
     abortRequested = false;
 }
 
 bool OpenAIProvider::testConnection()
 {
-    return true;
+    // Prima rispondeva true e basta: qualunque chiave, anche inventata,
+    // risultava valida e il problema saltava fuori solo al primo prompt.
+    if (config.apiKey.isEmpty()) { lastError = "Nessuna chiave inserita."; return false; }
+
+    auto url = getApiUrl().upToLastOccurrenceOf ("/", false, false);   // .../v1/chat
+    url = url.upToLastOccurrenceOf ("/", false, false) + "/models";    // .../v1/models
+
+    juce::String raw = makeHttpRequest (url, "GET", {}, 10000,
+                                        "Authorization: Bearer " + config.apiKey + "\r\n" + getExtraHeaders());
+    if (raw.isEmpty()) { lastError = "Nessuna risposta da " + getName() + "."; return false; }
+
+    auto j = parseJsonSafe (raw);
+    if (j.contains ("data") && j["data"].is_array()) return true;
+
+    lastError = extractError (raw);
+    return false;
 }
 
 juce::StringArray OpenAIProvider::getAvailableModels()
@@ -270,17 +408,20 @@ juce::StringArray OpenRouterProvider::getAvailableModels()
 
 bool OpenRouterProvider::testConnection()
 {
-    if (config.apiKey.isEmpty()) return false;
+    if (config.apiKey.isEmpty()) { lastError = "Nessuna chiave inserita."; return false; }
 
     // Interroghiamo l'elenco modelli invece di generare: e' una GET, non
     // consuma nulla e valida comunque la chiave.
     juce::String raw = makeHttpRequest ("https://openrouter.ai/api/v1/models", "GET", {},
                                         10000,
                                         "Authorization: Bearer " + config.apiKey + "\r\n" + getExtraHeaders());
-    if (raw.isEmpty()) return false;
+    if (raw.isEmpty()) { lastError = "Nessuna risposta da OpenRouter."; return false; }
 
     auto j = parseJsonSafe (raw);
-    return j.contains ("data") && j["data"].is_array();
+    if (j.contains ("data") && j["data"].is_array()) return true;
+
+    lastError = extractError (raw);
+    return false;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -558,21 +699,29 @@ AIProvider::Result AnthropicProvider::sendPrompt(const juce::String& systemPromp
 void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk)
 {
     if (!onChunk) return;
-    if (config.apiKey.isEmpty() && config.authToken.isEmpty()) { onChunk("", true); return; }
+    beginRequest();
+
+    if (config.apiKey.isEmpty() && config.authToken.isEmpty()) {
+        lastError = "Nessun accesso configurato per Claude: collega l'abbonamento o inserisci una chiave.";
+        onChunk("", true);
+        return;
+    }
 
     auto body = buildRequestBody (systemPrompt, userMessage);
     body["stream"] = true;
 
-    juce::String headers = buildHeaders();
+    auto apertura = openStreamingPost ("https://api.anthropic.com/v1/messages",
+                                       body.dump(), buildHeaders(),
+                                       config.timeoutMs, "Claude");
+    if (apertura.stream == nullptr) {
+        lastError = apertura.error;
+        lastStatusCode = apertura.statusCode;
+        onChunk("", true);
+        return;
+    }
+    auto stream = std::move (apertura.stream);
 
-    juce::URL url("https://api.anthropic.com/v1/messages");
-    auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-        .withConnectionTimeoutMs(config.timeoutMs)
-        .withExtraHeaders(headers)
-        .withNumRedirectsToFollow(5);
-    auto stream = url.withPOSTData(body.dump()).createInputStream(options);
-    if (!stream) { onChunk("", true); return; }
-
+    bool ricevutoQualcosa = false;
     juce::String line;
     char ch;
     while (!stream->isExhausted() && !abortRequested.load()) {
@@ -582,7 +731,16 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
                 auto j = parseJsonSafe(line.substring(6));
                 if (j.contains("type")) {
                     juce::String type = juce::String(j["type"].get<std::string>());
+                    // Claude puo' interrompere a meta' stream con un evento di
+                    // errore: senza questo ramo la risposta si troncava in
+                    // silenzio e sembrava che il modello non avesse finito.
+                    if (type == "error") {
+                        lastError = j.contains ("error") ? extractError (juce::String (j.dump()))
+                                                         : juce::String ("Claude ha interrotto la risposta.");
+                        break;
+                    }
                     if (type == "content_block_delta" && j.contains("delta") && j["delta"].contains("text")) {
+                        ricevutoQualcosa = true;
                         onChunk(juce::String(j["delta"]["text"].get<std::string>()), false);
                     }
                     if (type == "content_block_start" && j.contains("content_block") && j["content_block"].contains("type")) {
@@ -602,13 +760,23 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
         }
     }
 
+    lastAborted = abortRequested.load();
+    if (lastAborted)
+        lastError = "Richiesta annullata.";
+    else if (!ricevutoQualcosa && lastError.isEmpty())
+        lastError = "Claude ha chiuso la connessione senza inviare nulla.";
+
     onChunk("", true);
     abortRequested = false;
 }
 
 bool AnthropicProvider::testConnection()
 {
-    if (config.apiKey.isEmpty() && config.authToken.isEmpty()) return false;
+    if (config.apiKey.isEmpty() && config.authToken.isEmpty())
+    {
+        lastError = "Nessun accesso configurato per Claude.";
+        return false;
+    }
 
     // Ping sul modello piu' economico. max_tokens 1 basta a validare la
     // credenziale: se e' sbagliata si torna indietro con un errore di auth
@@ -620,12 +788,19 @@ bool AnthropicProvider::testConnection()
 
     juce::String raw = makeHttpRequest("https://api.anthropic.com/v1/messages", "POST",
                                         juce::String(ping.dump()), 10000, buildHeaders());
-    if (raw.isEmpty()) return false;
+    if (raw.isEmpty())
+    {
+        lastError = "Nessuna risposta da Claude: controlla la connessione.";
+        return false;
+    }
 
     auto j = parseJsonSafe(raw);
     // Una risposta valida ha type "message"; un fallimento ha type "error".
-    return j.contains("type") && j["type"].is_string()
-        && juce::String(j["type"].get<std::string>()) == "message";
+    const bool ok = j.contains("type") && j["type"].is_string()
+                 && juce::String(j["type"].get<std::string>()) == "message";
+    if (!ok)
+        lastError = extractError (raw);
+    return ok;
 }
 
 juce::StringArray AnthropicProvider::getAvailableModels()
@@ -671,6 +846,7 @@ AIProvider::Result OllamaProvider::sendPrompt(const juce::String& systemPrompt, 
 void OllamaProvider::sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk)
 {
     if (!onChunk) return;
+    beginRequest();
 
     juce::String fullPrompt = systemPrompt.isNotEmpty()
         ? systemPrompt + "\n\n" + userMessage
@@ -683,27 +859,46 @@ void OllamaProvider::sendPromptStreaming(const juce::String& systemPrompt, const
     body["options"]["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["options"]["num_predict"] = config.maxTokens;
 
-    juce::URL url(config.baseUrl + "/api/generate");
-    auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-        .withConnectionTimeoutMs(config.timeoutMs);
-    auto stream = url.withPOSTData(body.dump()).createInputStream(options);
-    if (!stream) { onChunk("", true); return; }
+    auto apertura = openStreamingPost (config.baseUrl + "/api/generate", body.dump(),
+                                       "Content-Type: application/json\r\n",
+                                       config.timeoutMs, "Ollama");
+    if (apertura.stream == nullptr) {
+        lastError = apertura.error;
+        lastStatusCode = apertura.statusCode;
+        onChunk("", true);
+        return;
+    }
+    auto stream = std::move (apertura.stream);
 
+    bool ricevutoQualcosa = false;
     juce::String line;
     char ch;
     while (!stream->isExhausted() && !abortRequested.load()) {
         if (stream->read(&ch, 1) == 0) break;
         if (ch == '\n') {
             auto j = parseJsonSafe(line);
-            if (j.contains("response"))
+            if (j.contains("error")) {
+                lastError = "Ollama: " + extractError (line);
+                break;
+            }
+            if (j.contains("response")) {
+                ricevutoQualcosa = true;
                 onChunk(juce::String(j["response"].get<std::string>()), false);
-            if (j.contains("done") && j["done"].get<bool>())
+            }
+            if (j.contains("done") && j["done"].is_boolean() && j["done"].get<bool>())
                 break;
             line.clear();
         } else {
             line += ch;
         }
     }
+
+    lastAborted = abortRequested.load();
+    if (lastAborted)
+        lastError = "Richiesta annullata.";
+    else if (!ricevutoQualcosa && lastError.isEmpty())
+        lastError = "Ollama non ha prodotto testo: il modello \"" + config.model
+                  + "\" potrebbe non essere scaricato (ollama pull " + config.model + ").";
 
     onChunk("", true);
     abortRequested = false;
@@ -712,7 +907,11 @@ void OllamaProvider::sendPromptStreaming(const juce::String& systemPrompt, const
 bool OllamaProvider::testConnection()
 {
     juce::String raw = makeHttp(config.baseUrl + "/api/tags", "GET", "", 5000);
-    return raw.contains("models");
+    if (raw.contains("models")) return true;
+
+    lastError = "Ollama non risponde su " + config.baseUrl
+              + ". Avvialo, oppure scegli un altro fornitore.";
+    return false;
 }
 
 juce::StringArray OllamaProvider::getAvailableModels()
@@ -771,7 +970,14 @@ AIProvider::Result GeminiProvider::sendPrompt(const juce::String& systemPrompt, 
 
 void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk)
 {
-    if (!onChunk || config.apiKey.isEmpty()) { if (onChunk) onChunk("", true); return; }
+    if (!onChunk) return;
+    beginRequest();
+
+    if (config.apiKey.isEmpty()) {
+        lastError = "Nessuna chiave configurata per Gemini.";
+        onChunk("", true);
+        return;
+    }
 
     juce::String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                        + config.model + ":streamGenerateContent?alt=sse&key=" + config.apiKey;
@@ -783,12 +989,18 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
     body["generationConfig"]["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["generationConfig"]["maxOutputTokens"] = config.maxTokens;
 
-    juce::URL juceUrl(url);
-    auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-        .withConnectionTimeoutMs(config.timeoutMs);
-    auto stream = juceUrl.withPOSTData(body.dump()).createInputStream(options);
-    if (!stream) { onChunk("", true); return; }
+    auto apertura = openStreamingPost (url, body.dump(),
+                                       "Content-Type: application/json\r\n",
+                                       config.timeoutMs, "Gemini");
+    if (apertura.stream == nullptr) {
+        lastError = apertura.error;
+        lastStatusCode = apertura.statusCode;
+        onChunk("", true);
+        return;
+    }
+    auto stream = std::move (apertura.stream);
 
+    bool ricevutoQualcosa = false;
     juce::String line;
     char ch;
     while (!stream->isExhausted() && !abortRequested.load()) {
@@ -796,11 +1008,16 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
         if (ch == '\n') {
             if (line.startsWith("data: ")) {
                 auto j = parseJsonSafe(line.substring(6));
+                if (j.contains ("error")) {
+                    lastError = "Gemini: " + extractError (line.substring (6));
+                    break;
+                }
                 try {
                     auto candidates = j["candidates"];
                     if (!candidates.is_null() && candidates.is_array() && !candidates.empty()) {
                         auto parts = candidates[0]["content"]["parts"];
                         if (!parts.is_null() && parts.is_array() && !parts.empty()) {
+                            ricevutoQualcosa = true;
                             onChunk(juce::String(parts[0]["text"].get<std::string>()), false);
                         }
                     }
@@ -812,16 +1029,27 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
         }
     }
 
+    lastAborted = abortRequested.load();
+    if (lastAborted)
+        lastError = "Richiesta annullata.";
+    else if (!ricevutoQualcosa && lastError.isEmpty())
+        lastError = "Gemini non ha prodotto testo: il modello \"" + config.model
+                  + "\" potrebbe non essere piu' disponibile.";
+
     onChunk("", true);
     abortRequested = false;
 }
 
 bool GeminiProvider::testConnection()
 {
-    if (config.apiKey.isEmpty()) return false;
+    if (config.apiKey.isEmpty()) { lastError = "Nessuna chiave inserita."; return false; }
     juce::String url = "https://generativelanguage.googleapis.com/v1beta/models?key=" + config.apiKey;
     juce::String raw = makeHttpRequest(url, "GET", "", 10000);
-    return raw.contains("models");
+    if (raw.contains("models")) return true;
+
+    lastError = raw.isEmpty() ? juce::String ("Nessuna risposta da Google.")
+                              : extractError (raw);
+    return false;
 }
 
 juce::StringArray GeminiProvider::getAvailableModels()

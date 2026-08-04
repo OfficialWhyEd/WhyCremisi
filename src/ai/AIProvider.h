@@ -78,9 +78,33 @@ public:
     virtual void setToolsJson(const juce::String& json) { config.toolsJson = json; }
     virtual void setContextMessages(const juce::String& json) { config.contextMessages = json; }
 
+    // ── Esito dell'ultima chiamata in streaming ────────────────────
+    //
+    //  Lo streaming consegna il testo un pezzo alla volta e non puo'
+    //  restituire un Result, quindi prima non aveva modo di dire *perche'*
+    //  era fallito: chiave sbagliata, servizio spento o quota finita
+    //  arrivavano tutti alla UI come una risposta vuota. Chi guardava
+    //  vedeva il plugin non rispondere e basta.
+    //
+    //  Ora ogni fallimento lascia qui un motivo leggibile, che il bridge
+    //  legge quando il callback segnala isDone.
+    juce::String getLastError() const { return lastError; }
+    int getLastStatusCode() const { return lastStatusCode; }
+    bool wasAborted() const { return lastAborted; }
+    void clearLastError() { lastError.clear(); lastStatusCode = 0; lastAborted = false; }
+
 protected:
     Config config;
     std::atomic<bool> abortRequested{false};
+
+    juce::String lastError;
+    int lastStatusCode = 0;
+    bool lastAborted = false;
+
+    // Da chiamare all'inizio di ogni richiesta: azzera l'esito precedente e
+    // il flag di annullamento, che altrimenti farebbe interrompere subito la
+    // richiesta successiva.
+    void beginRequest() { clearLastError(); abortRequested = false; }
 };
 
 class OpenAIProvider : public AIProvider

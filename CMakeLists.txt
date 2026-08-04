@@ -15,8 +15,10 @@ if(DEFINED ENV{JUCE_ROOT})
     set(JUCE_ROOT "$ENV{JUCE_ROOT}")
 elseif(EXISTS "/home/carlo/SDKs/JUCE")
     set(JUCE_ROOT "/home/carlo/SDKs/JUCE")  # Linux (Carlo)
+elseif(EXISTS "E:/CARTELLE/JUCE")
+    set(JUCE_ROOT "E:/CARTELLE/JUCE")  # Windows (Edo) — spostata qui dal Desktop
 elseif(EXISTS "C:/Users/Whyed/Desktop/CARTELLE/JUCE")
-    set(JUCE_ROOT "C:/Users/Whyed/Desktop/CARTELLE/JUCE")  # Windows (Edo)
+    set(JUCE_ROOT "C:/Users/Whyed/Desktop/CARTELLE/JUCE")  # Windows (Edo), posizione precedente
 elseif(EXISTS "/Users/whyed/Documents/Dev/SDKs/JUCE")
     set(JUCE_ROOT "/Users/whyed/Documents/Dev/SDKs/JUCE")  # macOS (whyed)
 elseif(EXISTS "/Users/edo/SDKs/JUCE")
@@ -196,6 +198,7 @@ if(BUILD_UNIT_TESTS)
             src/tests/TestRunner.cpp
             src/core/tests/PluginProcessorTest.cpp
             src/bridge/tests/OscBridgeTest.cpp
+            src/ai/tests/AiEngineTest.cpp
             # I test istanziano il processore vero, quindi serve tutto cio'
             # da cui dipende: il plugin non e' una libreria separata.
             src/core/PluginProcessor.cpp

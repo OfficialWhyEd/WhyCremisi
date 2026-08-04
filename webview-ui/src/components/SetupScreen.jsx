@@ -27,7 +27,7 @@ const shortModelName = (m) => m.replace(':free', '').split('/').pop()
 
 // Etichette leggibili: nella UI si sceglie "Opus 5", non "claude-opus-5".
 const modelLabels = {
-  'claude-opus-5':    { name: 'Opus 5',    note: 'Il piuù capace' },
+  'claude-opus-5':    { name: 'Opus 5',    note: 'Il più capace' },
   'claude-sonnet-5':  { name: 'Sonnet 5',  note: 'Equilibrato' },
   'claude-haiku-4-5': { name: 'Haiku 4.5', note: 'Rapido ed economico' },
 }
@@ -100,8 +100,11 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     })
     // Il motore va messo al corrente della chiave appena digitata, altrimenti
     // interrogherebbe Google senza credenziali e non riceverebbe nulla.
+    // Il campo "provider" va incluso: senza, il plugin scartava il messaggio
+    // in silenzio e restava senza chiave, quindi interrogava Google senza
+    // credenziali e l'elenco dei modelli non arrivava mai.
     whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: 'gemini' } })
-    whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: apiKey } })
+    whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: apiKey, provider: 'gemini' } })
     const attesa = setTimeout(() => {
       whycremisi.send({ type: 'config.set', payload: { key: 'ai.getModels' } })
     }, 300)
@@ -150,17 +153,27 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
         whycremisi.send({ type: 'config.set', payload: { key: 'ai.effort', value: effort } })
       // Chiave API e abbonamento sono alternativi: il plugin azzera l'uno
       // quando riceve l'altro, quindi ne mandiamo esattamente uno.
-      if (usingSubscription)
-        whycremisi.send({ type: 'config.set', payload: { key: 'ai.authToken', value: subscriptionToken } })
+      //
+      // Il token si manda solo se è stato incollato a mano. Quando il plugin
+      // ne ha già trovato uno sulla macchina, questo campo è vuoto: mandarlo
+      // lo stesso cancellava il token buono e la verifica falliva subito
+      // dopo.
+      if (usingSubscription) {
+        if (subscriptionToken)
+          whycremisi.send({ type: 'config.set', payload: { key: 'ai.authToken', value: subscriptionToken } })
+      }
       else if (apiKey)
         whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: apiKey, provider } })
     }
 
     if (whycremisi.isConnected()) {
+      // Verificare una credenziale è una chiamata di rete vera: 8 secondi
+      // scadevano prima che il fornitore rispondesse, e l'accesso risultava
+      // fallito quando invece stava andando a buon fine.
       const timeout = setTimeout(() => {
         setStatus('error')
-        setErrorMsg('Timeout — no response from plugin.')
-      }, 8000)
+        setErrorMsg('Nessuna risposta dal plugin entro 20 secondi.')
+      }, 20000)
       timeoutsRef.current.push(timeout)
 
       const unsub = whycremisi.on('config.response', (payload) => {
@@ -173,7 +186,10 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
           timeoutsRef.current.push(t)
         } else {
           setStatus('error')
-          setErrorMsg(payload.error || 'Connection failed.')
+          // Il motivo vero arriva dal plugin: chiave rifiutata, quota finita,
+          // servizio spento. Prima usciva sempre "Connection failed." e non
+          // c'era modo di capire cosa correggere.
+          setErrorMsg(payload.error || 'Verifica non riuscita, senza motivo riportato.')
         }
       })
       unsubRef.current = unsub
@@ -189,7 +205,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
           timeoutsRef.current.push(t2)
         } else {
           setStatus('error')
-          setErrorMsg('Plugin not connected. Launch Standalone and retry.')
+          setErrorMsg('Plugin non collegato. Avvia lo Standalone e riprova.')
         }
       }, 1000)
       timeoutsRef.current.push(t)

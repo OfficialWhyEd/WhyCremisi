@@ -651,7 +651,12 @@ void WhyCremisiProcessor::saveUserSettings() const
     const auto& cfg = aiEngine->getConfig();
 
     nlohmann::json j;
-    j["provider"] = getAiProvider().toStdString();
+    // Il provider va letto dal motore, non da getAiProvider(): quello legge un
+    // parametro del plugin che la UI non aggiorna mai, quindi restava fermo al
+    // suo valore iniziale ("Ollama") comunque si scegliesse. Si salvava un
+    // provider mai selezionato, insieme alla chiave di un altro fornitore, e
+    // al riavvio le richieste partivano verso un servizio spento.
+    j["provider"] = AiEngine::providerToId (cfg.provider).toStdString();
     j["model"]    = cfg.model.toStdString();
     j["effort"]   = cfg.effort.toStdString();
     j["baseUrl"]  = cfg.baseUrl.toStdString();
@@ -680,12 +685,10 @@ void WhyCremisiProcessor::loadUserSettings()
     const auto provider = leggi("provider");
 
     aiEngine->updateConfig([&](AiEngine::Config& cfg) {
-        if (provider == "anthropic")       cfg.provider = AiEngine::Provider::Anthropic;
-        else if (provider == "openai")     cfg.provider = AiEngine::Provider::OpenAI;
-        else if (provider == "gemini")     cfg.provider = AiEngine::Provider::Gemini;
-        else if (provider == "openrouter") cfg.provider = AiEngine::Provider::OpenRouter;
-        else if (provider == "groq")       cfg.provider = AiEngine::Provider::Groq;
-        else if (provider == "ollama")     cfg.provider = AiEngine::Provider::Ollama;
+        // Riconosce anche le forme scritte dalle versioni precedenti
+        // ("Ollama", "Anthropic Claude"): se non riconoscesse il nome
+        // lascerebbe il provider a quello predefinito senza dirlo a nessuno.
+        cfg.provider = AiEngine::providerFromId (provider, cfg.provider);
 
         const auto modello = leggi("model");
         if (modello.isNotEmpty()) cfg.model = modello;

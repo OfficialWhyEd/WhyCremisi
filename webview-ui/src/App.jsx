@@ -18,7 +18,11 @@ export default function App() {
     try {
       const cfg = JSON.parse(saved)
       if (!cfg.provider) return false
-      if (cfg.provider !== 'ollama' && !cfg.apiKey) return false
+      // Con l'abbonamento Claude non c'è nessuna chiave da trovare: pretenderla
+      // qui rimandava alla schermata di accesso a ogni avvio. Se manca una
+      // credenziale, la parola definitiva è del plugin (ai.status alla
+      // connessione), non di questo archivio del browser.
+      if (cfg.provider !== 'ollama' && !cfg.apiKey && cfg.claudeAuthMode !== 'subscription') return false
     } catch { return false }
     return true
   })
@@ -248,13 +252,50 @@ export default function App() {
         sysMsg(`[${ts()}] WEBSOCKET CONNECTED TO PLUGIN`)
         setBotState('success')
         setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
-        // Auto-send stored API key on connect so plugin has it
-        const cfg = (() => { try { return JSON.parse(localStorage.getItem('whycremisi_config')) } catch { return null } })()
-        if (cfg?.apiKey && cfg?.provider) {
-          whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: cfg.apiKey, provider: cfg.provider } })
+        // Chi comanda sull'accesso è il plugin, non il browser.
+        //
+        // Prima qui si riversava sul plugin la copia tenuta in localStorage a
+        // ogni connessione. Quella copia poteva essere vecchia, e siccome
+        // impostare una chiave API azzera l'abbonamento, un apiKey rimasto
+        // lì dentro cancellava in silenzio il collegamento a Claude appena
+        // fatto. Ora si chiede al plugin come sta messo, e si manda qualcosa
+        // solo se non ha già una credenziale sua.
+        const unsubStato = whycremisi.on('config.response', (payload) => {
+          if (payload?.key !== 'ai.status') return
+          unsubStato()
+
+          if (payload.ready) {
+            // Il plugin è già a posto: si allinea la UI a lui e non si
+            // richiede l'accesso. Prima la schermata di configurazione
+            // ricompariva a ogni avvio a chi entra con l'abbonamento Claude,
+            // perché il controllo pretendeva una chiave API in localStorage e
+            // con l'abbonamento la chiave non esiste.
+            setConfig(prev => ({
+              ...prev,
+              provider: payload.provider || prev?.provider,
+              model:    payload.model    || prev?.model,
+              effort:   payload.effort   || prev?.effort,
+              claudeAuthMode: payload.hasSubscription ? 'subscription' : 'apikey',
+            }))
+            setSetupComplete(true)
+            return
+          }
+
+          const cfg = (() => {
+            try { return JSON.parse(localStorage.getItem('whycremisi_config')) } catch { return null }
+          })()
+          if (!cfg?.provider) return
+
+          // Il provider per primo: sceglierlo può correggere il modello, e
+          // farlo dopo la chiave rischierebbe di lasciare accoppiati un
+          // fornitore e un modello che non gli appartiene.
           whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: cfg.provider } })
-          whycremisi.send({ type: 'config.set', payload: { key: 'ai.model', value: cfg.model || 'llama3.2' } })
-        }
+          if (cfg.model)
+            whycremisi.send({ type: 'config.set', payload: { key: 'ai.model', value: cfg.model } })
+          if (cfg.apiKey)
+            whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: cfg.apiKey, provider: cfg.provider } })
+        })
+        whycremisi.send({ type: 'config.get', payload: { key: 'ai.status' } })
       }
       if (s === ConnectionState.DISCONNECTED || s === ConnectionState.ERROR) {
         sysMsg(`[${ts()}] CONNECTION LOST — RECONNECTING...`)

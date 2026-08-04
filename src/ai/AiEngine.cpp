@@ -208,6 +208,44 @@ juce::String AiEngine::getPersonalityStyleDescription(AiPersonalityStyle style)
     return "";
 }
 
+// ── Nome canonico di un provider ───────────────────────────
+
+juce::String AiEngine::providerToId (Provider p)
+{
+    switch (p)
+    {
+        case Provider::Ollama:     return "ollama";
+        case Provider::Gemini:     return "gemini";
+        case Provider::Anthropic:  return "anthropic";
+        case Provider::OpenAI:     return "openai";
+        case Provider::OpenRouter: return "openrouter";
+        case Provider::Groq:       return "groq";
+    }
+    return "ollama";
+}
+
+AiEngine::Provider AiEngine::providerFromId (const juce::String& id, Provider fallback)
+{
+    // Confronto senza distinzione di maiuscole: sul disco possono esserci
+    // file scritti dalle versioni precedenti, che salvavano "Ollama",
+    // "Anthropic Claude" e simili. Vanno letti lo stesso invece di essere
+    // scartati in silenzio.
+    const auto s = id.trim().toLowerCase();
+    if (s.isEmpty()) return fallback;
+
+    if (s.startsWith ("ollama"))     return Provider::Ollama;
+    if (s.startsWith ("gemini")
+     || s.startsWith ("google"))     return Provider::Gemini;
+    if (s.startsWith ("anthropic")
+     || s.startsWith ("claude"))     return Provider::Anthropic;
+    if (s.startsWith ("openrouter")) return Provider::OpenRouter;   // prima di "openai"
+    if (s.startsWith ("openai")
+     || s.startsWith ("gpt"))        return Provider::OpenAI;
+    if (s.startsWith ("groq"))       return Provider::Groq;
+
+    return fallback;
+}
+
 // ── Provider Factory ───────────────────────────────────────
 
 std::unique_ptr<AIProvider> AiEngine::createProvider(Provider type)
@@ -581,38 +619,55 @@ void AiEngine::sendPromptAsyncStructured(const juce::String& prompt, StructuredC
 
 void AiEngine::sendPromptStreaming(const juce::String& prompt, StreamCallback onChunk)
 {
-    std::lock_guard<std::mutex> lock(engineMutex);
-    if (!configured || !currentProvider || !onChunk) {
-        if (onChunk) onChunk("", true);
-        return;
+    // Preparazione sotto lock, rete fuori dal lock. Prima l'intera chiamata
+    // di rete avveniva con engineMutex in mano: se il servizio non rispondeva,
+    // qualunque altra operazione sul motore (cambio modello, lettura del
+    // provider, salvataggio impostazioni) restava appesa fino al timeout, e
+    // il plugin sembrava piantato.
+    std::shared_ptr<AIProvider> provider;
+    juce::String systemPrompt;
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        if (!configured || !currentProvider || !onChunk) {
+            if (onChunk) onChunk("", true);
+            return;
+        }
+        systemPrompt = buildSystemPrompt();
+        syncProviderConfig();
+        provider = currentProvider;
     }
 
-    juce::String systemPrompt = buildSystemPrompt();
-    syncProviderConfig();
-    currentProvider->sendPromptStreaming(systemPrompt, prompt, onChunk);
+    provider->sendPromptStreaming(systemPrompt, prompt, onChunk);
 
-    // Store in context on completion
-    addConversationMessage("user", prompt);
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        addConversationMessage("user", prompt);
+    }
 }
 
 void AiEngine::sendStructuredStreaming(const juce::String& prompt, StreamCallback onChunk,
                                         std::function<void(const StructuredResponse&)> onComplete)
 {
-    std::lock_guard<std::mutex> lock(engineMutex);
-    if (!configured || !currentProvider) {
-        if (onComplete) {
-            StructuredResponse r;
-            r.text = "[AI] Not configured.";
-            onComplete(r);
+    std::shared_ptr<AIProvider> provider;
+    juce::String systemPrompt;
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        if (!configured || !currentProvider) {
+            if (onComplete) {
+                StructuredResponse r;
+                r.text = "[AI] Not configured.";
+                onComplete(r);
+            }
+            return;
         }
-        return;
+        systemPrompt = buildSystemPrompt();
+        syncProviderConfig();
+        provider = currentProvider;
     }
 
-    juce::String systemPrompt = buildSystemPrompt();
-    syncProviderConfig();
     juce::String accumulated;
 
-    currentProvider->sendPromptStreaming(systemPrompt, prompt,
+    provider->sendPromptStreaming(systemPrompt, prompt,
         [&](const juce::String& chunk, bool isDone) {
             if (!chunk.isEmpty() && !chunk.startsWith("[TOOL_CALL:"))
                 accumulated += chunk;
@@ -639,8 +694,23 @@ void AiEngine::finalizeStreamingResponse(const juce::String& prompt, const juce:
 
 void AiEngine::abortRequest()
 {
-    if (currentProvider)
-        currentProvider->abort();
+    std::shared_ptr<AIProvider> provider;
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        provider = currentProvider;
+    }
+    if (provider)
+        provider->abort();
+}
+
+juce::String AiEngine::getProviderLastError() const
+{
+    std::shared_ptr<AIProvider> provider;
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        provider = currentProvider;
+    }
+    return provider ? provider->getLastError() : juce::String();
 }
 
 // ── Sync passthrough ───────────────────────────────────────
@@ -683,10 +753,35 @@ juce::String AiEngine::getProviderName() const
 
 bool AiEngine::testConnection()
 {
-    if (!configured) return false;
-    ensureProvider();
-    if (currentProvider) return currentProvider->testConnection();
-    return false;
+    std::shared_ptr<AIProvider> provider;
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        if (!configured)
+        {
+            lastError = "Motore AI non configurato.";
+            return false;
+        }
+        ensureProvider();
+        provider = currentProvider;
+    }
+
+    if (!provider)
+    {
+        lastError = "Nessun fornitore attivo.";
+        return false;
+    }
+
+    provider->clearLastError();
+    const bool ok = provider->testConnection();
+
+    // Il motivo del fallimento va portato fuori: prima lastError restava
+    // vuoto e la schermata di accesso mostrava "Connection failed." senza
+    // dire se la chiave era sbagliata, il servizio spento o la quota finita.
+    lastError = ok ? juce::String() : provider->getLastError();
+    if (!ok && lastError.isEmpty())
+        lastError = "Connessione a " + provider->getName() + " non riuscita.";
+
+    return ok;
 }
 
 // ── Response Parser ────────────────────────────────────────

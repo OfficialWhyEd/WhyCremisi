@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValueEvent } from 'framer-motion'
+import { useAudioMouth } from './useAudioMouth'
 
 export const BotStates = {
   IDLE: 'idle', LISTENING: 'listening', THINKING: 'thinking',
@@ -25,6 +26,16 @@ const PATHS = {
   advisory:  { l: 'M 26 41 Q 35 37 44 41', r: 'M 56 38 Q 65 34 74 40', m: 'M 40 65 Q 50 65 60 65' }
 }
 
+// Bocca aperta in funzione del livello: il punto di controllo scende e le
+// labbra si allargano un poco, così l'apertura resta ovale invece di
+// diventare una fessura tirata.
+const boccaAudio = (v) => {
+  const ctrlY  = (65 + v * 21).toFixed(1)   // 65 → 86
+  const bordoY = (65 - v * 3).toFixed(1)    // 65 → 62
+  const bordoX = 38 - v * 2                 // le labbra si allargano appena
+  return `M ${bordoX.toFixed(1)} ${bordoY} Q 50 ${ctrlY} ${(100 - bordoX).toFixed(1)} ${bordoY}`
+}
+
 const PUPILS = {
   idle: { lx: 35, ly: 41, rx: 65, ry: 41 }, sad: { lx: 33, ly: 44, rx: 65, ry: 44 },
   thinking: { lx: 37, ly: 38, rx: 67, ry: 36 }, typing: { lx: 35, ly: 38, rx: 65, ry: 38 },
@@ -39,16 +50,38 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16', personality =
   const [glitchActive, setGlitchActive] = useState(false)
   const [burstActive, setBurstActive] = useState(false)
   const [pupilOffset, setPupilOffset] = useState({ x: 0, y: 0 })
-  const [smoothAudio, setSmoothAudio] = useState(0)
 
-  // Smooth audio level for natural mouth movement
-  useEffect(() => {
-    setSmoothAudio(prev => prev * 0.55 + Math.min(1, Math.max(0, audioLevel)) * 0.45)
-  }, [audioLevel])
+  // Apertura della bocca, calcolata a fotogramma fisso fuori da React. Prima
+  // stava in uno stato aggiornato dentro un useEffect legato al livello: se il
+  // livello smetteva di arrivare l'aggiornamento non ripartiva e la bocca
+  // restava bloccata a metà apertura.
+  const apertura = useAudioMouth(audioLevel)
+  const boccaRef = useRef(null)
+  const pathsRef = useRef(PATHS.idle.m)
+
+  // Suona / non suona. È l'unica cosa che deve far ridisegnare il componente:
+  // il resto del movimento passa dagli attributi, senza re-render. La soglia
+  // di rientro è più bassa di quella di uscita, altrimenti sul confine il
+  // componente sfarfallerebbe fra i due modi.
+  const [suona, setSuona] = useState(false)
+
+  useMotionValueEvent(apertura, 'change', (v) => {
+    // Finché l'apertura non è esattamente zero il tracciato lo scrive questo
+    // ciclo. All'ultimo fotogramma si riporta la bocca sulla forma dello
+    // stato: senza questo passaggio, al cessare della musica il tracciato
+    // resterebbe fermo sull'ultimo valore e riprenderebbe con uno scatto.
+    if (boccaRef.current)
+      boccaRef.current.setAttribute('d', v > 0 ? boccaAudio(v) : pathsRef.current)
+
+    setSuona(precedente => (precedente ? v > 0.02 : v > 0.06))
+  })
 
   const color = STATE_COLORS[state] || STATE_COLORS.idle
   const paths = PATHS[state] || PATHS.idle
   const pupils = PUPILS[state] || PUPILS.idle
+  // La bocca a riposo dello stato corrente, leggibile dal ciclo di
+  // animazione senza dipendere da quando React ha ridisegnato.
+  pathsRef.current = paths.m
 
   useEffect(() => {
     if (prevState.current === state) return
@@ -72,27 +105,21 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16', personality =
     return () => clearInterval(id)
   }, [state])
 
-  // Audio-reactive mouth: control point Y opens downward proportional to level
-  // Closed: Q 50 65  →  Wide open: Q 50 86
-  // Upper lip rises slightly when open for oval shape
-  const audioMouthOpen = smoothAudio > 0.04
-  const ctrlY = 65 + smoothAudio * 21        // 65 → 86
-  const startY = 65 - smoothAudio * 3        // 65 → 62 (lips spread)
-  const audioMouthPath = `M 38 ${startY.toFixed(1)} Q 50 ${ctrlY.toFixed(1)} 62 ${startY.toFixed(1)}`
-
-  const mouthAnimate = audioMouthOpen
-    ? audioMouthPath
+  // Quando c'è musica il tracciato della bocca lo scrive direttamente il
+  // ciclo di animazione (vedi boccaAudio più sotto): niente animate di
+  // framer-motion, che qui ripartiva da capo a ogni campione e produceva il
+  // movimento a scatti invece di un labiale.
+  const mouthAnimate = suona
+    ? undefined
     : state === 'typing'
       ? [paths.m, 'M 40 64 Q 50 70 60 64', paths.m]
       : state === 'listening' ? [paths.m, 'M 34 65 Q 50 65 66 65', paths.m]
       : state === 'loading'   ? [paths.m, 'M 41 66 Q 50 66 59 66', paths.m]
       : paths.m
 
-  const mouthTrans = audioMouthOpen
-    ? { duration: 0.06, ease: 'linear' }
-    : (state === 'typing' || state === 'listening' || state === 'loading')
-      ? { repeat: Infinity, duration: 0.55, ease: 'easeInOut' }
-      : { duration: 0.5, type: 'spring', bounce: 0.45 }
+  const mouthTrans = (state === 'typing' || state === 'listening' || state === 'loading')
+    ? { repeat: Infinity, duration: 0.55, ease: 'easeInOut' }
+    : { duration: 0.5, type: 'spring', bounce: 0.45 }
 
   const eyeL = state === 'idle' ? [paths.l, paths.l, 'M 26 44 Q 35 44 44 44', paths.l] : paths.l
   const eyeR = state === 'idle' ? [paths.r, paths.r, 'M 56 44 Q 65 44 74 44', paths.r] : paths.r
@@ -174,7 +201,12 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16', personality =
         <motion.g stroke="currentColor" strokeWidth="4.2" strokeLinecap="round" fill="none">
           <motion.path d={paths.l} animate={{ d: eyeL }} transition={eyeTrans} />
           <motion.path d={paths.r} animate={{ d: eyeR }} transition={eyeTrans} />
-          <motion.path d={paths.m} animate={{ d: mouthAnimate }} transition={mouthTrans} />
+          <motion.path
+            ref={boccaRef}
+            d={paths.m}
+            animate={mouthAnimate ? { d: mouthAnimate } : undefined}
+            transition={mouthTrans}
+          />
         </motion.g>
 
         <motion.circle r="2.8" fill="currentColor"
@@ -193,17 +225,21 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16', personality =
           />
         ))}
 
-        {/* Audio-reactive sound waves around head */}
-        {smoothAudio > 0.04 && [1,2,3].map(i => (
+        {/* Onde attorno alla testa quando c'è musica. Prima l'intensità
+            veniva ricalcolata a ogni campione dei meter e faceva ripartire
+            l'animazione da capo, così le onde restavano bloccate al primo
+            fotogramma. Ora l'animazione gira per conto suo e il livello
+            decide solo se mostrarle. */}
+        {suona && [1,2,3].map(i => (
           <motion.circle key={`wave-${i}`}
             cx="50" cy="50"
-            r={46 + i * 8}
             fill="none"
             stroke="currentColor"
-            strokeWidth={Math.max(0.3, smoothAudio * 1.8 / i)}
-            strokeOpacity={Math.max(0, smoothAudio * 0.5 / i)}
-            animate={{ r: [46 + i*8, 52 + i*10, 46 + i*8], strokeOpacity: [smoothAudio*0.5/i, 0, 0] }}
-            transition={{ duration: 0.5, ease: 'easeOut', repeat: Infinity, repeatDelay: 0.1 * i }}
+            strokeWidth={Math.max(0.35, 1.4 / i)}
+            initial={{ opacity: 0 }}
+            animate={{ r: [46 + i*8, 54 + i*10], opacity: [0.45 / i, 0] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.1, ease: 'easeOut', repeat: Infinity, delay: 0.18 * i }}
           />
         ))}
 

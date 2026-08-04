@@ -1549,18 +1549,34 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
 
     if (aiProcessing.load())
     {
-        // Already processing — queue not supported, reject gracefully
-        nlohmann::json busy;
-        busy["type"] = "ai.response";
-        busy["id"] = activeReqId.toStdString();
-        busy["timestamp"] = juce::Time::currentTimeMillis();
-        busy["payload"]["status"] = "error";
-        busy["payload"]["content"] = "AI is already processing a request. Please wait.";
-        wsServer->broadcast(busy);
-        return;
+        // Una richiesta risulta ancora in corso. Prima bastava questo per
+        // rifiutare, e se la precedente moriva senza rilasciare il flag il
+        // plugin restava muto per il resto della sessione. Ora si guarda da
+        // quanto dura: oltre il limite la si considera persa e si riparte.
+        const auto da = juce::Time::currentTimeMillis() - aiStartedAtMs.load();
+
+        if (da < aiStalloMs)
+        {
+            nlohmann::json busy;
+            busy["type"] = "ai.response";
+            busy["id"] = activeReqId.toStdString();
+            busy["timestamp"] = juce::Time::currentTimeMillis();
+            busy["payload"]["status"] = "error";
+            busy["payload"]["content"] = (juce::String ("Una richiesta e' gia' in corso da ")
+                                       + juce::String (da / 1000)
+                                       + "s. Attendi la risposta oppure premi Annulla.").toStdString();
+            wsServer->broadcast(busy);
+            return;
+        }
+
+        log("[AI] La richiesta precedente e' ferma da " + juce::String(da / 1000)
+            + "s: la abbandono e proseguo");
+        aiEngine->abortRequest();
+        aiProcessing.store(false);
     }
 
     aiProcessing.store(true);
+    aiStartedAtMs.store(juce::Time::currentTimeMillis());
 
     // Join the previous finished thread if it exists to avoid leaking handles
     if (aiThread && aiThread->joinable())
@@ -1576,6 +1592,17 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
 
     aiThread = std::make_unique<std::thread>([this, capturedPrompt, capturedReqId, startMs, useStreaming]()
     {
+      // Rete di sicurezza: qualunque cosa succeda qui dentro — eccezione,
+      // ritorno anticipato, callback che non arriva — il flag deve tornare
+      // basso, altrimenti il prossimo prompt trova la porta chiusa.
+      struct RilasciaAllaFine
+      {
+          std::atomic<bool>& flag;
+          ~RilasciaAllaFine() { flag.store(false); }
+      } rilascia { aiProcessing };
+
+      try
+      {
         if (useStreaming)
         {
             // Streaming path — send chunks as they arrive
@@ -1598,6 +1625,20 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
                         // Parse accumulated streaming text — no second API call
                         auto structured = aiEngine->parseStructuredResponse(accumulated);
                         bool success = structured.success || !accumulated.isEmpty();
+
+                        // Se non e' arrivato niente, il motivo lo sa il
+                        // fornitore. Prima finiva qui: la UI riceveva
+                        // status "error" con contenuto vuoto e mostrava una
+                        // risposta bianca, senza dire che la chiave era
+                        // sbagliata o il servizio spento.
+                        const juce::String motivo = aiEngine->getProviderLastError();
+                        if (!success)
+                        {
+                            structured.text = motivo.isNotEmpty()
+                                ? motivo
+                                : juce::String ("Nessuna risposta dal fornitore, e nessun motivo riportato.");
+                        }
+
                         aiEngine->finalizeStreamingResponse(capturedPrompt, structured.text);
 
                         if (sessionManager)
@@ -1608,6 +1649,16 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
                              {"duration_ms", durationMs},
                              {"success", success}});
 
+                        // Anche il percorso in streaming lascia una traccia:
+                        // prima scriveva nel log solo quello non-streaming, e
+                        // siccome lo streaming e' il predefinito, ogni
+                        // diagnosi partiva da un log che si fermava a
+                        // "Prompt received".
+                        log(juce::String("[AI] ") + (success ? "Risposta" : "FALLITA")
+                            + " in " + juce::String(durationMs) + "ms"
+                            + (success ? juce::String(": ") + structured.text.substring(0, 60)
+                                       : juce::String(" — ") + structured.text.substring(0, 160)));
+
                         nlohmann::json response;
                         response["type"] = "ai.response";
                         response["id"] = capturedReqId.toStdString();
@@ -1617,6 +1668,8 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
                         response["payload"]["model"]    = aiEngine->getModelName().toStdString();
                         response["payload"]["content"]  = structured.text.toStdString();
                         response["payload"]["durationMs"] = durationMs;
+                        if (!success)
+                            response["payload"]["error"] = structured.text.toStdString();
 
                         nlohmann::json actionsArray = nlohmann::json::array();
                         for (const auto& a : structured.actions)
@@ -1704,6 +1757,36 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
 
         wsServer->broadcast(response);
         } // end non-streaming else
+      }
+      catch (const std::exception& e)
+      {
+          // Un'eccezione qui dentro faceva terminare il thread in silenzio:
+          // la UI restava a "sta pensando" per sempre e il flag non tornava
+          // mai basso. Ora si dice cos'e' successo e si sblocca.
+          const juce::String motivo (e.what());
+          log("[AI] Eccezione durante la richiesta: " + motivo);
+
+          nlohmann::json err;
+          err["type"] = "ai.response";
+          err["id"] = capturedReqId.toStdString();
+          err["timestamp"] = juce::Time::currentTimeMillis();
+          err["payload"]["status"] = "error";
+          err["payload"]["content"] = ("Errore interno durante la richiesta: " + motivo).toStdString();
+          err["payload"]["error"] = motivo.toStdString();
+          if (wsServer) wsServer->broadcast(err);
+      }
+      catch (...)
+      {
+          log("[AI] Errore sconosciuto durante la richiesta");
+
+          nlohmann::json err;
+          err["type"] = "ai.response";
+          err["id"] = capturedReqId.toStdString();
+          err["timestamp"] = juce::Time::currentTimeMillis();
+          err["payload"]["status"] = "error";
+          err["payload"]["content"] = "Errore interno durante la richiesta.";
+          if (wsServer) wsServer->broadcast(err);
+      }
     }); // end lambda
 }
 
@@ -1797,7 +1880,15 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
 
         if (configKey == "ai.provider")
         {
-            rp["value"] = aiEngine ? aiEngine->getProviderName().toStdString() : "none";
+            // Il nome canonico ("anthropic"), non quello da mostrare
+            // ("Anthropic Claude"): la UI confronta questo valore con gli id
+            // dei suoi pulsanti, e con il nome esteso nessuno corrispondeva,
+            // quindi all'apertura la scelta salvata non risultava mai
+            // selezionata.
+            rp["value"] = aiEngine
+                ? AiEngine::providerToId (aiEngine->getConfig().provider).toStdString()
+                : std::string ("none");
+            rp["label"] = aiEngine ? aiEngine->getProviderName().toStdString() : "none";
         }
         else if (configKey == "ai.model")
         {
@@ -1811,6 +1902,38 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                 modelArray.push_back(model.toStdString());
             rp["models"] = modelArray;
             rp["provider"] = aiEngine ? aiEngine->getProviderName().toStdString() : "none";
+        }
+        else if (configKey == "ai.status")
+        {
+            // Quadro completo dell'accesso, in un colpo solo.
+            //
+            // Serve perche' il plugin e' l'unico a sapere davvero come sta
+            // messo: le credenziali le tiene lui su disco. Prima la UI
+            // ripeteva al plugin quello che aveva nel proprio archivio locale
+            // del browser, e quella copia poteva essere vecchia: bastava un
+            // vecchio apiKey rimasto li' per cancellare, alla riconnessione,
+            // l'abbonamento Claude appena collegato.
+            if (aiEngine)
+            {
+                const auto& cfg = aiEngine->getConfig();
+                const bool haChiave  = cfg.apiKey.isNotEmpty();
+                const bool haAbbon   = cfg.authToken.isNotEmpty();
+                const bool inLocale  = cfg.provider == AiEngine::Provider::Ollama;
+
+                rp["provider"]        = AiEngine::providerToId (cfg.provider).toStdString();
+                rp["label"]           = aiEngine->getProviderName().toStdString();
+                rp["model"]           = cfg.model.toStdString();
+                rp["effort"]          = cfg.effort.toStdString();
+                rp["hasKey"]          = haChiave;
+                rp["hasSubscription"] = haAbbon;
+                // "pronto" significa: c'e' una credenziale utilizzabile,
+                // oppure il fornitore non ne richiede nessuna.
+                rp["ready"]           = inLocale || haChiave || haAbbon;
+            }
+            else
+            {
+                rp["ready"] = false;
+            }
         }
         else
         {
@@ -1837,34 +1960,45 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
             // modello e tutto il resto impostato prima.
             aiEngine->updateConfig([&provider](AiEngine::Config& cfg)
             {
-                if (provider == "ollama")
+                cfg.provider = AiEngine::providerFromId (juce::String (provider), cfg.provider);
+
+                // Ogni fornitore ha bisogno di un modello che gli appartenga:
+                // tenere quello del fornitore precedente produce un 404 al
+                // primo prompt, con l'utente convinto di aver scelto bene.
+                switch (cfg.provider)
                 {
-                    cfg.provider = AiEngine::Provider::Ollama;
-                    if (cfg.baseUrl.isEmpty()) cfg.baseUrl = "http://localhost:11434";
-                    if (cfg.model.isEmpty())   cfg.model = "llama3.2";
+                    case AiEngine::Provider::Ollama:
+                        if (cfg.baseUrl.isEmpty()) cfg.baseUrl = "http://localhost:11434";
+                        if (cfg.model.isEmpty())   cfg.model = "llama3.2";
+                        break;
+
+                    case AiEngine::Provider::Anthropic:
+                        if (cfg.model.isEmpty() || ! cfg.model.startsWith ("claude-"))
+                            cfg.model = AnthropicProvider::defaultModel();
+                        break;
+
+                    case AiEngine::Provider::OpenRouter:
+                        // Solo modelli gratuiti: chi arriva qui non deve
+                        // ritrovarsi a pagare senza averlo chiesto.
+                        if (cfg.model.isEmpty() || ! OpenRouterProvider::isFreeModel (cfg.model))
+                            cfg.model = OpenRouterProvider::freeModels()[0];
+                        break;
+
+                    case AiEngine::Provider::Gemini:
+                        if (cfg.model.isEmpty() || ! cfg.model.startsWith ("gemini"))
+                            cfg.model = "gemini-2.0-flash";
+                        break;
+
+                    case AiEngine::Provider::OpenAI:
+                        if (cfg.model.isEmpty() || ! cfg.model.startsWith ("gpt"))
+                            cfg.model = "gpt-4o";
+                        break;
+
+                    case AiEngine::Provider::Groq:
+                        if (cfg.model.isEmpty())
+                            cfg.model = "llama-3.3-70b-versatile";
+                        break;
                 }
-                else if (provider == "gemini")
-                    cfg.provider = AiEngine::Provider::Gemini;
-                else if (provider == "anthropic")
-                {
-                    cfg.provider = AiEngine::Provider::Anthropic;
-                    // Senza un modello valido la prima richiesta fallirebbe:
-                    // se non ne e' stato scelto uno, si parte da Opus 5.
-                    if (cfg.model.isEmpty() || ! cfg.model.startsWith ("claude-"))
-                        cfg.model = AnthropicProvider::defaultModel();
-                }
-                else if (provider == "openai")
-                    cfg.provider = AiEngine::Provider::OpenAI;
-                else if (provider == "openrouter")
-                {
-                    cfg.provider = AiEngine::Provider::OpenRouter;
-                    // Solo modelli gratuiti: chi arriva qui non deve
-                    // ritrovarsi a pagare senza averlo chiesto.
-                    if (cfg.model.isEmpty() || ! OpenRouterProvider::isFreeModel (cfg.model))
-                        cfg.model = OpenRouterProvider::freeModels()[0];
-                }
-                else if (provider == "groq")
-                    cfg.provider = AiEngine::Provider::Groq;
             });
         }
         
@@ -1894,11 +2028,16 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         rp["status"] = "ok";
         sendConfigResponse(rp);
     }
-    else if (configKey == "ai.apiKey" && payload.contains("provider"))
+    else if (configKey == "ai.apiKey")
     {
+        // Il campo "provider" e' facoltativo. Prima era obbligatorio, e ogni
+        // messaggio che non lo portava cadeva nel nulla: la chiave sembrava
+        // accettata dalla UI ma il motore non la riceveva mai.
         if (!payload.contains("value") || !payload["value"].is_string()) return;
-        if (!payload["provider"].is_string()) return;
-        std::string provider = payload["provider"].get<std::string>();
+        std::string provider = (payload.contains("provider") && payload["provider"].is_string())
+                             ? payload["provider"].get<std::string>()
+                             : AiEngine::providerToId (aiEngine ? aiEngine->getConfig().provider
+                                                                : AiEngine::Provider::Ollama).toStdString();
         std::string apiKey = payload["value"].get<std::string>();
         log("[CONFIG] API key set for: " + juce::String(provider.data()));
         
@@ -1929,6 +2068,27 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         // mai indietro.
         if (!payload.contains("value") || !payload["value"].is_string()) return;
         std::string token = payload["value"].get<std::string>();
+
+        // Un valore vuoto non cancella niente, a meno che non lo si chieda
+        // apposta. Bastava un messaggio con il campo vuoto — e la UI ne
+        // mandava uno a ogni conferma quando l'abbonamento era gia' stato
+        // rilevato sulla macchina — per buttare via il token appena
+        // collegato, e la verifica subito dopo diceva "credenziali
+        // rifiutate" senza che nessuno avesse toccato l'accesso.
+        const bool cancella = payload.contains("clear") && payload["clear"].is_boolean()
+                           && payload["clear"].get<bool>();
+
+        if (token.empty() && !cancella)
+        {
+            log("[CONFIG] Token abbonamento: messaggio vuoto ignorato, quello esistente resta");
+            nlohmann::json rp;
+            rp["key"] = "ai.authToken";
+            rp["status"] = "ok";
+            rp["connected"] = aiEngine && aiEngine->getConfig().authToken.isNotEmpty();
+            sendConfigResponse(rp);
+            return;
+        }
+
         log("[CONFIG] Claude subscription token " + juce::String(token.empty() ? "cleared" : "set"));
 
         if (aiEngine)
