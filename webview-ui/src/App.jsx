@@ -152,6 +152,17 @@ export default function App() {
   // Nuvola di punti stereo del vectorscope, interleaved x,y.
   const [scopePoints, setScopePoints] = useState([])
   const [gainReduction, setGainReduction] = useState(0)
+  // Misure di mix: le calcola l'analizzatore sul suono che sta passando.
+  // Prima non arrivavano fin qui e il cruscotto se le inventava.
+  const [loudnessRange, setLoudnessRange] = useState(0)
+  const [centroid, setCentroid] = useState(0)
+  const [rolloff, setRolloff] = useState(0)
+  // Energia percentuale delle dieci bande, dai bassi agli acuti.
+  const [bandEnergy, setBandEnergy] = useState([])
+  // C'è davvero segnale? Sotto questa soglia le misure non hanno senso e
+  // vanno mostrate come non disponibili invece che come zero — e soprattutto
+  // non si deve dare alcun consiglio di mix sul silenzio.
+  const sonoro = rms > -55
   const [cpuUsage, setCpuUsage] = useState({ cpuPercent: 0, peakTimeUs: 0 })
   // Token spesi dall'inizio della sessione, aggiornati a ogni risposta.
   const [tokenUsage, setTokenUsage] = useState({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0, total: 0 })
@@ -453,6 +464,13 @@ export default function App() {
       if (payload.loudnessIntegrated !== undefined) setLufs(payload.loudnessIntegrated)
       if (payload.scope) setScopePoints(payload.scope)
       if (payload.gainReduction !== undefined) setGainReduction(payload.gainReduction)
+      // Misure di mix vere, al posto delle formule inventate che stavano
+      // nel cruscotto: gamma di loudness, baricentro dello spettro, rolloff
+      // e l'energia percentuale delle dieci bande.
+      if (payload.loudnessRange !== undefined) setLoudnessRange(payload.loudnessRange)
+      if (payload.spectralCentroid !== undefined) setCentroid(payload.spectralCentroid)
+      if (payload.spectralRolloff !== undefined) setRolloff(payload.spectralRolloff)
+      if (payload.bandEnergyPercent) setBandEnergy(payload.bandEnergyPercent)
     })
 
     // CPU usage
@@ -788,57 +806,133 @@ export default function App() {
       return types
     }
 
-  // ── Dynamic suggestion engine from analyzer data + personality ──
+  // ── Suggerimento di correzione, da misure vere ────────────────────
+  //
+  //  Com'era prima, e perché non andava bene su uno strumento per mixare:
+  //
+  //  - senza audio restituiva comunque un consiglio preciso — taglia
+  //    2,4 dB fra 200 e 400 Hz — dichiarando il 98% di confidenza. A
+  //    plugin appena aperto, in silenzio, diceva già cosa correggere.
+  //  - i "transienti %" li ricavava dalla correlazione, che misura la
+  //    fase fra i canali e non dice nulla sui transienti.
+  //  - quanti dB tagliare dipendeva dallo stile della personalità del
+  //    chatbot: "diretto" consigliava 1,4 volte il taglio di
+  //    "consultivo" sullo stesso identico audio.
+  //  - la confidenza era l'ampiezza media moltiplicata per 1,5.
+  //
+  //  Ora: se non c'è segnale non c'è consiglio, le bande sono quelle
+  //  misurate davvero, la cresta sostituisce i finti transienti (è la
+  //  misura che indica quanto sono vivi), e la personalità cambia il
+  //  modo di dirlo, non il numero di dB.
   const currentSuggestion = useMemo(() => {
-    const hasData = spectrum.length > 0 && correlation !== 0
-    if (!hasData) return {
-      freqLow: 200, freqHigh: 400, gainDb: -2.4,
-      label: '200Hz–400Hz', description: 'harmonic crowding',
-      transientPres: 84, confidence: 0.98
+    if (!sonoro || bandEnergy.length < 10) return null
+
+    const b = bandEnergy
+    const somma = (...idx) => idx.reduce((t, i) => t + (b[i] || 0), 0)
+
+    // Ripartizione di riferimento per un mix equilibrato, sulle stesse
+    // dieci bande logaritmiche che misura l'analizzatore.
+    const zone = [
+      { label: '20Hz–40Hz',    freqLow: 20,   freqHigh: 40,    misurato: somma(0),    atteso: 4,  nome: 'accumulo di sub' },
+      { label: '40Hz–160Hz',   freqLow: 40,   freqHigh: 160,   misurato: somma(1, 2), atteso: 26, nome: 'bassi in eccesso' },
+      { label: '160Hz–630Hz',  freqLow: 160,  freqHigh: 630,   misurato: somma(3, 4), atteso: 30, nome: 'medio-bassi affollati' },
+      { label: '630Hz–2.5kHz', freqLow: 630,  freqHigh: 2500,  misurato: somma(5, 6), atteso: 24, nome: 'medi in avanti' },
+      { label: '2.5kHz–5kHz',  freqLow: 2500, freqHigh: 5000,  misurato: somma(7),    atteso: 9,  nome: 'presenza aggressiva' },
+      { label: '5kHz–20kHz',   freqLow: 5000, freqHigh: 20000, misurato: somma(8, 9), atteso: 7,  nome: 'alti in eccesso' },
+    ]
+
+    // La zona che si scosta di più dal riferimento, in proporzione.
+    let peggiore = null
+    for (const z of zone) {
+      const scarto = (z.misurato - z.atteso) / z.atteso
+      if (scarto > 0.35 && (!peggiore || scarto > peggiore.scarto))
+        peggiore = { ...z, scarto }
     }
 
-    const avgMag = spectrum.reduce((a, b) => a + b, 0) / spectrum.length
-    const lowEnd = spectrum.slice(0, Math.floor(spectrum.length * 0.1)).reduce((a, b) => a + b, 0) / Math.max(1, Math.floor(spectrum.length * 0.1))
-    const lowMid = spectrum.slice(Math.floor(spectrum.length * 0.1), Math.floor(spectrum.length * 0.25)).reduce((a, b) => a + b, 0) / Math.max(1, Math.floor(spectrum.length * 0.15))
-    const highEnd = spectrum.slice(Math.floor(spectrum.length * 0.7)).reduce((a, b) => a + b, 0) / Math.max(1, spectrum.length - Math.floor(spectrum.length * 0.7))
-    const corrVal = Math.abs(correlation)
+    // Niente si scosta abbastanza: meglio non dire niente che inventare
+    // un intervento su un mix che sta già a posto.
+    if (!peggiore) return null
 
-    const personalityFactor = personality?.style === 'direct' ? 1.4 :
-      personality?.style === 'consultative' ? 0.6 :
-      personality?.style === 'analytical' ? 1.0 :
-      personality?.style === 'creative' ? 1.2 : 1.0
+    // Il taglio segue lo scarto misurato, con un tetto: nessun consiglio
+    // automatico dovrebbe proporre più di 4 dB su una banda larga.
+    const gainDb = -Math.min(4, Math.round(peggiore.scarto * 4 * 10) / 10)
 
-    let freqLow = 150, freqHigh = 350, gainDb = -2.0, transientPres = 80
-    let label = '150Hz–350Hz', description = 'low-mid energy'
+    // La confidenza dice quanto è netto lo scostamento, non quanto è
+    // forte il segnale.
+    const confidence = Math.min(0.95, 0.4 + peggiore.scarto * 0.5)
 
-    if (lowEnd > avgMag * 1.3 && corrVal < 0.6) {
-      freqLow = 60; freqHigh = 120; gainDb = -(2.5 + (lowEnd - avgMag) * personalityFactor)
-      label = '60Hz–120Hz'; description = 'sub-bass buildup'
-    } else if (lowMid > avgMag * 1.2 && corrVal < 0.7) {
-      freqLow = 180; freqHigh = 400; gainDb = -(2.0 + (lowMid - avgMag) * personalityFactor)
-      label = '180Hz–400Hz'; description = 'low-mid crowding'
-    } else if (highEnd > avgMag * 1.15) {
-      freqLow = 5000; freqHigh = 12000; gainDb = -(1.5 + (highEnd - avgMag) * personalityFactor * 0.5)
-      label = '5kHz–12kHz'; description = 'high-frequency buildup'
+    let description = peggiore.nome
+    if (correlation < 0) description += ', e la fase collassa in mono'
+    else if (correlation < 0.3) description += ', con correlazione bassa'
+
+    return {
+      freqLow: peggiore.freqLow,
+      freqHigh: peggiore.freqHigh,
+      gainDb,
+      label: peggiore.label,
+      description,
+      // Fattore di cresta: true peak meno RMS. È questa la misura che dice
+      // quanto sono vivi i transienti, non la correlazione.
+      crestDb: (peak > -60 && rms > -60) ? Math.round((peak - rms) * 10) / 10 : null,
+      confidence: Math.round(confidence * 1000) / 1000,
     }
-
-    if (corrVal < 0.3) {
-      transientPres = Math.round(75 + (1 - corrVal) * 20)
-      description += ', phase issues detected'
-    } else if (corrVal < 0.6) {
-      transientPres = Math.round(80 + (1 - corrVal) * 10)
-      description += ', moderate correlation'
-    } else {
-      transientPres = Math.round(85 + corrVal * 5)
-    }
-
-    const confidence = Math.min(0.99, Math.max(0.3, avgMag * 1.5 + corrVal * 0.3))
-
-    return { freqLow, freqHigh, gainDb: Math.round(gainDb * 10) / 10, label, description, transientPres, confidence: Math.round(confidence * 1000) / 1000 }
-  }, [spectrum, correlation, personality?.style])
+  }, [bandEnergy, correlation, peak, rms, sonoro])
 
   // ── gain slider pct ───────────────────────────────────────────────
   const gainPct = Math.max(0, Math.min(100, ((gainDb + 60) / 72) * 100))
+
+  // ── misure derivate, tutte da dati veri ───────────────────────────
+  //
+  //  Il cruscotto si scriveva da solo i numeri partendo dal livello dei
+  //  meter: correlazione "0,62 più un po' di livello", energia in banda
+  //  bassa "livello per 0,4 più 0,3", true peak "picco più 0,3". Erano
+  //  valori plausibili a vedersi e senza alcun rapporto con il suono. Su
+  //  uno strumento per mixare è peggio di un pannello vuoto: porta a
+  //  decisioni sbagliate con la fiducia di chi ha letto una misura.
+  //
+  //  Quello che segue viene tutto dall'analizzatore del plugin.
+
+  // Larghezza stereo dalla nuvola di punti del vectorscope, che arriva già
+  // ruotata: x = side, y = mid. È il rapporto fra le due energie, cioè
+  // quanto del segnale sta fuori dal centro.
+  const stereoWidth = useMemo(() => {
+    if (!scopePoints || scopePoints.length < 4) return 0
+    let side = 0, mid = 0
+    for (let i = 0; i + 1 < scopePoints.length; i += 2) {
+      side += scopePoints[i] * scopePoints[i]
+      mid  += scopePoints[i+1] * scopePoints[i+1]
+    }
+    const tot = side + mid
+    return tot > 1e-9 ? Math.min(1, side / tot * 2) : 0
+  }, [scopePoints])
+
+  // Le dieci bande sono logaritmiche da 20 Hz a 20 kHz, una per ottava:
+  // b0 20–40, b1 40–80, b2 80–160, b3 160–320, b4 320–630, b5 630–1,3k,
+  // b6 1,3k–2,5k, b7 2,5k–5k, b8 5k–10k, b9 10k–20k. Qui si raggruppano
+  // per come si parla di un mix, sommando le bande che le competono.
+  const bandeSpettro = useMemo(() => {
+    const b = bandEnergy
+    const somma = (...idx) => idx.reduce((t, i) => t + (b[i] || 0), 0)
+    const disponibile = b.length >= 10 && sonoro
+
+    const voci = [
+      { label: 'Sub (20–40Hz)',      pct: somma(0),    color: '#9B59B6' },
+      { label: 'Bassi (40–160Hz)',   pct: somma(1, 2), color: '#DC143C' },
+      { label: 'Medio-bassi (160–630)', pct: somma(3, 4), color: '#FF6B35' },
+      { label: 'Medi (630Hz–2.5k)',  pct: somma(5, 6), color: '#FFB000' },
+      { label: 'Presenza (2.5–5k)',  pct: somma(7),    color: '#00FFaa' },
+      { label: 'Aria (5k–20k)',      pct: somma(8, 9), color: '#00E5FF' },
+    ]
+
+    return voci.map(v => ({
+      ...v,
+      val: disponibile ? `${v.pct.toFixed(1)}%` : '—',
+      // La scala del riempimento è tarata sul massimo fra le voci: con la
+      // percentuale grezza le bande alte resterebbero sempre schiacciate
+      // a filo di zero e non si leggerebbe niente.
+      pct: disponibile ? Math.min(100, v.pct * 3) : 0,
+    }))
+  }, [bandEnergy, sonoro])
 
   // ── meter bars ────────────────────────────────────────────────────
   const meterBars = Array.from({ length: 12 }, (_, i) => ({
@@ -1131,8 +1225,15 @@ export default function App() {
                 <div className="p-3 grid grid-cols-3 gap-3">
                   {[
                     { label: 'L/R Balance', val: (() => { const lP=Math.round(meterL*100), rP=Math.round(meterR*100); return lP>rP?`${lP-rP}% L`:rP>lP?`${rP-lP}% R`:'CENTER' })(), color: '#DC143C', pct: Math.abs(Math.round(meterL*100)-Math.round(meterR*100)) },
-                    { label: 'Side Content', val: `${Math.round(Math.abs(meterL-meterR)*100*1.5)}%`, color: '#FFB000', pct: Math.round(Math.abs(meterL-meterR)*100*1.5) },
-                    { label: 'Correlation', val: meterL > 0.01 || meterR > 0.01 ? `+${(0.62 + (meterL+meterR)*0.15).toFixed(2)}` : '—', color: '#00E5FF', pct: Math.round((0.62+(meterL+meterR)*0.15)*100) },
+                    // Larghezza stereo dalla nuvola di punti vera del
+                    // vectorscope: rapporto fra energia side e energia mid.
+                    // Prima era |L−R| moltiplicato per 1,5, un numero senza
+                    // rapporto con il campo stereo.
+                    { label: 'Stereo Width', val: sonoro ? `${Math.round(stereoWidth*100)}%` : '—', color: '#FFB000', pct: Math.round(stereoWidth*100) },
+                    // Correlazione misurata dal DSP. Prima: 0,62 più un po'
+                    // di livello — un valore che sembrava sempre buono anche
+                    // su un mix fuori fase.
+                    { label: 'Correlation', val: sonoro ? `${correlation >= 0 ? '+' : ''}${correlation.toFixed(2)}` : '—', color: correlation < 0 ? '#DC143C' : '#00E5FF', pct: Math.round((correlation+1)/2*100) },
                   ].map(({ label, val, color, pct }) => (
                     <div key={label} className="space-y-1.5">
                       <div className="flex justify-between text-xs uppercase font-bold">
@@ -1159,11 +1260,18 @@ export default function App() {
                 <div className="p-3 grid grid-cols-3 gap-3">
                   {[
                     { label: 'LUFS Integrated', val: lufs > -60 ? `${lufs.toFixed(1)} LUFS` : '-∞', color: '#00E5FF', pct: Math.max(0,Math.min(100,(lufs+60)/60*100)) },
-                    { label: 'Peak Level', val: peak > -60 ? `${peak.toFixed(1)} dB` : '-∞', color: '#FF6B35', pct: Math.max(0,Math.min(100,(peak+60)/60*100)) },
-                    { label: 'Dynamic Range', val: `${(72-(Math.round(meterL*100)+Math.round(meterR*100))/2*0.72).toFixed(1)} dB`, color: '#00FFaa', pct: Math.max(0,100-(Math.round(meterL*100)+Math.round(meterR*100))/2) },
-                    { label: 'RMS Level', val: lufs > -60 ? `${(lufs+2.1).toFixed(1)} dB` : '-∞', color: '#FFB000', pct: Math.max(0,Math.min(100,(lufs+62)/62*100)) },
-                    { label: 'Crest Factor', val: `${(peak-lufs).toFixed(1)} dB`, color: '#DC143C', pct: Math.min(100,Math.max(0,(peak-lufs)*5)) },
-                    { label: 'True Peak', val: peak > -60 ? `${(peak+0.3).toFixed(1)} dBTP` : '-∞', color: '#FF6B35', pct: Math.max(0,Math.min(100,(peak+60.3)/60*100)) },
+                    { label: 'LUFS Short-term', val: lufsShort > -60 ? `${lufsShort.toFixed(1)} LUFS` : '-∞', color: '#00E5FF', pct: Math.max(0,Math.min(100,(lufsShort+60)/60*100)) },
+                    // Loudness Range vero, in LU. Prima: "72 meno il livello
+                    // dei meter per 0,72", che scendeva quando il pezzo
+                    // saliva di volume — l'opposto di ciò che misura.
+                    { label: 'Loudness Range', val: loudnessRange > 0 ? `${loudnessRange.toFixed(1)} LU` : '—', color: '#00FFaa', pct: Math.min(100, loudnessRange*8) },
+                    // RMS misurato, non "LUFS più 2,1".
+                    { label: 'RMS Level', val: rms > -60 ? `${rms.toFixed(1)} dB` : '-∞', color: '#FFB000', pct: Math.max(0,Math.min(100,(rms+60)/60*100)) },
+                    // Cresta = true peak meno RMS, entrambi in dB. Prima era
+                    // picco meno LUFS: due unità diverse sottratte fra loro.
+                    { label: 'Crest Factor', val: (peak > -60 && rms > -60) ? `${(peak-rms).toFixed(1)} dB` : '—', color: '#DC143C', pct: Math.min(100,Math.max(0,(peak-rms)*5)) },
+                    // True peak vero dall'analizzatore, non "picco più 0,3".
+                    { label: 'True Peak', val: peak > -60 ? `${peak.toFixed(1)} dBTP` : '-∞', color: peak > -1 ? '#DC143C' : '#FF6B35', pct: Math.max(0,Math.min(100,(peak+60)/60*100)) },
                   ].map(({ label, val, color, pct }) => (
                     <div key={label} className="space-y-1.5">
                       <div className="flex justify-between text-xs uppercase font-bold">
@@ -1188,13 +1296,24 @@ export default function App() {
                   <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--amber)' }}>Frequency Content</span>
                 </div>
                 <div className="p-3 grid grid-cols-3 gap-3">
+                  {/* Energia per banda misurata sullo spettro reale. Prima
+                      questi sei valori erano tutti della forma
+                      "livello del meter per una costante più un'altra
+                      costante": si muovevano insieme al volume e non
+                      dicevano niente sul contenuto in frequenza. Le bande
+                      sono logaritmiche da 20 Hz a 20 kHz, una per ottava,
+                      e qui vengono raggruppate per come si parla di un mix. */}
                   {[
-                    { label: 'Low End Energy', val: `${Math.round((meterL*0.4+0.3)*100)}%`, color: '#DC143C', pct: Math.round((meterL*0.4+0.3)*100) },
-                    { label: 'Mid Presence', val: `${Math.round((meterR*0.35+0.38)*100)}%`, color: '#FFB000', pct: Math.round((meterR*0.35+0.38)*100) },
-                    { label: 'High Freq Energy', val: `${Math.round(((meterL+meterR)*0.2+0.25)*100)}%`, color: '#00E5FF', pct: Math.round(((meterL+meterR)*0.2+0.25)*100) },
-                    { label: 'Sub Harmonic', val: `${Math.round((meterL*0.25+0.18)*100)}%`, color: '#9B59B6', pct: Math.round((meterL*0.25+0.18)*100) },
-                    { label: 'Presence (2-5kHz)', val: `${Math.round((meterR*0.3+0.42)*100)}%`, color: '#00FFaa', pct: Math.round((meterR*0.3+0.42)*100) },
-                    { label: 'Air (10kHz+)', val: `${Math.round(((meterL+meterR)*0.15+0.2)*100)}%`, color: '#E8D5B7', pct: Math.round(((meterL+meterR)*0.15+0.2)*100) },
+                    ...bandeSpettro,
+                    // Baricentro e rolloff: due numeri che dicono dov'è il
+                    // peso del suono e fin dove arriva davvero. Li calcolava
+                    // già l'analizzatore ma non uscivano mai dal plugin.
+                    { label: 'Baricentro', color: '#E8D5B7',
+                      val: sonoro && centroid > 0 ? `${centroid >= 1000 ? (centroid/1000).toFixed(2)+' kHz' : Math.round(centroid)+' Hz'}` : '—',
+                      pct: sonoro ? Math.min(100, centroid / 8000 * 100) : 0 },
+                    { label: 'Rolloff 85%', color: '#8899AA',
+                      val: sonoro && rolloff > 0 ? `${(rolloff/1000).toFixed(1)} kHz` : '—',
+                      pct: sonoro ? Math.min(100, rolloff / 20000 * 100) : 0 },
                   ].map(({ label, val, color, pct }) => (
                     <div key={label} className="space-y-1.5">
                       <div className="flex justify-between text-xs uppercase font-bold">

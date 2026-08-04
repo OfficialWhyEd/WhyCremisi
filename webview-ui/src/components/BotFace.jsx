@@ -79,9 +79,10 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16', personality =
   const color = STATE_COLORS[state] || STATE_COLORS.idle
   const paths = PATHS[state] || PATHS.idle
   const pupils = PUPILS[state] || PUPILS.idle
+
   // La bocca a riposo dello stato corrente, leggibile dal ciclo di
   // animazione senza dipendere da quando React ha ridisegnato.
-  pathsRef.current = paths.m
+  useEffect(() => { pathsRef.current = paths.m }, [paths.m])
 
   useEffect(() => {
     if (prevState.current === state) return

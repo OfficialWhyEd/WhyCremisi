@@ -95,7 +95,7 @@ export default function AdvisoryBox({ suggestion, personality, onDawCmd, onAnaly
             </div>
 
             {/* Dettagli veri, e solo quelli che ci sono davvero */}
-            {(confidenza !== null || typeof s.transientPres === 'number') && (
+            {(confidenza !== null || typeof s.crestDb === 'number') && (
               <div className="flex items-center gap-4 mb-3.5 text-[10px] font-mono text-[#7a7a7a]">
                 {confidenza !== null && (
                   <span className="flex items-center gap-1.5">
@@ -111,8 +111,15 @@ export default function AdvisoryBox({ suggestion, personality, onDawCmd, onAnaly
                     confidenza {confidenza}%
                   </span>
                 )}
-                {typeof s.transientPres === 'number' && (
-                  <span>transienti {s.transientPres}%</span>
+                {/* Fattore di cresta misurato: true peak meno RMS. Prima
+                    qui c'era "transienti X%", ricavato dalla correlazione
+                    fra i canali — che misura la fase, non i transienti.
+                    Riferimento: 14–20 dB non compresso, sotto 9 è limitato
+                    a morte. */}
+                {typeof s.crestDb === 'number' && (
+                  <span title="Fattore di cresta: 14–20 dB non compresso, sotto 9 è limitato a morte">
+                    cresta {s.crestDb.toFixed(1)} dB
+                  </span>
                 )}
               </div>
             )}

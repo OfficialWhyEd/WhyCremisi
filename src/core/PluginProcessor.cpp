@@ -453,6 +453,12 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
             oscBridge->updateScope(data.rms, data.scopePoints);
             oscBridge->updateTempoAndKey(data.bpm, data.bpmConfidence,
                                           data.key, data.keyConfidence);
+            // Queste l'analizzatore le calcolava gia', ma non le passava a
+            // nessuno: uscivano solo su richiesta dell'AI con mix.analyze,
+            // e il cruscotto intanto mostrava numeri inventati.
+            oscBridge->updateMixMetrics(data.loudnessRange, data.spectralCentroid,
+                                         data.spectralRolloff, data.bandEnergy.data(),
+                                         (int) data.bandEnergy.size());
             if (dspEngine->compressor)
                 oscBridge->updateGainReduction(dspEngine->compressor->getCurrentReduction());
             dspAnalyzer->clearNewData();

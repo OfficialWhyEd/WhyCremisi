@@ -41,9 +41,13 @@ export function useAudioMouth (audioLevel, {
   const apertura = useMotionValue(0)
 
   // Il livello corrente viene letto dal ciclo di animazione, non lo insegue:
-  // così il fotogramma è regolare anche se i meter arrivano a scatti.
+  // così il fotogramma è regolare anche se i meter arrivano a scatti. Il
+  // valore si deposita qui a ogni aggiornamento; è il ciclo, non questo
+  // effetto, a far muovere la bocca.
   const livello = useRef(0)
-  livello.current = Number.isFinite(audioLevel) ? Math.min(1, Math.max(0, audioLevel)) : 0
+  useEffect(() => {
+    livello.current = Number.isFinite(audioLevel) ? Math.min(1, Math.max(0, audioLevel)) : 0
+  }, [audioLevel])
 
   useEffect(() => {
     let raf = 0

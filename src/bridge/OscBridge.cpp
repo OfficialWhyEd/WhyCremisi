@@ -210,6 +210,17 @@ void OscBridge::timerCallback()
         ana["payload"]["gainReduction"] = lastGainReduction.load();
         ana["payload"]["bpm"] = lastBpm.load();
         ana["payload"]["bpmConfidence"] = lastBpmConfidence.load();
+
+        // Misure di mix vere. Il cruscotto le mostrava come "REALTIME" ma le
+        // ricavava da formule inventate sul livello dei meter: la
+        // correlazione era "0,62 piu' un po' di livello", la gamma dinamica
+        // "72 meno il livello per 0,72", l'energia in banda bassa "livello
+        // per 0,4 piu' 0,3". Numeri plausibili a vedersi e senza alcun
+        // rapporto con il suono che stava passando — su uno strumento per
+        // mixare e' peggio di un pannello vuoto.
+        ana["payload"]["loudnessRange"]    = lastLoudnessRange.load();
+        ana["payload"]["spectralCentroid"] = lastSpectralCentroid.load();
+        ana["payload"]["spectralRolloff"]  = lastSpectralRolloff.load();
         {
             const juce::ScopedLock sl(spectrumLock);
             if (lastKey.isNotEmpty())
@@ -236,6 +247,11 @@ void OscBridge::timerCallback()
             for (int i = 0; i < numBins; ++i)
                 specArr.push_back(lastSpectrum[i]);
             ana["payload"]["spectrum"] = specArr;
+
+            nlohmann::json bande = nlohmann::json::array();
+            for (float b : lastBandEnergy)
+                bande.push_back (std::round (b * 10.0f) / 10.0f);
+            ana["payload"]["bandEnergyPercent"] = bande;
 
             // Punti del vectorscope, arrotondati a tre decimali: oltre non
             // si vedrebbe la differenza a schermo e il messaggio pesa meno.
@@ -2459,6 +2475,17 @@ void OscBridge::updateScope(float rmsDb, const std::vector<float>& scopePoints)
     lastRms.store(rmsDb);
     const juce::ScopedLock sl(spectrumLock);
     lastScopePoints = scopePoints;
+}
+
+void OscBridge::updateMixMetrics (float loudnessRange, float spectralCentroid,
+                                   float spectralRolloff, const float* bandEnergy, int numBands)
+{
+    lastLoudnessRange.store (loudnessRange);
+    lastSpectralCentroid.store (spectralCentroid);
+    lastSpectralRolloff.store (spectralRolloff);
+
+    const juce::ScopedLock sl (spectrumLock);
+    lastBandEnergy.assign (bandEnergy, bandEnergy + numBands);
 }
 
 void OscBridge::updateTempoAndKey(float bpm, float bpmConfidence,
