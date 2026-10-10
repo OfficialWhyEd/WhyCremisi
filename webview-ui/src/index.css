@@ -45,6 +45,94 @@
   --font-mono: "JetBrains Mono", "Cascadia Mono", "Consolas", ui-monospace, monospace;
   --color-cremisi: #DC143C;
   --color-amber: #FFB000;
+  --color-crimson-600: #c8102e;
+  --color-crimson-400: #ff6b85;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   DESIGN TOKENS WhyCremisi (sistema visivo di base, 10/10/2026)
+
+   Un solo posto che decide colore, scala, spazio, raggi, ombre e moto.
+   Premium, preciso, scuro, un solo accento (cremisi). Niente arancione.
+   Le schermate nuove usano SOLO questi nomi; i vecchi (--bg-*, --amber...)
+   restano finche' la schermata principale non viene rifatta.
+
+   Famiglie:  --surface-*  --line-*  --ink-*  --crimson-*  --state-*
+              --fs-*  --lh-*  --sp-*  --r-*  --shadow-*  --ease-*  --dur-*
+   ══════════════════════════════════════════════════════════════════ */
+:root,
+[data-theme="dark"] {
+  /* Superfici: nero caldo appena tinto di cremisi, mai #000 */
+  --surface-0: #0a0909;   /* sfondo finestra */
+  --surface-1: #110f10;   /* pannelli */
+  --surface-2: #181516;   /* card, campi */
+  --surface-3: #211d1f;   /* hover, selezione */
+  --line-1: #2a2527;      /* bordo discreto */
+  --line-2: #3a3437;      /* bordo evidente, campi */
+
+  /* Testo: contrasto su surface-0 -> ink-1 16:1, ink-2 9:1, ink-3 5.6:1 */
+  --ink-1: #f3eff0;
+  --ink-2: #c4bcbf;
+  --ink-3: #9a9194;
+  --ink-on-accent: #ffffff;
+
+  /* Accento unico. 600 = pulsanti con testo bianco (6:1), 400 = testo e
+     icone su fondo scuro (6.8:1) */
+  --crimson-700: #8f0f27;
+  --crimson-600: #c8102e;
+  --crimson-500: #dc143c;
+  --crimson-400: #ff6b85;
+  --crimson-wash: rgba(220, 20, 60, 0.10);
+  --crimson-line: rgba(220, 20, 60, 0.45);
+
+  /* Stati: sempre accompagnati da icona e parole, mai solo dal colore */
+  --state-ok: #4fd69c;
+  --state-warn: #e6c46a;
+  --state-bad: #ff8a97;
+  --state-info: #8fb8ff;
+
+  /* Tipografia: minimo 12px. Space Grotesk e' gia' nel bundle. */
+  --font-ui: "Space Grotesk", system-ui, sans-serif;
+  --fs-xs: 0.75rem;     /* 12px  note, sigle */
+  --fs-sm: 0.8125rem;   /* 13px  testo secondario */
+  --fs-md: 0.9375rem;   /* 15px  testo normale */
+  --fs-lg: 1.125rem;    /* 18px  titolo di card */
+  --fs-xl: 1.5rem;      /* 24px  titolo di passaggio */
+  --fs-display: 2.125rem; /* 34px un solo titolo per schermata */
+  --lh-tight: 1.15;
+  --lh-body: 1.5;
+  --tracking-display: -0.025em;
+  --tracking-body: -0.005em;
+  --tracking-caps: 0.07em;
+
+  /* Spaziatura su base 4 */
+  --sp-1: 0.25rem; --sp-2: 0.5rem;  --sp-3: 0.75rem; --sp-4: 1rem;
+  --sp-5: 1.5rem;  --sp-6: 2rem;    --sp-7: 3rem;    --sp-8: 4rem;
+
+  /* Raggi: card 14, controlli 10, dettagli 6, pillole piene */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-pill: 999px;
+
+  /* Ombre tinte del fondo, mai nero puro; il bordo fa il grosso del lavoro */
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(10, 4, 6, 0.5);
+  --shadow-2: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 32px -12px rgba(10, 2, 5, 0.7);
+  --shadow-accent: 0 8px 24px -10px rgba(220, 20, 60, 0.55);
+  --ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--crimson-400);
+
+  /* Moto: ease in/out continui. Chi entra fa spazio, niente rimbalzi. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 140ms;
+  --dur-med: 280ms;
+  --dur-slow: 480ms;
+}
+
+[data-theme="light"] {
+  --surface-0: #f6f3f3; --surface-1: #efebeb; --surface-2: #ffffff; --surface-3: #e8e2e3;
+  --line-1: #ddd5d7; --line-2: #c9bfc2;
+  --ink-1: #1a1517; --ink-2: #4a4145; --ink-3: #6b6165;
+  --crimson-400: #b80f2f; --crimson-wash: rgba(200, 16, 46, 0.08);
+  --state-ok: #0f7a52; --state-warn: #8a6410; --state-bad: #b3202f; --state-info: #1f56b3;
+  --shadow-2: 0 12px 32px -14px rgba(60, 20, 30, 0.25);
 }
 
 /* ── Scala tipografica ──────────────────────────────────────────────
