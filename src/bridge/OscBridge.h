@@ -36,6 +36,8 @@ class PluginChain;
 class WhyCremisiProcessor;
 class IDawHandler;
 class DSPEngine;
+struct ToolCall;
+struct ToolResult;
 enum class DawType;
 
 class OscBridge : private juce::Timer
@@ -241,7 +243,11 @@ private:
     juce::String lastError;
 
     // Message dispatch helpers
-    void dispatchDawCommand(const nlohmann::json& payload);
+    // Ritorna false se il payload e' malformato o il comando sconosciuto:
+    // in quel caso non parte nulla verso la DAW. true significa solo
+    // "consegnato al gestore/OSC", mai "eseguito dalla DAW".
+    bool dispatchDawCommand(const nlohmann::json& payload);
+    bool dispatchDawCommandValidated(const nlohmann::json& payload, const std::string& cmd);
     void dispatchDawRequest(const nlohmann::json& payload, const juce::String& reqId);
     void dispatchAiPrompt(const nlohmann::json& payload, const juce::String& reqId);
     void dispatchWidgetChange(const nlohmann::json& payload);
@@ -252,6 +258,15 @@ private:
     void dispatchAiAction(const nlohmann::json& payload, const juce::String& reqId);
     void dispatchChainGet(const juce::String& reqId);
     void dispatchChainSet(const nlohmann::json& payload);
+
+    // Strumenti AI daw.* -> dispatchDawCommand. Unico percorso, usato sia
+    // dall'esecutore dell'AiEngine sia dai test. Ritorna false se il nome
+    // dello strumento non e' un comando DAW gestito qui.
+    bool tryExecuteDawTool(const ToolCall& call, ToolResult& result);
+
+    // I test di regressione iniettano un IDawHandler che registra le
+    // chiamate e invocano il percorso produttivo qui sopra.
+    friend class OscBridgeTest;
 
     // AI Engine reference (for ai.prompt messages)
     AiEngine*       aiEngine       = nullptr;

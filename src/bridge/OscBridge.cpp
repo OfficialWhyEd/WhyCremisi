@@ -25,6 +25,9 @@
 #include "AbletonDawHandler.h"
 #include "DawDetector.h"
 #include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 #include <random>
 
 // ── Message validation helper ─────────────────────────────────
@@ -959,12 +962,144 @@ void OscBridge::handleClientConnection(int clientId, bool connected)
 //==============================================================================
 // DAW command dispatcher (UI → DAW)
 //==============================================================================
-void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
+namespace
 {
-    if (!payload.contains("command"))
-        return;
+    // Limiti espliciti del mapping.
+    constexpr int    kMaxAiTrack = 255;      // schema ToolRegistry: 0..255
+    constexpr int    kMaxUiTrack = 4095;
+    constexpr int    kMaxMarker  = 9999;
+    constexpr double kMinBpm     = 20.0;     // schema ToolRegistry
+    constexpr double kMaxBpm     = 999.0;
+    constexpr double kMinAiDb    = -96.0;    // schema ToolRegistry
+    constexpr double kMaxAiDb    = 12.0;
 
-    std::string cmd = payload["command"];
+    // Mai operator[] su un json const: con una chiave mancante e' un assert.
+    const nlohmann::json* argOf (const nlohmann::json& j, const char* key)
+    {
+        if (! j.is_object())
+            return nullptr;
+        const auto it = j.find (key);
+        return it == j.end() ? nullptr : &(*it);
+    }
+
+    bool jsonToInt (const nlohmann::json& v, int lo, int hi, int& out)
+    {
+        if (v.is_number_unsigned())
+        {
+            const auto u = v.get<std::uint64_t>();
+            if (hi < 0 || u > (std::uint64_t) hi || (long long) u < (long long) lo)
+                return false;
+            out = (int) u;
+            return true;
+        }
+        if (v.is_number_integer())
+        {
+            const auto x = v.get<std::int64_t>();
+            if (x < lo || x > hi)
+                return false;
+            out = (int) x;
+            return true;
+        }
+        if (v.is_number_float())
+        {
+            const double d = v.get<double>();
+            if (! std::isfinite (d) || d != std::floor (d) || d < lo || d > hi)
+                return false;
+            out = (int) d;
+            return true;
+        }
+        return false;
+    }
+
+    bool readInt (const nlohmann::json& j, const char* key, int lo, int hi, int& out)
+    {
+        const auto* v = argOf (j, key);
+        return v != nullptr && jsonToInt (*v, lo, hi, out);
+    }
+
+    bool readNumber (const nlohmann::json& j, const char* key, double lo, double hi, double& out)
+    {
+        const auto* v = argOf (j, key);
+        if (v == nullptr || ! v->is_number())
+            return false;
+        const double d = v->get<double>();
+        if (! std::isfinite (d) || d < lo || d > hi)
+            return false;
+        out = d;
+        return true;
+    }
+
+    bool readBool (const nlohmann::json& j, const char* key, bool& out)
+    {
+        const auto* v = argOf (j, key);
+        if (v == nullptr || ! v->is_boolean())
+            return false;
+        out = v->get<bool>();
+        return true;
+    }
+
+    // Marker: indice intero non negativo (numero o stringa di sole cifre),
+    // oppure un nome. I nomi non si possono risolvere: nessun elenco dei
+    // marker della DAW e' disponibile.
+    enum class MarkerRef { Index, Name, Invalid };
+
+    MarkerRef parseMarkerRef (const nlohmann::json* v, int& index)
+    {
+        if (v == nullptr || v->is_boolean())
+            return MarkerRef::Invalid;
+        if (v->is_number())
+            return jsonToInt (*v, 0, kMaxMarker, index) ? MarkerRef::Index : MarkerRef::Invalid;
+        if (! v->is_string())
+            return MarkerRef::Invalid;
+
+        const juce::String s = juce::String (v->get<std::string>()).trim();
+        if (s.isEmpty())
+            return MarkerRef::Invalid;
+        if (s.containsOnly ("0123456789"))
+        {
+            if (s.length() > 4)
+                return MarkerRef::Invalid;
+            index = s.getIntValue();
+            return MarkerRef::Index;
+        }
+        const auto first = s[0];
+        if (juce::CharacterFunctions::isDigit (first) || first == '-' || first == '+' || first == '.')
+            return MarkerRef::Invalid;
+        return MarkerRef::Name;
+    }
+
+    nlohmann::json dawCmd (const char* name)
+    {
+        nlohmann::json c = nlohmann::json::object();
+        c["command"] = name;
+        return c;
+    }
+}
+
+bool OscBridge::dispatchDawCommand(const nlohmann::json& payload)
+{
+    if (! payload.is_object())
+        return false;
+
+    const auto cmdIt = payload.find ("command");
+    if (cmdIt == payload.end() || ! cmdIt->is_string())
+        return false;
+
+    // Rete di sicurezza per i rami non ancora validati campo per campo:
+    // un tipo sbagliato non deve far cadere il bridge.
+    try
+    {
+        return dispatchDawCommandValidated (payload, cmdIt->get<std::string>());
+    }
+    catch (const nlohmann::json::exception& e)
+    {
+        log ("[WARN] daw.command malformato: " + juce::String (e.what()));
+        return false;
+    }
+}
+
+bool OscBridge::dispatchDawCommandValidated(const nlohmann::json& payload, const std::string& cmd)
+{
     juce::String command(cmd.data(), cmd.size());
 
     log("[CMD] " + command);
@@ -982,10 +1117,13 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
             fallbackFn();
     };
 
+    // ── Comandi che cambiano la DAW ─────────────────────────────────
+    //
+    //  Lo stato del trasporto (currentIsPlaying, currentBpm...) non si
+    //  aggiorna qui: aver spedito un comando non e' una prova. Lo aggiornano
+    //  il feedback OSC della DAW e la playhead dell'host.
     if (command == "play")
     {
-        currentIsPlaying = true;
-        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         sendViaHandler(
             [&]() { dawHandler->play(); },
             [&]() {
@@ -996,9 +1134,6 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     }
     else if (command == "stop")
     {
-        currentIsPlaying = false;
-        currentPosition  = 0.0f;
-        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         sendViaHandler(
             [&]() { dawHandler->stop(); },
             [&]() {
@@ -1009,8 +1144,6 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     }
     else if (command == "record")
     {
-        currentIsRecording = !currentIsRecording;
-        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         sendViaHandler(
             [&]() { dawHandler->record(); },
             [&]() {
@@ -1021,8 +1154,6 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     }
     else if (command == "pause")
     {
-        currentIsPlaying = false;
-        broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
         sendViaHandler(
             [&]() { dawHandler->pause(); },
             [&]() {
@@ -1033,80 +1164,99 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     }
     else if (command == "setTempo")
     {
-        if (payload.contains("bpm"))
+        double bpmIn = 0.0;
+        if (! readNumber (payload, "bpm", kMinBpm, kMaxBpm, bpmIn))
         {
-            float bpm = payload["bpm"].get<float>();
-            currentBpm = bpm;
-            broadcastTransport(currentIsPlaying, currentIsRecording, currentBpm, currentPosition);
-            sendViaHandler(
-                [&]() { dawHandler->setTempo(bpm); },
-                [&]() {
-                    sendOscToDaw("/live/song/set/tempo", bpm);
-                    sendOscToDaw("/tempo", bpm);
-                }
-            );
+            log ("[WARN] setTempo: bpm mancante o fuori 20..999, niente inviato");
+            return false;
         }
+        const float bpm = (float) bpmIn;
+        sendViaHandler(
+            [&]() { dawHandler->setTempo(bpm); },
+            [&]() {
+                sendOscToDaw("/live/song/set/tempo", bpm);
+                sendOscToDaw("/tempo", bpm);
+            }
+        );
     }
+    // Mixer. Campi del protocollo UI: trackId + valueDb / value / muted / soloed.
     else if (command == "setVolume")
     {
-        if (payload.contains("trackId") && payload.contains("valueDb"))
+        int trackId = 0;
+        double dbIn = 0.0;
+        if (! readInt (payload, "trackId", 0, kMaxUiTrack, trackId)
+            || ! readNumber (payload, "valueDb", kMinAiDb, kMaxAiDb, dbIn))
         {
-            int trackId = payload["trackId"].get<int>();
-            float db = payload["valueDb"].get<float>();
-            float linear = juce::Decibels::decibelsToGain(db);
-            sendViaHandler(
-                [&]() { dawHandler->setVolume(trackId, linear); },
-                [&]() {
-                    sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/volume", linear);
-                    sendOscToDaw("/track/" + juce::String(trackId) + "/volume", db);
-                }
-            );
+            log ("[WARN] setVolume: trackId/valueDb non validi (dB -96..12), niente inviato");
+            return false;
         }
+        const float db = (float) dbIn;
+        const float linear = juce::Decibels::decibelsToGain(db);
+        if (! std::isfinite (db) || ! std::isfinite (linear))
+        {
+            log ("[WARN] setVolume: dB o guadagno non finiti, niente inviato");
+            return false;
+        }
+        sendViaHandler(
+            [&]() { dawHandler->setVolume(trackId, linear); },
+            [&]() {
+                sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/volume", linear);
+                sendOscToDaw("/track/" + juce::String(trackId) + "/volume", db);
+            }
+        );
     }
     else if (command == "setPan")
     {
-        if (payload.contains("trackId") && payload.contains("value"))
+        int trackId = 0;
+        double panIn = 0.0;
+        if (! readInt (payload, "trackId", 0, kMaxUiTrack, trackId)
+            || ! readNumber (payload, "value", -1.0, 1.0, panIn))
         {
-            int trackId = payload["trackId"].get<int>();
-            float pan = payload["value"].get<float>();
-            sendViaHandler(
-                [&]() { dawHandler->setPan(trackId, pan); },
-                [&]() {
-                    sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/panning", pan);
-                    sendOscToDaw("/track/" + juce::String(trackId) + "/pan", pan);
-                }
-            );
+            log ("[WARN] setPan: trackId/value non validi, niente inviato");
+            return false;
         }
+        const float pan = (float) panIn;
+        sendViaHandler(
+            [&]() { dawHandler->setPan(trackId, pan); },
+            [&]() {
+                sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/panning", pan);
+                sendOscToDaw("/track/" + juce::String(trackId) + "/pan", pan);
+            }
+        );
     }
     else if (command == "muteTrack")
     {
-        if (payload.contains("trackId") && payload.contains("muted"))
+        int trackId = 0;
+        bool muted = false;
+        if (! readInt (payload, "trackId", 0, kMaxUiTrack, trackId) || ! readBool (payload, "muted", muted))
         {
-            int trackId = payload["trackId"].get<int>();
-            bool muted = payload["muted"].get<bool>();
-            sendViaHandler(
-                [&]() { dawHandler->muteTrack(trackId, muted); },
-                [&]() {
-                    sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/mute", muted ? 1.0f : 0.0f);
-                    sendOscToDaw("/track/" + juce::String(trackId) + "/mute", muted ? 1.0f : 0.0f);
-                }
-            );
+            log ("[WARN] muteTrack: trackId/muted non validi, niente inviato");
+            return false;
         }
+        sendViaHandler(
+            [&]() { dawHandler->muteTrack(trackId, muted); },
+            [&]() {
+                sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/mute", muted ? 1.0f : 0.0f);
+                sendOscToDaw("/track/" + juce::String(trackId) + "/mute", muted ? 1.0f : 0.0f);
+            }
+        );
     }
     else if (command == "soloTrack")
     {
-        if (payload.contains("trackId") && payload.contains("soloed"))
+        int trackId = 0;
+        bool soloed = false;
+        if (! readInt (payload, "trackId", 0, kMaxUiTrack, trackId) || ! readBool (payload, "soloed", soloed))
         {
-            int trackId = payload["trackId"].get<int>();
-            bool soloed = payload["soloed"].get<bool>();
-            sendViaHandler(
-                [&]() { dawHandler->soloTrack(trackId, soloed); },
-                [&]() {
-                    sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/solo", soloed ? 1.0f : 0.0f);
-                    sendOscToDaw("/track/" + juce::String(trackId) + "/solo", soloed ? 1.0f : 0.0f);
-                }
-            );
+            log ("[WARN] soloTrack: trackId/soloed non validi, niente inviato");
+            return false;
         }
+        sendViaHandler(
+            [&]() { dawHandler->soloTrack(trackId, soloed); },
+            [&]() {
+                sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/solo", soloed ? 1.0f : 0.0f);
+                sendOscToDaw("/track/" + juce::String(trackId) + "/solo", soloed ? 1.0f : 0.0f);
+            }
+        );
     }
     else if (command == "requestTransport")
     {
@@ -1314,7 +1464,7 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         // Ora scrive davvero su una banda dell'EQ interno.
         auto* dsp = getDspEngine();
         if (! dsp || dsp->eqBands.empty())
-            return;
+            return false;
 
         const float gain = payload.contains("gain") && payload["gain"].is_number()
                          ? payload["gain"].get<float>() : 0.0f;
@@ -1351,7 +1501,7 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         for (auto& b : dsp->eqBands)
             if (b && std::abs (b->getGain()) < 0.01f) { banda = b.get(); break; }
         if (! banda) banda = dsp->eqBands[0].get();
-        if (! banda) return;
+        if (! banda) return false;
 
         banda->setType (EQBand::Type::Peak);
         banda->setFrequency (freq);
@@ -1385,7 +1535,14 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     }
     else if (command == "gotoMarker")
     {
-        int idx = payload.contains("index") ? payload["index"].get<int>() : 0;
+        // Nessun indice valido, nessun salto: prima un campo mancante
+        // portava al marker 0.
+        int idx = 0;
+        if (! readInt (payload, "index", 0, kMaxMarker, idx))
+        {
+            log ("[WARN] gotoMarker: index mancante o non valido, niente inviato");
+            return false;
+        }
         sendViaHandler(
             [&]() { dawHandler->gotoMarker(idx); },
             [&]() {
@@ -1519,7 +1676,10 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     else
     {
         log("[WARN] Unknown DAW command: " + command);
+        return false;
     }
+
+    return true;
 }
 
 //==============================================================================
@@ -2744,6 +2904,245 @@ void OscBridge::setDawTarget(const juce::String& host, int sendPort)
     log("[CONFIG] DAW target set to " + host + ":" + juce::String(sendPort));
 }
 
+//==============================================================================
+// Strumenti AI daw.* -> dispatchDawCommand
+//
+//  Unico percorso per gli strumenti daw.* dell'AI, usato dalla lambda di
+//  setAiEngine e dai test.
+//
+//  Esito: result.output e' un JSON con
+//    status     "sent" | "rejected" | "unsupported"
+//    accepted   true solo se il comando e' stato consegnato al gestore/OSC
+//    confirmed  sempre false: OSC su UDP non conferma, e il traffico recente
+//               dalla DAW (dawHaRisposto) dice solo che qualcuno parla
+//    dawState   "unknown": il percorso AI non inventa lo stato della DAW
+//    message    testo leggibile, warnings opzionali
+//  result.success resta false: nessuna azione e' verificata in questo blocco.
+//==============================================================================
+bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
+{
+    const nlohmann::json& args = call.arguments;
+    const bool argsOk = args.is_null() || args.is_object();
+
+    auto esito = [&](const char* status, const juce::String& message,
+                     const nlohmann::json& comando, nlohmann::json avvisi)
+    {
+        // "submitted": consegnato al dispatcher. Ne' l'invio OSC ne'
+        // l'esecuzione nella DAW sono confermati.
+        const bool inviato = std::string (status) == "submitted";
+        if (inviato && ! dawHaRisposto())
+            avvisi.push_back ("La DAW non ha inviato dati di recente: potrebbe non ricevere i comandi "
+                              "(Live: AbletonOSC; Reaper: control surface OSC).");
+
+        nlohmann::json out = nlohmann::json::object();
+        out["status"]    = status;
+        out["accepted"]  = inviato;
+        out["confirmed"] = false;
+        out["dawState"]  = "unknown";
+        out["message"]   = message.toStdString();
+        if (! comando.is_null())
+            out["command"] = comando;
+        if (! avvisi.empty())
+            out["warnings"] = avvisi;
+
+        result.success = false;
+        result.output  = juce::String (out.dump (-1, ' ', false,
+                                                 nlohmann::json::error_handler_t::replace));
+    };
+
+    auto rifiuta = [&](const juce::String& perche) {
+        esito ("rejected", perche + " Nessun comando inviato.", nullptr, nlohmann::json::array());
+    };
+    auto nonSupportato = [&](const juce::String& perche) {
+        esito ("unsupported", perche + " Nessun comando inviato.", nullptr, nlohmann::json::array());
+    };
+
+    // Consegna al dispatcher condiviso con la UI. La notifica alla UI dice
+    // "inviato", non "applicato".
+    auto invia = [&](const nlohmann::json& comando, const juce::String& richiesta,
+                     nlohmann::json avvisi)
+    {
+        if (! dispatchDawCommand (comando))
+        {
+            rifiuta ("Il dispatcher ha rifiutato il comando.");
+            return;
+        }
+
+        nlohmann::json notifica;
+        notifica["type"]      = "daw.command.submitted";
+        notifica["timestamp"] = juce::Time::currentTimeMillis();
+        notifica["confirmed"] = false;
+        notifica["payload"]   = comando;
+        if (wsServer)
+            wsServer->broadcast (notifica);
+
+        if (! dawHandler)
+            avvisi.push_back ("DAW non identificata: comando inviato sugli indirizzi OSC generici di Live e Reaper.");
+
+        esito ("submitted", richiesta + " consegnata al dispatcher. Invio OSC ed esecuzione "
+                                        "nella DAW non confermati: lo stato reale della DAW e' sconosciuto.",
+               comando, std::move (avvisi));
+    };
+
+    const bool liveHandler = dawHandler && dawHandler->isAbleton();
+    const auto nessunAvviso = [] { return nlohmann::json::array(); };
+
+    // ── Trasporto ───────────────────────────────────────────────────
+    if (call.name == "daw.transport.play") {
+        const auto* target = argOf (args, "target");
+        if (! argsOk || (target && ! target->is_null() && ! target->is_string()))
+            rifiuta ("Argomenti non validi per play.");
+        else {
+            auto avvisi = nessunAvviso();
+            if (target && target->is_string() && ! juce::String (target->get<std::string>()).trim().isEmpty())
+                avvisi.push_back ("Il parametro target non e' supportato: la riproduzione parte dalla posizione corrente.");
+            invia (dawCmd ("play"), "Richiesta di play", std::move (avvisi));
+        }
+    }
+    else if (call.name == "daw.transport.stop") {
+        if (! argsOk) rifiuta ("Argomenti non validi per stop.");
+        else invia (dawCmd ("stop"), "Richiesta di stop", nessunAvviso());
+    }
+    else if (call.name == "daw.transport.record") {
+        const auto* arm = argOf (args, "arm");
+        if (! argsOk || (arm && ! arm->is_boolean()))
+            rifiuta ("arm deve essere booleano.");
+        else if (arm && ! arm->get<bool>())
+            nonSupportato ("Fermare la registrazione con arm=false non e' supportato: il comando record "
+                           "della DAW e' un interruttore e potrebbe avviarla. Usa stop.");
+        else {
+            auto avvisi = nessunAvviso();
+            avvisi.push_back ("Il comando record e' un interruttore: senza feedback della DAW non so "
+                              "se la registrazione risulta attiva o no.");
+            invia (dawCmd ("record"), "Richiesta di record", std::move (avvisi));
+        }
+    }
+    else if (call.name == "daw.transport.setTempo") {
+        double bpm = 0.0;
+        if (! readNumber (args, "bpm", kMinBpm, kMaxBpm, bpm))
+            rifiuta ("bpm deve essere un numero finito fra 20 e 999.");
+        else {
+            auto c = dawCmd ("setTempo");
+            c["bpm"] = bpm;
+            invia (c, "Richiesta di tempo " + juce::String (bpm, 1) + " BPM", nessunAvviso());
+        }
+    }
+    // ── Mixer: track -> trackId, volume -> valueDb, pan -> value,
+    //    mute -> muted, solo -> soloed (campi del dispatcher) ──────────
+    else if (call.name == "daw.track.setVolume") {
+        int track = 0;
+        double db = 0.0;
+        if (! readInt (args, "track", 0, kMaxAiTrack, track))
+            rifiuta ("track deve essere un intero fra 0 e 255.");
+        else if (! readNumber (args, "volume", kMinAiDb, kMaxAiDb, db))
+            rifiuta ("volume deve essere un numero finito in dB fra -96 e 12.");
+        else {
+            auto c = dawCmd ("setVolume");
+            c["trackId"] = track;
+            c["valueDb"] = db;
+            auto avvisi = nessunAvviso();
+            if (liveHandler)
+                avvisi.push_back ("Live: viene inviato il guadagno lineare (dB->gain) limitato a 0..1 sul fader "
+                                  "normalizzato di Live; il livello raggiunto non corrisponde ai dB richiesti.");
+            invia (c, "Richiesta di volume " + juce::String (db, 1) + " dB sulla traccia "
+                          + juce::String (track), std::move (avvisi));
+        }
+    }
+    else if (call.name == "daw.track.setPan") {
+        int track = 0;
+        double pan = 0.0;
+        if (! readInt (args, "track", 0, kMaxAiTrack, track))
+            rifiuta ("track deve essere un intero fra 0 e 255.");
+        else if (! readNumber (args, "pan", -1.0, 1.0, pan))
+            rifiuta ("pan deve essere un numero finito fra -1 e 1.");
+        else {
+            auto c = dawCmd ("setPan");
+            c["trackId"] = track;
+            c["value"]   = pan;
+            auto avvisi = nessunAvviso();
+            if (liveHandler && pan < 0.0)
+                avvisi.push_back ("Live: il gestore attuale limita il pan a 0..1, un pan a sinistra "
+                                  "arriva alla DAW come centro.");
+            invia (c, "Richiesta di pan " + juce::String (pan, 2) + " sulla traccia "
+                          + juce::String (track), std::move (avvisi));
+        }
+    }
+    else if (call.name == "daw.track.mute") {
+        int track = 0;
+        bool mute = false;
+        if (! readInt (args, "track", 0, kMaxAiTrack, track))
+            rifiuta ("track deve essere un intero fra 0 e 255.");
+        else if (! readBool (args, "mute", mute))
+            rifiuta ("mute deve essere booleano.");
+        else {
+            auto c = dawCmd ("muteTrack");
+            c["trackId"] = track;
+            c["muted"]   = mute;
+            invia (c, juce::String ("Richiesta di mute ") + (mute ? "ON" : "OFF") + " sulla traccia "
+                          + juce::String (track), nessunAvviso());
+        }
+    }
+    else if (call.name == "daw.track.solo") {
+        int track = 0;
+        bool solo = false;
+        if (! readInt (args, "track", 0, kMaxAiTrack, track))
+            rifiuta ("track deve essere un intero fra 0 e 255.");
+        else if (! readBool (args, "solo", solo))
+            rifiuta ("solo deve essere booleano.");
+        else {
+            auto c = dawCmd ("soloTrack");
+            c["trackId"] = track;
+            c["soloed"]  = solo;
+            invia (c, juce::String ("Richiesta di solo ") + (solo ? "ON" : "OFF") + " sulla traccia "
+                          + juce::String (track), nessunAvviso());
+        }
+    }
+    // ── Plugin di terze parti: manca la discovery ───────────────────
+    else if (call.name == "daw.plugin.setParam" || call.name == "daw.plugin.bypass") {
+        nonSupportato ("Il controllo dei plugin di terze parti non e' disponibile: WhyCremisi non ha ancora "
+                       "un modo per trovare i plugin della DAW e i loro parametri. Posso agire sulla catena "
+                       "interna (dsp.*) e sui comandi DAW di trasporto, mixer e marker.");
+    }
+    // ── Marker ──────────────────────────────────────────────────────
+    else if (call.name == "daw.marker.goto") {
+        int idx = 0;
+        const auto ref = argsOk ? parseMarkerRef (argOf (args, "marker"), idx) : MarkerRef::Invalid;
+        if (ref == MarkerRef::Index) {
+            auto c = dawCmd ("gotoMarker");
+            c["index"] = idx;
+            auto avvisi = nessunAvviso();
+            avvisi.push_back ("L'indice e' passato alla DAW cosi' com'e': se parte da 0 o da 1 dipende dalla DAW.");
+            invia (c, "Richiesta di salto al marker " + juce::String (idx), std::move (avvisi));
+        }
+        else if (ref == MarkerRef::Name)
+            nonSupportato ("Il salto a un marker per nome non e' supportato: WhyCremisi non conosce i nomi "
+                           "dei marker della DAW. Indica il numero del marker.");
+        else
+            rifiuta ("marker deve essere un indice intero non negativo (es. \"3\") oppure un nome.");
+    }
+    else if (call.name == "daw.marker.set") {
+        const auto* name = argOf (args, "name");
+        if (! argsOk || (name && ! name->is_null() && ! name->is_string()))
+            rifiuta ("name deve essere una stringa.");
+        else if (name && name->is_string() && ! juce::String (name->get<std::string>()).trim().isEmpty())
+            nonSupportato ("Dare un nome al marker non e' supportato: il comando DAW inserisce solo un marker "
+                           "senza nome. Posso inserirlo senza nome se va bene.");
+        else {
+            auto avvisi = nessunAvviso();
+            if (liveHandler)
+                avvisi.push_back ("Live: il comando set_or_delete_cue rimuove il marker se ce n'e' gia' uno "
+                                  "nella posizione corrente.");
+            invia (dawCmd ("setMarker"), "Richiesta di nuovo marker", std::move (avvisi));
+        }
+    }
+    else
+    {
+        return false;
+    }
+
+    return true;
+}
+
 void OscBridge::setAiEngine(AiEngine* engine)
 {
     aiEngine = engine;
@@ -2775,148 +3174,9 @@ void OscBridge::setAiEngine(AiEngine* engine)
         result.toolCallId = call.id;
         result.name = call.name;
 
-        // ── Il comando dell'AI deve arrivare alla DAW ────────────────
-        //
-        //  Qui stava il difetto piu' grave dell'intero plugin. Questa
-        //  funzione faceva wsServer->broadcast(), cioe' mandava il comando
-        //  *ai client WebSocket* — la UI React. Ma la UI il tipo
-        //  "daw.command" lo invia soltanto, non lo ascolta mai: il
-        //  messaggio non arrivava a nessuno.
-        //
-        //  Il gestore vero, quello che traduce in OSC verso la DAW, e'
-        //  dispatchDawCommand(), ed e' lo stesso che serve la UI quando
-        //  l'utente preme un pulsante. Non veniva mai chiamato.
-        //
-        //  Risultato: dodici strumenti su diciassette — tutto il trasporto,
-        //  le tracce, i marker, i plugin — non facevano niente, e siccome
-        //  ognuno rispondeva "fatto", il modello ci costruiva sopra il
-        //  ragionamento successivo e riferiva azioni mai avvenute.
-        //
-        //  Restituisce false quando non c'e' modo di consegnare il comando,
-        //  cosi' l'esito puo' essere onesto invece che ottimista.
-        auto sendDawCmd = [&](const std::string& action, const nlohmann::json& params = {}) -> bool {
-            nlohmann::json payload;
-            payload["command"] = action;
-            for (auto& [k, v] : params.items())
-                payload[k] = v;
-
-            dispatchDawCommand (payload);
-
-            // La UI riceve comunque una copia, ma come *notifica*: serve al
-            // registro delle azioni e a tenere allineati i controlli, non a
-            // far viaggiare il comando.
-            nlohmann::json notifica;
-            notifica["type"] = "daw.command.applied";
-            notifica["timestamp"] = juce::Time::currentTimeMillis();
-            notifica["payload"] = payload;
-            wsServer->broadcast (notifica);
-
-            return true;
-        };
-
-        // Esito onesto di un comando verso la DAW.
-        //
-        //  OSC viaggia su UDP: nessuno conferma niente, quindi "e' partito"
-        //  non vuol dire "e' arrivato". Prima ogni strumento rispondeva
-        //  "Playback started" a prescindere. Ora si distingue: se la DAW ci
-        //  ha parlato di recente il comando ha davvero un destinatario; se
-        //  non l'ha mai fatto lo si dice, perche' l'AI possa avvisare invece
-        //  di dare per riuscita un'azione che potrebbe non essere avvenuta.
-        auto esitoDaw = [&](const juce::String& fatto) -> juce::String {
-            if (dawHaRisposto())
-                return fatto;
-            return fatto + " — comando inviato via OSC, ma questa DAW non ha mai risposto: "
-                           "non posso confermare che sia stato eseguito. Su Ableton serve AbletonOSC, "
-                           "su Reaper il control surface OSC.";
-        };
-
-        // Transport
-        if (call.name == "daw.transport.play") {
-            sendDawCmd("play");
-            result.success = true;
-            result.output = esitoDaw ("Riproduzione avviata").toStdString();
-        }
-        else if (call.name == "daw.transport.stop") {
-            sendDawCmd("stop");
-            result.success = true;
-            result.output = esitoDaw ("Riproduzione fermata").toStdString();
-        }
-        else if (call.name == "daw.transport.record") {
-            bool arm = call.arguments.contains("arm") && call.arguments["arm"].get<bool>();
-            sendDawCmd("record", {{"arm", arm}});
-            result.success = true;
-            result.output = esitoDaw (arm ? "Registrazione armata" : "Registrazione fermata").toStdString();
-        }
-        else if (call.name == "daw.transport.setTempo") {
-            float bpm = call.arguments["bpm"].get<float>();
-            sendDawCmd("setTempo", {{"bpm", bpm}});
-            result.success = true;
-            result.output = esitoDaw ("Tempo impostato a " + juce::String (bpm, 1) + " BPM").toStdString();
-        }
-        // Track controls
-        else if (call.name == "daw.track.setVolume") {
-            int track = call.arguments["track"].get<int>();
-            float vol = call.arguments["volume"].get<float>();
-            sendDawCmd("setVolume", {{"track", track}, {"volume", vol}});
-            result.success = true;
-            result.output = esitoDaw ("Volume della traccia " + juce::String (track)
-                                    + " impostato a " + juce::String (vol, 1) + " dB").toStdString();
-        }
-        else if (call.name == "daw.track.setPan") {
-            int track = call.arguments["track"].get<int>();
-            float pan = call.arguments["pan"].get<float>();
-            sendDawCmd("setPan", {{"track", track}, {"pan", pan}});
-            result.success = true;
-            result.output = esitoDaw ("Pan della traccia " + juce::String (track)
-                                    + " impostato a " + juce::String (pan, 2)).toStdString();
-        }
-        else if (call.name == "daw.track.mute") {
-            int track = call.arguments["track"].get<int>();
-            bool mute = call.arguments["mute"].get<bool>();
-            // "muteTrack", non "mute": il gestore conosce solo il primo nome,
-            // e con l'altro il comando cadeva comunque nel vuoto.
-            sendDawCmd("muteTrack", {{"track", track}, {"mute", mute}});
-            result.success = true;
-            result.output = esitoDaw ("Traccia " + juce::String (track)
-                                    + (mute ? " silenziata" : " riattivata")).toStdString();
-        }
-        else if (call.name == "daw.track.solo") {
-            int track = call.arguments["track"].get<int>();
-            bool solo = call.arguments["solo"].get<bool>();
-            sendDawCmd("soloTrack", {{"track", track}, {"solo", solo}});
-            result.success = true;
-            result.output = esitoDaw ("Traccia " + juce::String (track)
-                                    + (solo ? " in solo" : " tolta dal solo")).toStdString();
-        }
-        // ── Plugin di terze parti ────────────────────────────────────
-        //
-        //  Non e' implementato. Il controllo dei plugin esterni richiede di
-        //  ospitare i VST3 e di mapparne i parametri (Paper 03), e di quel
-        //  lavoro nel codice non c'e' ancora niente.
-        //
-        //  Prima questi due strumenti rispondevano "Pro-Q3 Band2_Gain set to
-        //  -3.5" e successo: il modello lo prendeva per vero e ci costruiva
-        //  sopra i passi successivi, riferendo all'utente modifiche mai
-        //  avvenute. Meglio un no chiaro, che il modello puo' spiegare.
-        else if (call.name == "daw.plugin.setParam" || call.name == "daw.plugin.bypass") {
-            result.success = false;
-            result.output = "Il controllo dei plugin di terze parti non e' ancora implementato: "
-                            "WhyCremisi non ospita i VST3 esterni e non ne conosce i parametri. "
-                            "Posso agire sulla catena interna (dsp.*) e sui comandi della DAW.";
-        }
-        // Markers
-        else if (call.name == "daw.marker.goto") {
-            std::string marker = call.arguments["marker"].get<std::string>();
-            sendDawCmd("gotoMarker", {{"marker", marker}});
-            result.success = true;
-            result.output = esitoDaw ("Spostato al marker " + juce::String (marker)).toStdString();
-        }
-        else if (call.name == "daw.marker.set") {
-            std::string name = call.arguments.contains("name") ? call.arguments["name"].get<std::string>() : "";
-            sendDawCmd("setMarker", {{"name", name}});
-            result.success = true;
-            result.output = esitoDaw (name.empty() ? juce::String ("Marker inserito")
-                                                   : "Marker \"" + juce::String (name) + "\" inserito").toStdString();
+        // Strumenti DAW (trasporto, mixer, marker, plugin esterni): un solo
+        // percorso, tryExecuteDawTool, coperto dai test di regressione.
+        if (tryExecuteDawTool (call, result)) {
         }
         // ── Catena DSP interna ──────────────────────────────────────
         else if (call.name == "dsp.compressor.set") {
