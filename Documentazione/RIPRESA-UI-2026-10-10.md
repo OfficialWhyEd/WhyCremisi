@@ -12,6 +12,10 @@
   e tre file base in webview-ui/src/components/onboarding/: bridge.js, catalog.js, i18n.js.
 - NON ancora collegati ad App.jsx. Build UI passa. SetupScreen vecchio ancora in uso.
 
+## Decisione di Whyed (10/10 sera)
+Abbonamento e' la strada principale: prima scelta, consigliata, la piu' in evidenza.
+Gratis e Chiave API restano pienamente funzionanti e ben fatte, come alternative.
+
 ## Prossimo passo (in ordine)
 1. Finire il primo avvio in components/onboarding/: Benvenuto e lingua, tre strade
    (Gratis: Ollama o OpenRouter :free o Gemini; Abbonamento: Claude con ai.detectSubscription
