@@ -667,8 +667,6 @@ export default function App() {
     return bots.length > 0 ? bots[bots.length - 1].id : null
   }, [messages])
 
-  // Misure live per i box: servono solo ai messaggi che mostrano un box
-  const boxProps = { meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd: dawCmd, personality, onAnalyzeFurther: analyzeFurther, suggestion: currentSuggestion, layout: boxLayout, clippingCount, cpuUsage, rms, lufsShort, scopePoints, gainReduction, stereoState }
 
   // ── send AI prompt ────────────────────────────────────────────────
   const handleCommand = (e) => {
@@ -1026,6 +1024,9 @@ export default function App() {
   }))
 
   // ── render ────────────────────────────────────────────────────────
+  // Misure live per i box: servono solo ai messaggi che mostrano un box
+  const boxProps = { meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd: dawCmd, personality, onAnalyzeFurther: analyzeFurther, suggestion: currentSuggestion, layout: boxLayout, clippingCount, cpuUsage, rms, lufsShort, scopePoints, gainReduction, stereoState }
+
   return (
     <div className="select-none h-screen w-screen overflow-hidden font-['Space_Grotesk']" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
       <div className="crt-overlay" />
