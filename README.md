@@ -21,8 +21,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-Beta-orange?style=flat-square" />
-  <img src="https://img.shields.io/badge/AI-Ollama_%7C_Groq_%7C_Gemini_%7C_Claude_%7C_OpenAI_%7C_OpenRouter-D97706?style=flat-square" />
-  <img src="https://img.shields.io/badge/tests-14_passing-brightgreen?style=flat-square" />
+  <img src="https://img.shields.io/badge/AI-Ollama_%7C_Groq_%7C_Gemini_%7C_Claude_%7C_ChatGPT_%7C_OpenAI_%7C_OpenRouter-D97706?style=flat-square" />
+  <img src="https://img.shields.io/badge/tests-2856_checks_passing-brightgreen?style=flat-square" />
   <img src="https://img.shields.io/badge/platform-macOS_%7C_Windows_%7C_Linux-555?style=flat-square" />
   <img src="https://img.shields.io/badge/license-MIT-b4143c?style=flat-square" />
   <img src="https://img.shields.io/badge/PRs-welcome-b4143c?style=flat-square" />
@@ -398,11 +398,12 @@ Every message on the WebSocket is a JSON object:
 | **Ollama** | ✅ yes (llama3.2) | Runs at `localhost:11434`, fully offline |
 | **Groq** | — | Fast inference, free tier available |
 | **Gemini** | — | Google, flash and pro models |
-| **Anthropic** | — | Claude 3 family |
-| **OpenAI** | — | GPT-4o and variants |
-| **OpenRouter** | — | Single key, any model |
+| **Claude (your account)** | — | Sign in with your Claude subscription. WhyCremisi starts the official `claude` program, you log in there; the plugin never sees or stores your token |
+| **ChatGPT (your account)** | — | Same idea with the official `codex` program and your ChatGPT subscription |
+| **Anthropic / OpenAI** | — | Your own API key |
+| **OpenRouter** | — | One-click sign-in (OAuth PKCE) or a key. DeepSeek V4.1 Flash is the first model, with a chain of free models as fallback |
 
-Config: `temperature 0.7`, `maxTokens 2048`, `timeout 30s`. All providers share the same `sendPromptAsync()` interface — swap with one config change.
+Config: `temperature 0.7`, `maxTokens 2048`, `timeout 30s`. All providers share the same `sendPromptAsync()` interface — swap with one config change. Subscription rules of the providers change often: check them before you rely on a login.
 
 ---
 
@@ -422,6 +423,28 @@ WhyCremisi isn't a toolbar with an LLM behind it. It has a face, emotional state
 
 ---
 
+## What works today, and what does not (21 Oct 2026)
+
+This README describes where WhyCremisi is going. This table says where it is. Real-DAW tests so far are on **Ableton Live** through AbletonOSC; REAPER has a handler that is less tested. Other DAWs are not supported yet.
+
+| Area | State |
+|---|---|
+| Play, stop, record, volume, pan, mute, solo, tempo, markers | ✅ Real. Every command is **read back from Live** and shown as confirmed, different, or not confirmed |
+| Undo | ✅ Real. Before a mixer move the old value is read; Undo puts it back and checks again |
+| Plugin parameters on a track | ✅ Listed, read and set with read-back (`device.list`, `device.params`, `device.setParam`) |
+| Mix: levels read from Live, named snapshots | ✅ Works. Level analysis by loudness (LUFS) is not built yet |
+| Samples and beats from your own folders | 🔧 First version. The analysis helper (tempo, key, kick/snare/hat) is not built; not measured on 1000 samples |
+| Writing MIDI clips and patterns into the DAW | 📋 Not built yet |
+| Plugin Dictionary, Auto-Discovery | 📋 Not built yet (the table below is a target list, not a feature) |
+| Chat in plain text, panels chosen by the model | ✅ Done |
+| Login: Claude account, ChatGPT account, OpenRouter one click, API keys | ✅ Done. Tested with unit tests; the Claude and ChatGPT sign-in screens are not yet clicked through in a fresh install |
+| Live test in Ableton | ⏳ Waiting: AbletonOSC has to be installed first (`Tools/installa-abletonosc.cmd`) |
+| Logic, Cubase, FL Studio, Pro Tools | ❌ No handler yet |
+
+Where the sections below promise more than this table (writing whole songs, mastering like a named engineer, any plugin in any DAW), read them as the goal.
+
+---
+
 ## Features
 
 - **Universal parameter bridge** — reads and writes any VST3 parameter by index, across all plugins simultaneously
@@ -433,8 +456,8 @@ WhyCremisi isn't a toolbar with an LLM behind it. It has a face, emotional state
 - **WhyCremisiBridge.js** — WebSocket singleton with auto-reconnect (10 attempts, 2s interval), pending request map, typed event emitter
 - **33ms broadcast loop** — JUCE Timer pushes transport + meter to React at ~30fps
 - **Dynamic widget system** — C++ broadcasts `ui.widget.create/update/remove`, React renders them live
-- **Multi-provider AI** — Ollama (offline default) + Groq + Gemini + Claude + OpenAI + OpenRouter
-- **14 automated tests** — CI-ready, build is stable
+- **Multi-provider AI** — Ollama (offline default) + Groq + Gemini + Claude + ChatGPT (accounts or keys) + OpenAI + OpenRouter
+- **2856 automated checks** — unit tests for the bridge, the AI layer, the mix snapshots and the Live device list
 - **VST3 + AU + Standalone** — one codebase, three build targets
 
 ---
@@ -462,11 +485,11 @@ The plugins that cover ~90% of real-world sessions. Every plugin works via index
 
 | Environment | Support |
 |---|---|
-| **macOS** (Monterey+) | ✅ Primary development platform |
+| **macOS** (Monterey+) | 🔧 Same code, not built or tested on this machine yet |
 | **Windows** (10/11) | ✅ JUCE cross-platform build, tested |
-| **Linux** | ✅ JUCE cross-platform build, tested |
-| Modern DAW (Logic 11, Ableton 12, Cubase 13+) | ✅ Full — SDK extensions, extended context |
-| Older DAW (Logic 10.7, Ableton 11, Cubase 12) | ✅ Full — core parameter bridge, all features |
+| **Linux** | 🔧 JUCE cross-platform code, not built or tested by us yet |
+| Ableton Live 11 and 12 | 🔧 Works through AbletonOSC (unit-tested); live test pending |
+| Logic, Cubase, FL Studio, Pro Tools | ❌ Not supported yet |
 | Legacy sessions / older plugin versions | ✅ Read + write via index scanning |
 | AU (macOS only) | ✅ Same bridge, AU format |
 | Standalone mode | ✅ No DAW needed, bridge runs independently |
@@ -569,7 +592,7 @@ This is a one-person project so far. PRs, issues and discussions are very welcom
 
 - **Plugin dictionary entries** — if you've mapped parameters for any DAW plugin, open a PR
 - **Provider implementations** — new AI providers follow the same interface as the existing 6
-- **DAW compatibility testing** — tested on Ableton and Logic (macOS), reports for Windows/Linux DAWs appreciated
+- **DAW compatibility testing** — reports from any DAW and OS are welcome, Ableton Live on Windows is the one we are testing first
 
 If you're working on something larger, open an issue first so we can align.
 
