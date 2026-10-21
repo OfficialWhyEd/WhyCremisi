@@ -433,8 +433,9 @@ This README describes where WhyCremisi is going. This table says where it is. Re
 | Undo | ✅ Real. Before a mixer move the old value is read; Undo puts it back and checks again |
 | Plugin parameters on a track | ✅ Listed, read and set with read-back (`device.list`, `device.params`, `device.setParam`) |
 | Mix: levels read from Live, named snapshots | ✅ Works. Level analysis by loudness (LUFS) is not built yet |
-| Samples and beats from your own folders | 🔧 First version. The analysis helper (tempo, key, kick/snare/hat) is not built; not measured on 1000 samples |
-| Writing MIDI clips and patterns into the DAW | 📋 Not built yet |
+| Samples from your own folders: scan, measure, classify (kick, snare, hat, 808, loops) | ✅ Built inside the plugin (`samples.scan`, `samples.search`), index kept between runs. Not yet measured on a big library (1000 samples) |
+| Beat from your samples (`beat.create`) | ✅ Writes `mix.wav` and one aligned stem per lane. In Ableton it also writes the MIDI clip; the clip is sent, not yet read back and confirmed |
+| Key detection, taste search by text (CLAP), tempo of full songs | 📋 Not built yet |
 | Plugin Dictionary, Auto-Discovery | 📋 Not built yet (the table below is a target list, not a feature) |
 | Chat in plain text, panels chosen by the model | ✅ Done |
 | Login: Claude account, ChatGPT account, OpenRouter one click, API keys | ✅ Done. Tested with unit tests; the Claude and ChatGPT sign-in screens are not yet clicked through in a fresh install |
