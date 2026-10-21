@@ -111,7 +111,7 @@ export default function App() {
   }
   const addToast = (message, type = 'info') => {
     const id = Date.now()
-    setToasts(prev => [...prev, { id, message, type }])
+    setToasts(prev => prev.some(t => t.message === message) ? prev : [...prev, { id, message, type }].slice(-3))
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
   }
   const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id))
@@ -311,7 +311,6 @@ export default function App() {
     const stateUnsub = whycremisi.onStateChange((s) => {
       setConnStatus(s)
       if (s === ConnectionState.CONNECTED) {
-        sysMsg(`[${ts()}] COLLEGATO AL PLUGIN`)
         setBotState('success')
         setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
         // Chi comanda sull'accesso è il plugin, non il browser.
@@ -360,12 +359,8 @@ export default function App() {
         whycremisi.send({ type: 'config.get', payload: { key: 'ai.status' } })
       }
       if (s === ConnectionState.DISCONNECTED || s === ConnectionState.ERROR) {
-        sysMsg(`[${ts()}] CONNESSIONE PERSA — RICONNESSIONE…`)
         setBotState('sad')
         addToast('Connessione persa — riconnessione in corso…', 'error')
-      }
-      if (s === ConnectionState.CONNECTED) {
-        addToast('Collegato al plugin WhyCremisi', 'success')
       }
       if (s === ConnectionState.RECONNECTING) {
         setBotState('loading')
@@ -599,8 +594,7 @@ export default function App() {
     })
 
     // ── Personality events from PersonalityCore ──
-    const unsubPersAction = whycremisi.on('personality.action', (payload) => {
-      sysMsg(`[${ts()}] PERSONALITY: ${payload.detail || 'action recorded'}`)
+    const unsubPersAction = whycremisi.on('personality.action', () => {
     })
 
     const unsubPersContext = whycremisi.on('personality.context', (payload) => {
@@ -628,24 +622,19 @@ export default function App() {
                payload.detail?.includes('consultative') ? 'consultative' :
                payload.detail?.includes('creative') ? 'creative' : prev.style
       }))
-      sysMsg(`[${ts()}] WORKSPACE STYLE: ${payload.detail || ''}`)
     })
 
-    const unsubWsMemory = whycremisi.on('workspace.memory', (payload) => {
-      sysMsg(`[${ts()}] WORKSPACE MEMORY: ${payload.detail?.substring(0, 80) || ''}`)
+    const unsubWsMemory = whycremisi.on('workspace.memory', () => {
     })
 
-    const unsubWsBootstrap = whycremisi.on('workspace.bootstrap', (payload) => {
-      sysMsg(`[${ts()}] WORKSPACE: ${payload.detail || 'Bootstrap event'}`)
+    const unsubWsBootstrap = whycremisi.on('workspace.bootstrap', () => {
     })
 
-    const unsubWsRefresh = whycremisi.on('workspace.refresh', (payload) => {
-      sysMsg(`[${ts()}] WORKSPACE REFRESHED: ${payload.detail || ''}`)
+    const unsubWsRefresh = whycremisi.on('workspace.refresh', () => {
     })
 
     // connect
     whycremisi.connect().catch(() => {
-      sysMsg(`[${ts()}] PLUGIN NOT RUNNING — OFFLINE MODE`)
     })
 
     return () => {
@@ -1032,7 +1021,7 @@ export default function App() {
       <div className="crt-overlay" />
 
       {/* ── Toast Container ────────────────────────────────────────── */}
-      <div className="toast-container">
+      <div className="fixed bottom-10 right-3 z-[200] flex flex-col gap-2 items-end pointer-events-none">
         <AnimatePresence>
           {toasts.map(toast => (
             <motion.div
@@ -1041,16 +1030,16 @@ export default function App() {
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: 80, scale: 0.9 }}
               transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-              className={`toast toast-${toast.type}`}
+              className="pointer-events-auto cursor-pointer flex items-center gap-2 px-3 py-2 border text-[11px] font-mono" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)', borderColor: toast.type === 'error' ? 'var(--crimson, #DC143C)' : toast.type === 'success' ? '#22c55e' : 'var(--border-light)' }}
               onClick={() => removeToast(toast.id)}
             >
-              <span className="toast-icon">
+              <span className="text-xs">
                 {toast.type === 'error' && '✕'}
                 {toast.type === 'success' && '✓'}
                 {toast.type === 'warning' && '⚠'}
                 {toast.type === 'info' && 'ℹ'}
               </span>
-              <span className="toast-message">{toast.message}</span>
+              <span>{toast.message}</span>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -1078,7 +1067,6 @@ export default function App() {
             onSkip={() => {
               setSetupComplete(true)
               localStorage.setItem('whycremisi_setup_done', 'true')
-              sysMsg(`[${ts()}] SETUP SKIPPED — AI features require API key configuration`)
             }}
           />
         )}
