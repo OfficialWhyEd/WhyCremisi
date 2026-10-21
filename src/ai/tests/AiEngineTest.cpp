@@ -131,6 +131,31 @@ public:
             expect (ClaudeCodeProvider::composePrompt ("rotto", "x").trim() == "Utente: x");
         }
 
+        beginTest ("Codex legge gli eventi JSONL e riconosce gli errori");
+        {
+            const juce::String ok =
+                "{\"type\":\"thread.started\",\"thread_id\":\"x\"}\n"
+                "{\"type\":\"item.completed\",\"item\":{\"id\":\"i\",\"type\":\"agent_message\",\"text\":\"ciao\"}}\n"
+                "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"cached_input_tokens\":4,\"output_tokens\":2}}\n";
+            auto r = CodexProvider::parseCliOutput (ok);
+            expect (r.success);
+            expect (r.text == "ciao");
+            expect (r.usage.inputTokens == 10 && r.usage.outputTokens == 2 && r.usage.cacheReadTokens == 4);
+
+            auto e = CodexProvider::parseCliOutput ("{\"type\":\"turn.failed\",\"error\":{\"message\":\"non autorizzato\"}}\n");
+            expect (! e.success && e.error.contains ("non autorizzato"));
+            expect (! CodexProvider::parseCliOutput ({}).success);
+
+            expect (AiEngine::providerFromId ("codex") == Provider::Codex);
+            expect (AiEngine::providerFromId ("ChatGPT") == Provider::Codex);
+            expect (AiEngine::providerToId (Provider::Codex) == "codex");
+
+            auto a = CodexProvider::buildArguments ("gpt-5\" & calc & \"", "high");
+            expect (a.joinIntoString (" ").contains ("exec --json"));
+            expect (! a.joinIntoString (" ").contains ("&"));
+            expect (a.contains ("read-only"));
+        }
+
         beginTest ("OpenRouter non viene scambiato per OpenAI");
         {
             // Entrambi cominciano per "open": con un confronto per prefisso

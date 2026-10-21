@@ -221,6 +221,7 @@ juce::String AiEngine::providerToId (Provider p)
         case Provider::OpenRouter: return "openrouter";
         case Provider::Groq:       return "groq";
         case Provider::ClaudeCode: return "claudecode";
+        case Provider::Codex:      return "codex";
     }
     return "ollama";
 }
@@ -237,6 +238,8 @@ AiEngine::Provider AiEngine::providerFromId (const juce::String& id, Provider fa
     if (s.startsWith ("ollama"))     return Provider::Ollama;
     if (s.startsWith ("gemini")
      || s.startsWith ("google"))     return Provider::Gemini;
+    if (s.startsWith ("codex")
+     || s.startsWith ("chatgpt"))    return Provider::Codex;
     if (s.startsWith ("claudecode")
      || s.startsWith ("claude code")
      || s.startsWith ("claude (")) return Provider::ClaudeCode;   // prima di "claude"
@@ -272,6 +275,7 @@ std::unique_ptr<AIProvider> AiEngine::createProvider(Provider type)
         case Provider::Ollama:     return std::make_unique<OllamaProvider>(pcfg);
         case Provider::Gemini:     return std::make_unique<GeminiProvider>(pcfg);
         case Provider::ClaudeCode: return std::make_unique<ClaudeCodeProvider>(pcfg);
+        case Provider::Codex:      return std::make_unique<CodexProvider>(pcfg);
     }
     return nullptr;
 }
@@ -290,7 +294,8 @@ static bool nativeToolsSupported (AiEngine::Provider p)
 {
     return p != AiEngine::Provider::Ollama
         && p != AiEngine::Provider::Gemini
-        && p != AiEngine::Provider::ClaudeCode;
+        && p != AiEngine::Provider::ClaudeCode
+        && p != AiEngine::Provider::Codex;
 }
 
 void AiEngine::syncProviderConfig()
@@ -369,7 +374,7 @@ AiEngine::ConfigValidation AiEngine::validateConfig() const
     if (config.provider == Provider::Ollama) {
         if (config.baseUrl == "http://localhost:11434")
             result.warnings.add("Ollama is using default localhost base URL — common dev setup");
-    } else if (config.provider == Provider::ClaudeCode) {
+    } else if (config.provider == Provider::ClaudeCode || config.provider == Provider::Codex) {
         // Nessuna chiave: l'accesso lo gestisce il programma "claude".
     } else {
         if (config.apiKey.isEmpty())
@@ -767,6 +772,7 @@ juce::String AiEngine::getProviderName() const
         case Provider::OpenRouter: return "OpenRouter";
         case Provider::Groq: return "Groq";
         case Provider::ClaudeCode: return "Claude (il tuo account)";
+        case Provider::Codex: return "ChatGPT (il tuo account)";
         default: return "Unknown";
     }
 }

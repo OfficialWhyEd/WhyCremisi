@@ -824,6 +824,294 @@ juce::StringArray ClaudeCodeProvider::getAvailableModels()
     return { "sonnet", "opus", "haiku" };
 }
 
+
+// ═══════════════════════════════════════════════════════════════════
+//  Codex Provider (account ChatGPT, login fatto dal programma ufficiale)
+// ═══════════════════════════════════════════════════════════════════
+
+juce::File CodexProvider::findExecutable()
+{
+   #if JUCE_WINDOWS
+    const char* nomi[] = { "codex.exe", "codex.cmd" };
+   #else
+    const char* nomi[] = { "codex" };
+   #endif
+
+    const auto home = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
+    juce::Array<juce::File> cartelle {
+        home.getChildFile ("AppData").getChildFile ("Local").getChildFile ("Programs")
+            .getChildFile ("OpenAI").getChildFile ("Codex").getChildFile ("bin"),
+        home.getChildFile ("AppData").getChildFile ("Roaming").getChildFile ("npm"),
+        home.getChildFile (".local").getChildFile ("bin")
+    };
+    for (const auto& dir : cartelle)
+        for (auto* n : nomi)
+            if (auto f = dir.getChildFile (n); f.existsAsFile())
+                return f;
+
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PATH", {});
+   #if JUCE_WINDOWS
+    auto voci = juce::StringArray::fromTokens (path, ";", "\"");
+   #else
+    auto voci = juce::StringArray::fromTokens (path, ":", "\"");
+   #endif
+    for (const auto& voce : voci)
+    {
+        if (voce.trim().isEmpty()) continue;
+        for (auto* n : nomi)
+            if (auto f = juce::File (voce.trim()).getChildFile (n); f.existsAsFile())
+                return f;
+    }
+    return {};
+}
+
+CodexProvider::LoginState CodexProvider::queryLoginState()
+{
+    LoginState st;
+    const auto exe = findExecutable();
+    if (! exe.existsAsFile())
+        return st;
+    st.installed = true;
+
+    juce::ChildProcess proc;
+    const auto cmd = ClaudeCodeProvider::buildShellCommand (exe, { "login", "status" }, {}, {});
+    // A seconda della versione l'esito esce su stdout o su stderr.
+    if (! proc.start (cmd, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
+        return st;
+    const auto out = proc.readAllProcessOutput();
+    proc.waitForProcessToFinish (15000);
+
+    if (out.containsIgnoreCase ("not logged in"))
+        return st;
+    if (out.containsIgnoreCase ("logged in using chatgpt"))
+    {
+        st.loggedIn = true;
+        st.method = "ChatGPT";
+    }
+    else if (out.containsIgnoreCase ("logged in"))
+    {
+        st.loggedIn = true;
+        st.method = "API key";
+    }
+    return st;
+}
+
+bool CodexProvider::openLoginTerminal()
+{
+    const auto exe = findExecutable();
+    if (! exe.existsAsFile())
+        return false;
+
+    const auto cmd = shellArg (exe.getFullPathName()) + " login";
+
+    juce::ChildProcess p;
+   #if JUCE_WINDOWS
+    return p.start ("cmd.exe /d /c start \"Accedi a ChatGPT\" cmd.exe /k \"" + cmd + "\"");
+   #elif JUCE_MAC
+    return p.start (juce::StringArray { "osascript", "-e",
+        "tell application \"Terminal\" to do script \"" + cmd.replace ("\"", "\\\"") + "\"",
+        "-e", "tell application \"Terminal\" to activate" });
+   #else
+    return p.start (juce::StringArray { "x-terminal-emulator", "-e", "sh", "-c", cmd + "; exec sh" });
+   #endif
+}
+
+juce::StringArray CodexProvider::buildArguments (const juce::String& model, const juce::String& effort)
+{
+    juce::StringArray a;
+    a.add ("exec");
+    a.add ("--json");
+    a.add ("--skip-git-repo-check");
+    a.add ("--ephemeral");
+    a.add ("--ignore-user-config");
+    a.add ("--ignore-rules");
+    a.add ("-s"); a.add ("read-only");
+    // "default" = il modello predefinito dell'abbonamento: nessun -m.
+    if (soloSicuri (model).isNotEmpty() && model != "default")
+    {
+        a.add ("-m"); a.add (soloSicuri (model));
+    }
+    const auto e = soloSicuri (effort);
+    if (e == "low" || e == "medium" || e == "high" || e == "xhigh")
+    {
+        a.add ("-c"); a.add ("model_reasoning_effort=" + e);
+    }
+    a.add ("-");   // il prompt arriva da stdin
+    return a;
+}
+
+AIProvider::Result CodexProvider::parseCliOutput (const juce::String& raw)
+{
+    Result r;
+    juce::String testo;
+    juce::String errore;
+    bool completato = false;
+
+    for (const auto& riga : juce::StringArray::fromLines (raw))
+    {
+        const auto t = riga.trim();
+        if (! t.startsWithChar ('{')) continue;
+        const auto j = nlohmann::json::parse (t.toStdString(), nullptr, false);
+        if (! j.is_object()) continue;
+        const auto tipo = j.value ("type", std::string());
+
+        if (tipo == "item.completed" && j.contains ("item") && j["item"].is_object()
+            && j["item"].value ("type", std::string()) == "agent_message")
+        {
+            const auto msg = juce::String (j["item"].value ("text", std::string()));
+            if (testo.isNotEmpty()) testo += "\n\n";
+            testo += msg;
+        }
+        else if (tipo == "turn.completed")
+        {
+            completato = true;
+            if (j.contains ("usage") && j["usage"].is_object())
+            {
+                const auto& u = j["usage"];
+                r.usage.inputTokens     = u.value ("input_tokens", 0);
+                r.usage.outputTokens    = u.value ("output_tokens", 0);
+                r.usage.cacheReadTokens = u.value ("cached_input_tokens", 0);
+            }
+        }
+        else if (tipo == "turn.failed" || tipo == "error")
+        {
+            auto m = juce::String (j.value ("message", std::string()));
+            if (m.isEmpty() && j.contains ("error") && j["error"].is_object())
+                m = juce::String (j["error"].value ("message", std::string()));
+            if (m.isNotEmpty()) errore = m;
+        }
+    }
+
+    if (completato && testo.isNotEmpty())
+    {
+        r.success = true;
+        r.text = testo;
+        return r;
+    }
+    r.error = errore.isNotEmpty() ? errore : "Risposta di ChatGPT non leggibile.";
+    return r;
+}
+
+void CodexProvider::abort()
+{
+    abortRequested = true;
+    std::lock_guard<std::mutex> lock (procMutex);
+    if (running != nullptr)
+        running->kill();
+}
+
+AIProvider::Result CodexProvider::sendPrompt (const juce::String& systemPrompt, const juce::String& userMessage)
+{
+    beginRequest();
+    Result r;
+
+    const auto exe = findExecutable();
+    if (! exe.existsAsFile())
+    {
+        r.error = "ChatGPT (Codex) non risulta installato su questa macchina. Installa Codex e riprova.";
+        lastError = r.error;
+        return r;
+    }
+
+    const auto base = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("WhyCremisi-codex");
+    base.createDirectory();
+    const auto promptFile = base.getChildFile ("prompt-" + juce::Uuid().toString() + ".txt");
+    // Codex non ha un parametro per il system prompt: va in testa al testo.
+    promptFile.replaceWithText ("ISTRUZIONI DI SISTEMA (seguile alla lettera, rispondi solo a testo, "
+                                "non usare strumenti ne' comandi):\n" + systemPrompt
+                                + "\n\n--- CONVERSAZIONE ---\n"
+                                + ClaudeCodeProvider::composePrompt (config.contextMessages, userMessage));
+
+    const auto cmd = ClaudeCodeProvider::buildShellCommand (exe, buildArguments (config.model, config.effort),
+                                                            promptFile, base);
+
+    juce::ChildProcess proc;
+    if (! proc.start (cmd, juce::ChildProcess::wantStdOut))
+    {
+        r.error = "Non sono riuscito ad avviare Codex.";
+        lastError = r.error;
+        promptFile.deleteFile();
+        return r;
+    }
+    {
+        std::lock_guard<std::mutex> lock (procMutex);
+        running = &proc;
+    }
+
+    const int limite = juce::jmax (config.timeoutMs, 180000);
+    std::atomic<bool> finito { false };
+    std::thread guardiano ([&]
+    {
+        for (int ms = 0; ms < limite && ! finito; ms += 100)
+            juce::Thread::sleep (100);
+        if (! finito)
+        {
+            std::lock_guard<std::mutex> lock (procMutex);
+            if (running != nullptr) running->kill();
+        }
+    });
+
+    const auto out = proc.readAllProcessOutput();
+    proc.waitForProcessToFinish (5000);
+    finito = true;
+    guardiano.join();
+    {
+        std::lock_guard<std::mutex> lock (procMutex);
+        running = nullptr;
+    }
+    promptFile.deleteFile();
+
+    if (abortRequested)
+    {
+        lastAborted = true;
+        r.error = "Interrotto.";
+        return r;
+    }
+
+    r = parseCliOutput (out);
+    if (! r.success)
+    {
+        if (out.trim().isEmpty())
+            r.error = "ChatGPT non ha risposto. Se non hai ancora fatto l'accesso, usa \"Accedi con ChatGPT\".";
+        lastError = r.error;
+    }
+    return r;
+}
+
+void CodexProvider::sendPromptStreaming (const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk)
+{
+    const auto r = sendPrompt (systemPrompt, userMessage);
+    if (onChunk)
+    {
+        if (r.success && r.text.isNotEmpty())
+            onChunk (r.text, false);
+        onChunk ({}, true);
+    }
+}
+
+bool CodexProvider::testConnection()
+{
+    beginRequest();
+    const auto st = queryLoginState();
+    if (! st.installed)
+    {
+        lastError = "ChatGPT (Codex) non risulta installato su questa macchina.";
+        return false;
+    }
+    if (! st.loggedIn)
+    {
+        lastError = "Accesso a ChatGPT non ancora fatto.";
+        return false;
+    }
+    return true;
+}
+
+juce::StringArray CodexProvider::getAvailableModels()
+{
+    // I modelli dipendono dall'abbonamento: l'elenco serve solo come suggerimento.
+    return { "default", "gpt-5-codex", "gpt-5" };
+}
+
 juce::String AnthropicProvider::displayNameFor (const juce::String& modelId)
 {
     if (modelId == "claude-opus-5")    return "Opus 5";

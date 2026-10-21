@@ -235,6 +235,50 @@ private:
     juce::ChildProcess* running = nullptr;
 };
 
+// ── Account ChatGPT tramite il programma ufficiale ──────────────────
+//
+//  Chi ha un abbonamento ChatGPT entra con il login del programma ufficiale
+//  "codex" (OpenAI): WhyCremisi lo lancia per ogni richiesta e legge la
+//  risposta. Il login lo fa l'utente nel browser; il plugin non vede,
+//  non copia e non salva nessun token.
+class CodexProvider : public AIProvider
+{
+public:
+    CodexProvider(const Config& cfg) { configure(cfg); }
+    Result sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage) override;
+    void sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk) override;
+    void abort() override;
+    bool testConnection() override;
+    juce::StringArray getAvailableModels() override;
+    juce::String getName() const override { return "ChatGPT (il tuo account)"; }
+
+    // "default" = il modello predefinito dell'abbonamento.
+    static juce::String defaultModel() { return "default"; }
+
+    static juce::File findExecutable();
+
+    struct LoginState
+    {
+        bool installed = false;
+        bool loggedIn = false;
+        juce::String method;    // "ChatGPT" oppure "API key"
+    };
+
+    static LoginState queryLoginState();
+    static bool openLoginTerminal();
+
+    // Legge l'output --json (una riga JSON per evento).
+    static Result parseCliOutput (const juce::String& raw);
+
+    // Solo testo: sandbox in sola lettura, nessuna sessione salvata,
+    // nessuna configurazione dell'utente.
+    static juce::StringArray buildArguments (const juce::String& model, const juce::String& effort);
+
+private:
+    std::mutex procMutex;
+    juce::ChildProcess* running = nullptr;
+};
+
 class OllamaProvider : public AIProvider
 {
 public:

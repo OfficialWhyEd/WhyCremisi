@@ -2345,6 +2345,9 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                 const bool inLocale  = cfg.provider == AiEngine::Provider::Ollama;
                 const auto claudeLogin = conClaude ? ClaudeCodeProvider::queryLoginState()
                                                    : ClaudeCodeProvider::LoginState {};
+                const bool conCodex  = cfg.provider == AiEngine::Provider::Codex;
+                const auto codexLogin = conCodex ? CodexProvider::queryLoginState()
+                                                 : CodexProvider::LoginState {};
 
                 rp["provider"]        = AiEngine::providerToId (cfg.provider).toStdString();
                 rp["label"]           = aiEngine->getProviderName().toStdString();
@@ -2354,11 +2357,16 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                 rp["hasSubscription"] = haAbbon;
                 // "pronto" significa: c'e' una credenziale utilizzabile,
                 // oppure il fornitore non ne richiede nessuna.
-                rp["ready"]           = inLocale || haChiave || haAbbon || claudeLogin.loggedIn;
+                rp["ready"]           = inLocale || haChiave || haAbbon || claudeLogin.loggedIn || codexLogin.loggedIn;
                 if (conClaude)
                 {
                     rp["claudeInstalled"] = claudeLogin.installed;
                     rp["claudeLoggedIn"]  = claudeLogin.loggedIn;
+                }
+                if (conCodex)
+                {
+                    rp["codexInstalled"] = codexLogin.installed;
+                    rp["codexLoggedIn"]  = codexLogin.loggedIn;
                 }
             }
             else
@@ -2434,6 +2442,13 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                         // Alias del programma ufficiale: sonnet, opus, haiku.
                         if (! juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
                             cfg.model = ClaudeCodeProvider::defaultModel();
+                        break;
+
+                    case AiEngine::Provider::Codex:
+                        // Vuoto = modello predefinito dell'abbonamento; un alias
+                        // di Claude rimasto da prima non vale qui.
+                        if (cfg.model.isEmpty() || cfg.model.startsWith ("gpt-4") || cfg.model.startsWith ("gpt-3") || juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
+                            cfg.model = CodexProvider::defaultModel();
                         break;
                 }
             });
@@ -2662,6 +2677,44 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         rp["found"] = stato.loggedIn;
         rp["claudeCode"] = stato.installed;
         rp["method"] = stato.method.toStdString();
+        sendConfigResponse(rp);
+    }
+    else if (configKey == "ai.detectCodex")
+    {
+        // Come per Claude: lo dice il programma ufficiale ("codex login status").
+        const auto stato = CodexProvider::queryLoginState();
+
+        if (stato.loggedIn && aiEngine)
+        {
+            aiEngine->updateConfig([](AiEngine::Config& cfg)
+            {
+                cfg.provider = AiEngine::Provider::Codex;
+                cfg.apiKey = {};
+                cfg.authToken = {};
+                if (cfg.model.isEmpty() || cfg.model.startsWith ("gpt-4") || cfg.model.startsWith ("gpt-3") || juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
+                    cfg.model = CodexProvider::defaultModel();
+            });
+        }
+
+        nlohmann::json rp;
+        rp["key"] = "ai.detectCodex";
+        rp["status"] = "ok";
+        rp["found"] = stato.loggedIn;
+        rp["codex"] = stato.installed;
+        rp["method"] = stato.method.toStdString();
+        sendConfigResponse(rp);
+    }
+    else if (configKey == "ai.linkCodex")
+    {
+        const bool aperto = CodexProvider::openLoginTerminal();
+        log("[AUTH] Accesso ChatGPT: " + juce::String (aperto ? "terminale aperto" : "non avviato"));
+
+        nlohmann::json rp;
+        rp["key"] = "ai.linkCodex";
+        rp["status"] = aperto ? "opened" : "error";
+        rp["message"] = aperto
+            ? "Completa l'accesso nella finestra e nel browser, poi torna qui."
+            : "Codex non risulta installato su questa macchina.";
         sendConfigResponse(rp);
     }
     else if (configKey == "ai.linkClaude")

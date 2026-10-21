@@ -5,7 +5,7 @@
   © 2026 WhyEd™ — @whyed.music · MIT License
   AI Engine multi-provider
 
-  Provider supportati: Ollama, OpenAI, Gemini, Anthropic, OpenRouter, Groq, ClaudeCode.
+  Provider supportati: Ollama, OpenAI, Gemini, Anthropic, OpenRouter, Groq, ClaudeCode, Codex.
   Function calling via ToolRegistry, gestione del contesto via ContextManager.
   ==============================================================================
 */
@@ -37,7 +37,7 @@ class AiEngine
 {
 public:
     enum class Provider {
-        Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq, ClaudeCode
+        Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq, ClaudeCode, Codex
     };
 
     // ── Nome canonico di un provider ───────────────────────────

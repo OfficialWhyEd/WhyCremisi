@@ -9,6 +9,8 @@ const modelsByProvider = {
   anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'],
   // Con l'account Claude i modelli sono gli alias del programma ufficiale.
   claudecode: ['sonnet', 'opus', 'haiku'],
+  // Con l'account ChatGPT il modello predefinito è quello dell'abbonamento.
+  codex: ['default', 'gpt-5-codex', 'gpt-5'],
   openrouter: [
     'deepseek/deepseek-v4.1-flash',
     'nvidia/nemotron-3-ultra-550b-a55b:free',
@@ -33,6 +35,7 @@ const modelLabels = {
   sonnet: { name: 'Sonnet', note: 'Equilibrato: ideale per il lavoro in DAW' },
   opus:   { name: 'Opus',   note: 'Il più capace, più lento' },
   haiku:  { name: 'Haiku',  note: 'Rapido ed economico' },
+  default: { name: 'Predefinito', note: 'Il modello che ChatGPT sceglie per il tuo abbonamento' },
 }
 
 // Profondità di ragionamento. Alza la qualità sui compiti difficili e
@@ -57,10 +60,12 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   // "claudecode" è come il plugin chiama l'accesso con l'account Claude; qui
   // sta sotto la card Claude, con la modalità "Abbonamento".
   const savedClaudeCode = initialConfig.provider === 'claudecode'
-  const [provider, setProvider] = useState(savedClaudeCode ? 'anthropic' : (initialConfig.provider || 'ollama'))
+  const savedCodex = initialConfig.provider === 'codex'
+  const [provider, setProvider] = useState(
+    savedClaudeCode ? 'anthropic' : savedCodex ? 'openai' : (initialConfig.provider || 'ollama'))
   const [model, setModel] = useState(
     initialConfig.model
-    || modelsByProvider[savedClaudeCode ? 'claudecode' : initialConfig.provider]?.[0]
+    || modelsByProvider[savedClaudeCode ? 'claudecode' : savedCodex ? 'codex' : initialConfig.provider]?.[0]
     || 'llama3.2')
   const [apiKey, setApiKey] = useState(initialConfig.apiKey || '')
   const [status, setStatus] = useState('idle')
@@ -68,7 +73,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const [showKey, setShowKey] = useState(false)
   // Su Claude si può entrare con un abbonamento invece che con una chiave API.
   const [claudeAuthMode, setClaudeAuthMode] = useState(
-    savedClaudeCode ? 'subscription' : (initialConfig.claudeAuthMode || 'subscription'))
+    (savedClaudeCode || savedCodex) ? 'subscription' : (initialConfig.claudeAuthMode || 'subscription'))
   const [effort, setEffort] = useState(initialConfig.effort || 'high')
   // null = non ancora verificato, true/false = esito del rilevamento.
   const [subscriptionDetected, setSubscriptionDetected] = useState(null)
@@ -82,9 +87,15 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const pollRef = useRef(null)
 
   const isClaude = provider === 'anthropic'
-  const usingSubscription = isClaude && claudeAuthMode === 'subscription'
+  const isChatGpt = provider === 'openai'
+  // Claude e ChatGPT: si entra con il proprio account tramite il programma ufficiale.
+  const hasAccount = isClaude || isChatGpt
+  const usingSubscription = hasAccount && claudeAuthMode === 'subscription'
+  const nomeAccount = isChatGpt ? 'ChatGPT' : 'Claude'
+  const chiaveDetect = isChatGpt ? 'ai.detectCodex' : 'ai.detectSubscription'
+  const chiaveLink = isChatGpt ? 'ai.linkCodex' : 'ai.linkClaude'
   // Il fornitore che il plugin deve usare davvero.
-  const effectiveProvider = usingSubscription ? 'claudecode' : provider
+  const effectiveProvider = usingSubscription ? (isChatGpt ? 'codex' : 'claudecode') : provider
   const modelList = (provider === 'gemini' && modelliVivi) || modelsByProvider[effectiveProvider] || []
   // Il campo credenziale non serve quando si usa Ollama in locale né quando
   // si entra con l'abbonamento Claude.
@@ -134,11 +145,12 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   // Quando si sceglie Claude, chiediamo al plugin se sulla macchina c'è già
   // un abbonamento utilizzabile: se sì non serve chiedere nulla all'utente.
   useEffect(() => {
-    if (!isClaude || !whycremisi.isConnected()) return
+    if (!hasAccount || !whycremisi.isConnected()) return
+    setSubscriptionDetected(null); setClaudeCodePresente(null); setCollegamento(null)
     const unsub = whycremisi.on('config.response', (payload) => {
-      if (payload?.key !== 'ai.detectSubscription') return
+      if (payload?.key !== chiaveDetect) return
       setSubscriptionDetected(!!payload.found)
-      setClaudeCodePresente(!!payload.claudeCode)
+      setClaudeCodePresente(!!(isChatGpt ? payload.codex : payload.claudeCode))
       if (payload.found) {
         // Accesso completato nel browser: si smette di controllare.
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
@@ -146,7 +158,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
       }
     })
     const unsubLink = whycremisi.on('config.response', (payload) => {
-      if (payload?.key !== 'ai.linkClaude') return
+      if (payload?.key !== chiaveLink) return
       if (payload.status === 'opened') {
         // Il login lo fa il programma ufficiale in una finestra a parte:
         // qui si resta a guardare quando risulta collegato.
@@ -159,24 +171,24 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
             setCollegamento('Accesso non completato. Riprova.')
             return
           }
-          whycremisi.send({ type: 'config.set', payload: { key: 'ai.detectSubscription' } })
+          whycremisi.send({ type: 'config.set', payload: { key: chiaveDetect } })
         }, 2500)
       } else {
         // Il motivo va detto: un pulsante che torna com'era non spiega niente.
         setCollegamento(payload.message || 'Collegamento non riuscito.')
       }
     })
-    whycremisi.send({ type: 'config.set', payload: { key: 'ai.detectSubscription' } })
+    whycremisi.send({ type: 'config.set', payload: { key: chiaveDetect } })
     return () => {
       unsub(); unsubLink()
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     }
-  }, [isClaude])
+  }, [provider])
 
   const providers = [
     { id: 'ollama',    icon: 'memory',       desc: 'In locale sulla tua macchina. Nessuna chiave.', keyRequired: false },
     { id: 'gemini',    icon: 'cloud_queue',  desc: 'Google Gemini.', keyRequired: true, keyPrefix: 'AIza' },
-    { id: 'openai',    icon: 'auto_awesome', desc: 'OpenAI GPT-4o.', keyRequired: true, keyPrefix: 'sk-' },
+    { id: 'openai',    icon: 'auto_awesome', desc: 'Il tuo account ChatGPT, oppure una chiave API.', keyRequired: true, keyPrefix: 'sk-' },
     { id: 'anthropic', icon: 'psychology',   desc: 'Il tuo account Claude, oppure una chiave API.', keyRequired: true, keyPrefix: 'sk-ant-' },
     { id: 'openrouter', icon: 'hub',         desc: 'Senza abbonamento: modelli gratuiti con una chiave gratis.', keyRequired: true, keyPrefix: 'sk-or-' },
   ]
@@ -188,7 +200,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     if (whycremisi.isConnected()) {
       whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: effectiveProvider } })
       whycremisi.send({ type: 'config.set', payload: { key: 'ai.model', value: model } })
-      if (isClaude)
+      if (isClaude || usingSubscription)
         whycremisi.send({ type: 'config.set', payload: { key: 'ai.effort', value: effort } })
       // Con l'account Claude non c'è nessuna credenziale da passare: l'accesso
       // sta nel programma ufficiale, il plugin non vede né conserva token.
@@ -303,7 +315,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                   style={isLastOdd ? { gridColumn: '1 / -1' } : undefined}
                   onClick={() => {
                     setProvider(p.id)
-                    setModel(modelsByProvider[p.id === 'anthropic' && claudeAuthMode === 'subscription' ? 'claudecode' : p.id][0])
+                    setModel(modelsByProvider[claudeAuthMode === 'subscription' && p.id === 'anthropic' ? 'claudecode' : claudeAuthMode === 'subscription' && p.id === 'openai' ? 'codex' : p.id][0])
                   }}
                   className={`px-2 py-1.5 border text-left transition-all flex items-center gap-2 min-h-[2.75rem] ${
                     isSelected
@@ -329,14 +341,14 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden"
             >
-              {isClaude && (
+              {hasAccount && (
                 <div className="mb-3">
                   <label className="text-[8px] font-bold text-[#FFB000] uppercase tracking-widest block mb-1">
                     Accesso
                   </label>
                   <div className="grid grid-cols-2 gap-1.5">
                     {[
-                      { id: 'subscription', label: 'Il mio account', note: 'Claude Pro o Max, nessuna chiave' },
+                      { id: 'subscription', label: 'Il mio account', note: isChatGpt ? 'ChatGPT Plus, Pro o Business, nessuna chiave' : 'Claude Pro o Max, nessuna chiave' },
                       { id: 'apikey',       label: 'Chiave API',  note: 'Consumo a token' },
                     ].map(mode => {
                       const active = claudeAuthMode === mode.id
@@ -361,7 +373,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                     <div className="mt-1.5">
                       {subscriptionDetected === true ? (
                         <p className="text-[8px] text-[#00E5FF] font-mono">
-                          Account Claude collegato — nessuna chiave da inserire.
+                          Account {nomeAccount} collegato — nessuna chiave da inserire.
                         </p>
                       ) : claudeCodePresente ? (
                         // Il programma "claude" c'è: un clic apre il suo login
@@ -377,7 +389,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                             className="group w-full flex items-center justify-between gap-2 bg-white text-black px-3 py-2 rounded-full disabled:opacity-60 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]"
                           >
                             <span className="text-[10px] font-medium tracking-tight">
-                              {collegamento === 'corso' ? 'In attesa dell’accesso…' : 'Collega il mio account Claude'}
+                              {collegamento === 'corso' ? 'In attesa dell’accesso…' : `Collega il mio account ${nomeAccount}`}
                             </span>
                             <span className="w-5 h-5 rounded-full bg-black/5 flex items-center justify-center transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:-translate-y-[1px]">
                               <span className="text-[9px]">↗</span>
@@ -388,19 +400,19 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                               ? collegamento
                               : collegamento === 'corso'
                                 ? 'Completa l’accesso nella finestra e nel browser, poi torna qui.'
-                                : 'Si apre il login ufficiale di Claude: accedi con Google o email, non devi incollare nulla.'}
+                                : `Si apre il login ufficiale di ${nomeAccount}: accedi con il tuo account, non devi incollare nulla.`}
                           </p>
                         </>
                       ) : (
                         <>
                           <p className="text-[8px] text-[#FFB000] font-mono">
                             {claudeCodePresente === false
-                              ? 'Il programma Claude non è installato su questo computer.'
-                              : 'Controllo dell’account Claude…'}
+                              ? `Il programma ${isChatGpt ? 'Codex' : 'Claude'} non è installato su questo computer.`
+                              : `Controllo dell’account ${nomeAccount}…`}
                           </p>
                           {claudeCodePresente === false && (
                             <p className="text-[7px] text-[#555] leading-tight mt-0.5">
-                              Installa Claude Code da claude.com/claude-code, poi riapri questa schermata:
+                              {isChatGpt ? 'Installa Codex da openai.com/codex' : 'Installa Claude Code da claude.com/claude-code'}, poi riapri questa schermata:
                               l’accesso si fa con un clic. In alternativa usa una chiave API.
                             </p>
                           )}
@@ -517,18 +529,18 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                     )
                   })}
                 </div>
-                {isClaude && modelLabels[model] && (
+                {hasAccount && modelLabels[model] && (
                   <p className="text-[7px] text-[#555] leading-tight mt-0.5">{modelLabels[model].note}</p>
                 )}
               </div>
 
-              {isClaude && (
+              {(isClaude || usingSubscription) && (
                 <div className="mb-3">
                   <label className="text-[8px] font-bold text-[#00E5FF] uppercase tracking-widest block mb-1">
                     Ragionamento
                   </label>
                   <div className="flex flex-wrap gap-1">
-                    {effortLevels.map(lvl => (
+                    {effortLevels.filter(lvl => !(isChatGpt && lvl.id === 'max')).map(lvl => (
                       <motion.button
                         key={lvl.id}
                         whileHover={{ scale: 1.02 }}
