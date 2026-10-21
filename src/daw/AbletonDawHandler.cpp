@@ -1,4 +1,6 @@
 #include "AbletonDawHandler.h"
+#include <juce_audio_basics/juce_audio_basics.h>
+#include <cmath>
 
 // ═══════════════════════════════════════════════════════════════════
 //  Indirizzi OSC di Ableton Live
@@ -21,12 +23,26 @@
 //  Live e attivato in Preferenze - Link/Tempo/MIDI come Control Surface.
 //  Live ascolta sulla porta 11000 e risponde sulla 11001.
 
-namespace
+// Volume in Live: valore normalizzato 0..1 (0.85 = 0 dB, 1.0 = +6 dB).
+// Pan in Live: -1 tutto a sinistra, 0 centro, +1 tutto a destra.
+// Valori fuori scala vengono rifiutati silenziosamente, quindi si limitano qui.
+
+float AbletonDawHandler::liveVolumeFromGain (float gain)
 {
-    // Volume e pan in Live sono normalizzati 0..1 (pan: 0 tutto a
-    // sinistra, 0.5 centro, 1 tutto a destra). Valori fuori scala
-    // vengono rifiutati silenziosamente, quindi si limitano qui.
-    float clamp01 (float v) { return juce::jlimit (0.0f, 1.0f, v); }
+    if (! (gain > 0.0f))
+        return 0.0f;
+
+    const float db = juce::Decibels::gainToDecibels (gain);
+    if (db >= 0.0f)
+        return 0.85f + 0.15f * juce::jmin (db, 6.0f) / 6.0f;
+
+    // Sotto 0 dB: v = 0.85 * 10^(db/40), cioe' 0.85 * radice del guadagno.
+    return 0.85f * std::pow (10.0f, db / 40.0f);
+}
+
+float AbletonDawHandler::livePanFromPan (float pan)
+{
+    return juce::jlimit (-1.0f, 1.0f, pan);
 }
 
 void AbletonDawHandler::sendMulti (const juce::String& address,
@@ -76,12 +92,13 @@ void AbletonDawHandler::setTempo(float bpm)
 
 void AbletonDawHandler::setVolume(int trackId, float value)
 {
-    sendMulti ("/live/track/set/volume", { (float) trackId, clamp01 (value) }, { true, false });
+    // `value` e' il guadagno lineare deciso dal dispatcher.
+    sendMulti ("/live/track/set/volume", { (float) trackId, liveVolumeFromGain (value) }, { true, false });
 }
 
 void AbletonDawHandler::setPan(int trackId, float value)
 {
-    sendMulti ("/live/track/set/panning", { (float) trackId, clamp01 (value) }, { true, false });
+    sendMulti ("/live/track/set/panning", { (float) trackId, livePanFromPan (value) }, { true, false });
 }
 
 void AbletonDawHandler::muteTrack(int trackId, bool muted)

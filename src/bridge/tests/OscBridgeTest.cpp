@@ -8,12 +8,15 @@
     che si limita a registrare le chiamate ricevute. Il mapping non e'
     duplicato qui: si osserva cosa arriva davvero al gestore della DAW.
 
-    Contratto dell'esito (blocco "sent/unconfirmed"):
+    Contratto dell'esito:
       result.output e' un oggetto JSON con
-        status     "sent" | "rejected" | "unsupported"
-        confirmed  false   (sempre: nessun readback in questo blocco)
-        dawState   "unknown"
+        status     "confirmed" | "mismatch" | "submitted" | "rejected" | "unsupported"
+        confirmed  true solo se Live ha riletto il valore atteso
+        dawState   "unknown", oppure {read, expected} dopo una rilettura
         message    testo leggibile
+      Gestori diversi da Live: sempre "submitted" (nessun readback).
+      Live (AbletonOSC): dopo il comando si rilegge il valore e si confronta.
+        confirmed -> success true; mismatch / silenzio -> success false.
       rejected/unsupported -> success == false e nessun invio alla DAW.
   ==============================================================================
 */
@@ -21,9 +24,12 @@
 #include "../OscBridge.h"
 #include "ToolRegistry.h"
 #include "IDawHandler.h"
+#include "AbletonDawHandler.h"
 #include <juce_core/juce_core.h>
+#include <juce_audio_basics/juce_audio_basics.h>
 #include <nlohmann/json.hpp>
 #include <limits>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -98,6 +104,8 @@ public:
         testMarkerSet();
         testTransportAndTempo();
         testUnconfirmedOutcome();
+        testLiveReadback();
+        testLiveConversions();
         testUnsupportedAndUnknown();
         testUiDispatcherCompatibility();
     }
@@ -478,6 +486,153 @@ private:
             expect (o.result.output.indexOf ("silenziata") < 0
                       || o.result.output.containsIgnoreCase ("non confermat"),
                     "non deve affermare che la traccia e' silenziata");
+        }
+    }
+
+    //==========================================================================
+    // Finto Live: applica i set, risponde ai get come AbletonOSC
+    //==========================================================================
+    struct FakeLive
+    {
+        enum class Modo { Applica, Ignora, Muto };
+
+        Modo modo = Modo::Applica;
+        std::map<std::string, double> stato;                 // chiave "get[#traccia]"
+        std::vector<std::pair<std::string, std::vector<float>>> inviati;   // set ricevuti
+
+        static std::string chiaveGet (const juce::String& setAddr, const std::vector<float>& v)
+        {
+            auto get = setAddr.replace ("/set/", "/get/");
+            const bool traccia = get.startsWith ("/live/track/") && v.size() >= 2;
+            return OscBridge::chiaveRisposta (get, traccia ? (int) v[0] : -1);
+        }
+    };
+
+    void collega (Rig& rig, FakeLive& live)
+    {
+        auto handler = std::make_unique<AbletonDawHandler>();
+        auto* h = handler.get();
+        rig.bridge.dawHandler = std::move (handler);
+        rig.daw = nullptr;
+
+        h->setSendMultiCallback ([&live] (const juce::String& a, const std::vector<float>& v, const std::vector<bool>&)
+        {
+            live.inviati.emplace_back (a.toStdString(), v);
+            if (live.modo != FakeLive::Modo::Applica) return;
+            live.stato[FakeLive::chiaveGet (a, v)] = v.back();
+        });
+        h->setSendCallback ([&live] (const juce::String& a, float)
+        {
+            if (live.modo != FakeLive::Modo::Applica) return;
+            if (a == "/live/song/start_playing") live.stato["/live/song/get/is_playing"] = 1.0;
+            if (a == "/live/song/stop_playing")  live.stato["/live/song/get/is_playing"] = 0.0;
+        });
+
+        rig.bridge.inviaDomandaDaw = [&rig, &live] (const juce::String& a, const std::vector<float>& v, const std::vector<bool>&)
+        {
+            if (live.modo == FakeLive::Modo::Muto) return;
+            const bool traccia = a.startsWith ("/live/track/") && ! v.empty();
+            const auto chiave = OscBridge::chiaveRisposta (a, traccia ? (int) v[0] : -1);
+            auto it = live.stato.find (chiave);
+            const double valore = it != live.stato.end() ? it->second : 0.85;
+            if (traccia) rig.bridge.registraRispostaDaw (a, { v[0], (float) valore });
+            else         rig.bridge.registraRispostaDaw (a, { (float) valore });
+        };
+    }
+
+    void testLiveReadback()
+    {
+        beginTest ("Live: volume riletto uguale -> confirmed");
+        {
+            Rig rig; FakeLive live; collega (rig, live);
+            auto o = runTool (rig, "daw.track.setVolume", { { "track", 2 }, { "volume", 0.0 } });
+            expectEquals (juce::String (field (o.out, "status")), juce::String ("confirmed"));
+            expect (o.result.success, "success vero solo con conferma");
+            expect (o.out["confirmed"].get<bool>());
+            expectWithinAbsoluteError (o.out["dawState"]["read"].get<double>(), 0.85, 1.0e-4);
+        }
+
+        beginTest ("Live: valore diverso riletto -> mismatch, non successo");
+        {
+            Rig rig; FakeLive live; live.modo = FakeLive::Modo::Ignora; collega (rig, live);
+            auto o = runTool (rig, "daw.track.setVolume", { { "track", 2 }, { "volume", -6.0 } });
+            expectEquals (juce::String (field (o.out, "status")), juce::String ("mismatch"));
+            expect (! o.result.success, "mismatch non e' successo");
+            expect (! o.out["confirmed"].get<bool>());
+            expect (o.out["accepted"].get<bool>());
+        }
+
+        beginTest ("Live: nessuna risposta -> submitted, stato sconosciuto");
+        {
+            Rig rig; FakeLive live; live.modo = FakeLive::Modo::Muto; collega (rig, live);
+            auto o = runTool (rig, "daw.track.mute", { { "track", 1 }, { "mute", true } });
+            expectEquals (juce::String (field (o.out, "status")), juce::String ("submitted"));
+            expect (! o.result.success);
+            expectEquals (juce::String (field (o.out, "dawState")), juce::String ("unknown"));
+        }
+
+        beginTest ("Live: pan negativo arriva a Live come negativo e si conferma");
+        {
+            Rig rig; FakeLive live; collega (rig, live);
+            auto o = runTool (rig, "daw.track.setPan", { { "track", 0 }, { "pan", -0.5 } });
+            expectEquals (juce::String (field (o.out, "status")), juce::String ("confirmed"));
+            expect (o.result.success);
+            expect (! live.inviati.empty());
+            if (! live.inviati.empty())
+            {
+                expectEquals (juce::String (live.inviati.back().first), juce::String ("/live/track/set/panning"));
+                expectWithinAbsoluteError (live.inviati.back().second.back(), -0.5f, 1.0e-6f);
+            }
+        }
+
+        beginTest ("Live: tempo e trasporto confermati dalla rilettura");
+        {
+            Rig rig; FakeLive live; collega (rig, live);
+            auto t = runTool (rig, "daw.transport.setTempo", { { "bpm", 128.0 } });
+            expectEquals (juce::String (field (t.out, "status")), juce::String ("confirmed"));
+            auto p = runTool (rig, "daw.transport.play", nlohmann::json::object());
+            expectEquals (juce::String (field (p.out, "status")), juce::String ("confirmed"));
+            auto s = runTool (rig, "daw.transport.stop", nlohmann::json::object());
+            expectEquals (juce::String (field (s.out, "status")), juce::String ("confirmed"));
+            expect (s.result.success);
+        }
+
+        beginTest ("Risposte registrate: chiave per traccia, seq crescente, solo /get/");
+        {
+            OscBridge bridge (9000, 8080);
+            bridge.registraRispostaDaw ("/live/track/get/volume", { 3.0f, 0.5f });
+            bridge.registraRispostaDaw ("/live/track/get/volume", { 4.0f, 0.7f });
+            bridge.registraRispostaDaw ("/live/song/get/tempo", { 120.0f });
+            bridge.registraRispostaDaw ("/live/track/set/volume", { 3.0f, 0.9f });   // non e' una risposta
+            const auto a = bridge.ultimaRispostaDaw (OscBridge::chiaveRisposta ("/live/track/get/volume", 3));
+            const auto b = bridge.ultimaRispostaDaw (OscBridge::chiaveRisposta ("/live/track/get/volume", 4));
+            const auto c = bridge.ultimaRispostaDaw ("/live/song/get/tempo");
+            expectWithinAbsoluteError (a.value, 0.5, 1.0e-6);
+            expectWithinAbsoluteError (b.value, 0.7, 1.0e-6);
+            expectWithinAbsoluteError (c.value, 120.0, 1.0e-6);
+            expect (a.seq < b.seq && b.seq < c.seq, "numeri progressivi");
+            expectEquals ((int) bridge.ultimaRispostaDaw (OscBridge::chiaveRisposta ("/live/track/set/volume", 3)).seq, 0);
+        }
+    }
+
+    void testLiveConversions()
+    {
+        beginTest ("Volume Live: ancoraggi 0 -> 0, 0 dB -> 0.85, +6 dB -> 1.0");
+        {
+            expectWithinAbsoluteError (AbletonDawHandler::liveVolumeFromGain (0.0f), 0.0f, 1.0e-6f);
+            expectWithinAbsoluteError (AbletonDawHandler::liveVolumeFromGain (1.0f), 0.85f, 1.0e-5f);
+            expectWithinAbsoluteError (AbletonDawHandler::liveVolumeFromGain (juce::Decibels::decibelsToGain (6.0f)), 1.0f, 1.0e-5f);
+            expectWithinAbsoluteError (AbletonDawHandler::liveVolumeFromGain (juce::Decibels::decibelsToGain (12.0f)), 1.0f, 1.0e-5f);
+            expectWithinAbsoluteError (AbletonDawHandler::liveVolumeFromGain (-1.0f), 0.0f, 1.0e-6f);
+            const float meno6 = AbletonDawHandler::liveVolumeFromGain (juce::Decibels::decibelsToGain (-6.0f));
+            expect (meno6 > 0.0f && meno6 < 0.85f, "-6 dB fra 0 e 0.85");
+        }
+
+        beginTest ("Pan Live: -1..1 conservato, fuori scala limitato");
+        {
+            expectWithinAbsoluteError (AbletonDawHandler::livePanFromPan (-0.5f), -0.5f, 1.0e-6f);
+            expectWithinAbsoluteError (AbletonDawHandler::livePanFromPan (-3.0f), -1.0f, 1.0e-6f);
+            expectWithinAbsoluteError (AbletonDawHandler::livePanFromPan (2.0f), 1.0f, 1.0e-6f);
         }
     }
 

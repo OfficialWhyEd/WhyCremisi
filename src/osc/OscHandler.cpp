@@ -412,7 +412,10 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
     // parsing: separati non si capisce quale sia l'indice e quale il valore.
     std::vector<float> numericArgs;
 
-    for (int i = 0; i < typeTag.length() && ptr < arguments + argSize; i++)
+    // Niente controllo su ptr nella condizione: T e F non hanno byte di dato,
+    // quindi un messaggio fatto solo di booleani ha argSize 0. Ogni caso
+    // controlla da se' i limiti prima di leggere.
+    for (int i = 0; i < typeTag.length(); i++)
     {
         char type = typeTag[i];
 
@@ -469,6 +472,22 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 ptr += (4 - ((str.length() + 1) % 4)) % 4;
                 if (ptr < arguments + argSize && *ptr == '\0') ptr++;
                 while (ptr < arguments + argSize && (ptr - arguments) % 4 != 0) ptr++;
+                break;
+            }
+
+            case 'T':
+            case 'F':
+            {
+                // Booleani OSC: nel pacchetto non hanno byte di dato, il valore
+                // sta tutto nel type tag. AbletonOSC risponde cosi' per
+                // is_playing, mute e solo, e senza questo caso quelle
+                // risposte venivano scartate come tipo sconosciuto.
+                const float value = (type == 'T') ? 1.0f : 0.0f;
+                addToLog("[OSC] " + address + " -> " + (type == 'T' ? "true" : "false"));
+
+                if (!hasValue) { firstValue = value; hasValue = true; }
+                numericArgs.push_back(value);
+                if (callback) callback(address, value);
                 break;
             }
 

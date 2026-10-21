@@ -26,6 +26,12 @@
 #include <juce_events/juce_events.h>
 #include <nlohmann/json.hpp>
 #include <thread>
+#include <mutex>
+#include <map>
+#include <string>
+#include <vector>
+#include <functional>
+#include <atomic>
 
 // Forward declarations
 class AiEngine;
@@ -304,6 +310,61 @@ public:
         const auto t = lastOscFromDawMs.load();
         return t > 0 && (juce::Time::currentTimeMillis() - t) < dawSilenzioMs;
     }
+
+    //==========================================================================
+    // Conferma reale dei comandi (Live / AbletonOSC)
+    //
+    //  OSC su UDP non conferma. L'unica prova e' rileggere: dopo un comando si
+    //  chiede a Live il valore e lo si confronta con quello atteso. Ogni
+    //  risposta di Live finisce qui, con un numero progressivo, cosi' chi
+    //  aspetta sa distinguere una risposta nuova da una vecchia.
+    //==========================================================================
+    struct RispostaDaw
+    {
+        double          value = 0.0;
+        juce::int64     seq   = 0;     // 0 = mai arrivata
+    };
+
+    /** Chiave di una risposta: indirizzo, e per le tracce "#indice". */
+    static std::string chiaveRisposta (const juce::String& address, int trackId = -1)
+    {
+        std::string k = address.toStdString();
+        if (trackId >= 0) k += "#" + std::to_string (trackId);
+        return k;
+    }
+
+    /** Registra una risposta ricevuta dalla DAW. Chiamata dai callback OSC. */
+    void registraRispostaDaw (const juce::String& address, const std::vector<float>& args);
+
+    /** Ultima risposta registrata per la chiave (seq == 0 se non c'e'). */
+    RispostaDaw ultimaRispostaDaw (const std::string& chiave) const;
+
+    /** Esito della verifica di un comando rispetto al valore atteso. */
+    struct EsitoLettura
+    {
+        enum class Stato { Confermato, Diverso, NessunaRisposta, NonVerificabile };
+        Stato  stato  = Stato::NonVerificabile;
+        double letto  = 0.0;     // valido se stato e' Confermato o Diverso
+    };
+
+    /** Interroga la DAW con `indirizzoGet` (+ `argomenti` interi) e attende la
+        risposta sulla chiave. Confronta con `atteso` entro `tolleranza`.
+        Ritenta fino a `tentativi` volte: Live applica i comandi al giro
+        successivo, la prima lettura puo' essere ancora quella vecchia.
+        Blocca il thread che chiama: va usata dal thread AI, mai dalla UI. */
+    EsitoLettura verificaConLettura (const juce::String& indirizzoGet,
+                                     const std::vector<float>& argomenti,
+                                     int trackId, double atteso, double tolleranza,
+                                     int tentativi, int attesaMs);
+
+    /** Per i test: sostituisce l'invio OSC della domanda a Live. */
+    std::function<void (const juce::String&, const std::vector<float>&, const std::vector<bool>&)> inviaDomandaDaw;
+
+private:
+    mutable std::mutex          rispostePerChiaveMutex;
+    std::map<std::string, RispostaDaw> rispostePerChiave;
+    std::atomic<juce::int64>    rispostaSeq {0};
+public:
 
 private:
 

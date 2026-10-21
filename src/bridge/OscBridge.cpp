@@ -552,8 +552,89 @@ void OscBridge::broadcastDspState()
     wsServer->broadcast (msg);
 }
 
+void OscBridge::registraRispostaDaw (const juce::String& address, const std::vector<float>& args)
+{
+    if (! address.contains ("/get/"))
+        return;
+
+    std::string chiave;
+    double valore = 0.0;
+
+    if (address.startsWith ("/live/track/") && args.size() >= 2)
+    {
+        const int trackId = (int) args[0];
+        if (trackId < 0) return;
+        chiave = chiaveRisposta (address, trackId);
+        valore = args[1];
+    }
+    else if (address.startsWith ("/live/song/") && args.size() >= 1)
+    {
+        chiave = chiaveRisposta (address);
+        valore = args[0];
+    }
+    else
+        return;
+
+    std::lock_guard<std::mutex> lock (rispostePerChiaveMutex);
+    rispostePerChiave[chiave] = { valore, ++rispostaSeq };
+}
+
+OscBridge::RispostaDaw OscBridge::ultimaRispostaDaw (const std::string& chiave) const
+{
+    std::lock_guard<std::mutex> lock (rispostePerChiaveMutex);
+    const auto it = rispostePerChiave.find (chiave);
+    return it == rispostePerChiave.end() ? RispostaDaw{} : it->second;
+}
+
+OscBridge::EsitoLettura OscBridge::verificaConLettura (const juce::String& indirizzoGet,
+                                                       const std::vector<float>& argomenti,
+                                                       int trackId, double atteso, double tolleranza,
+                                                       int tentativi, int attesaMs)
+{
+    EsitoLettura esito;
+    const auto chiave = chiaveRisposta (indirizzoGet, trackId);
+    bool arrivata = false;
+
+    for (int t = 0; t < tentativi; ++t)
+    {
+        const auto seq0 = ultimaRispostaDaw (chiave).seq;
+
+        const std::vector<bool> tuttiInteri (argomenti.size(), true);
+        if (inviaDomandaDaw)
+            inviaDomandaDaw (indirizzoGet, argomenti, tuttiInteri);
+        else if (oscHandler)
+            oscHandler->sendMessage (indirizzoGet, argomenti, tuttiInteri);
+
+        const auto limite = juce::Time::getMillisecondCounter() + (juce::uint32) juce::jmax (1, attesaMs);
+        for (;;)
+        {
+            const auto r = ultimaRispostaDaw (chiave);
+            if (r.seq > seq0)
+            {
+                arrivata = true;
+                esito.letto = r.value;
+                if (std::abs (r.value - atteso) <= tolleranza)
+                {
+                    esito.stato = EsitoLettura::Stato::Confermato;
+                    return esito;
+                }
+                break;   // risposta nuova ma diversa: Live puo' non aver ancora applicato
+            }
+            if (juce::Time::getMillisecondCounter() >= limite)
+                break;
+            juce::Thread::sleep (5);
+        }
+    }
+
+    esito.stato = arrivata ? EsitoLettura::Stato::Diverso
+                           : EsitoLettura::Stato::NessunaRisposta;
+    return esito;
+}
+
 void OscBridge::handleAbletonMultiArg(const juce::String& address, const std::vector<float>& args)
 {
+    registraRispostaDaw (address, args);
+
     // AbletonOSC risponde con l'indice della traccia come primo argomento:
     //     /live/track/get/volume  [2, 0.85]
     // Il vecchio percorso lo cercava dentro l'indirizzo, non lo trovava e
@@ -2911,41 +2992,58 @@ void OscBridge::setDawTarget(const juce::String& host, int sendPort)
 //  setAiEngine e dai test.
 //
 //  Esito: result.output e' un JSON con
-//    status     "sent" | "rejected" | "unsupported"
+//    status     "confirmed" | "mismatch" | "submitted" | "rejected" | "unsupported"
 //    accepted   true solo se il comando e' stato consegnato al gestore/OSC
-//    confirmed  sempre false: OSC su UDP non conferma, e il traffico recente
-//               dalla DAW (dawHaRisposto) dice solo che qualcuno parla
-//    dawState   "unknown": il percorso AI non inventa lo stato della DAW
+//    confirmed  true solo se Live, riletto dopo il comando, ha dato il valore
+//               atteso (verificaConLettura). OSC su UDP non conferma da solo.
+//               Per DAW diverse da Live resta false.
+//    dawState   {read, expected} se Live ha risposto, altrimenti "unknown"
 //    message    testo leggibile, warnings opzionali
-//  result.success resta false: nessuna azione e' verificata in questo blocco.
+//  result.success e' vero solo con status "confirmed".
 //==============================================================================
 bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
 {
     const nlohmann::json& args = call.arguments;
     const bool argsOk = args.is_null() || args.is_object();
 
+    // Cosa chiedere a Live dopo un comando per sapere se e' stato applicato.
+    struct Verifica
+    {
+        juce::String indirizzoGet;
+        std::vector<float> argomenti;
+        int    trackId   = -1;
+        double atteso    = 0.0;
+        double tolleranza = 0.01;
+    };
+
+    // Esito della lettura di ritorno, riempito da `invia` solo per Live.
+    bool          confermato = false;
+    nlohmann::json statoDaw  = "unknown";
+
     auto esito = [&](const char* status, const juce::String& message,
                      const nlohmann::json& comando, nlohmann::json avvisi)
     {
-        // "submitted": consegnato al dispatcher. Ne' l'invio OSC ne'
-        // l'esecuzione nella DAW sono confermati.
-        const bool inviato = std::string (status) == "submitted";
-        if (inviato && ! dawHaRisposto())
+        // "submitted": consegnato al dispatcher, nessuna prova che Live l'abbia applicato.
+        // "confirmed": riletto da Live e uguale a quanto richiesto.
+        // "mismatch": riletto da Live e diverso da quanto richiesto.
+        const std::string st (status);
+        const bool inviato = st == "submitted" || st == "confirmed" || st == "mismatch";
+        if (st == "submitted" && ! dawHaRisposto())
             avvisi.push_back ("La DAW non ha inviato dati di recente: potrebbe non ricevere i comandi "
                               "(Live: AbletonOSC; Reaper: control surface OSC).");
 
         nlohmann::json out = nlohmann::json::object();
         out["status"]    = status;
         out["accepted"]  = inviato;
-        out["confirmed"] = false;
-        out["dawState"]  = "unknown";
+        out["confirmed"] = confermato;
+        out["dawState"]  = statoDaw;
         out["message"]   = message.toStdString();
         if (! comando.is_null())
             out["command"] = comando;
         if (! avvisi.empty())
             out["warnings"] = avvisi;
 
-        result.success = false;
+        result.success = confermato;
         result.output  = juce::String (out.dump (-1, ' ', false,
                                                  nlohmann::json::error_handler_t::replace));
     };
@@ -2959,8 +3057,10 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
 
     // Consegna al dispatcher condiviso con la UI. La notifica alla UI dice
     // "inviato", non "applicato".
+    const bool liveHandler = dawHandler && dawHandler->isAbleton();
+
     auto invia = [&](const nlohmann::json& comando, const juce::String& richiesta,
-                     nlohmann::json avvisi)
+                     nlohmann::json avvisi, const Verifica* verifica = nullptr)
     {
         if (! dispatchDawCommand (comando))
         {
@@ -2968,10 +3068,23 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
             return;
         }
 
+        // Solo Live risponde alle domande: gli altri restano "non confermato".
+        EsitoLettura lettura;
+        if (liveHandler && verifica != nullptr)
+        {
+            const int tentativi = dawHaRisposto() ? 3 : 1;
+            lettura = verificaConLettura (verifica->indirizzoGet, verifica->argomenti, verifica->trackId,
+                                          verifica->atteso, verifica->tolleranza, tentativi, 300);
+        }
+
+        confermato = lettura.stato == EsitoLettura::Stato::Confermato;
+        if (lettura.stato == EsitoLettura::Stato::Confermato || lettura.stato == EsitoLettura::Stato::Diverso)
+            statoDaw = { { "read", lettura.letto }, { "expected", verifica->atteso } };
+
         nlohmann::json notifica;
         notifica["type"]      = "daw.command.submitted";
         notifica["timestamp"] = juce::Time::currentTimeMillis();
-        notifica["confirmed"] = false;
+        notifica["confirmed"] = confermato;
         notifica["payload"]   = comando;
         if (wsServer)
             wsServer->broadcast (notifica);
@@ -2979,12 +3092,22 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
         if (! dawHandler)
             avvisi.push_back ("DAW non identificata: comando inviato sugli indirizzi OSC generici di Live e Reaper.");
 
-        esito ("submitted", richiesta + " consegnata al dispatcher. Invio OSC ed esecuzione "
-                                        "nella DAW non confermati: lo stato reale della DAW e' sconosciuto.",
-               comando, std::move (avvisi));
+        if (lettura.stato == EsitoLettura::Stato::Confermato)
+            esito ("confirmed", richiesta + " confermata: Live ha riletto " + juce::String (lettura.letto, 3)
+                                          + ".", comando, std::move (avvisi));
+        else if (lettura.stato == EsitoLettura::Stato::Diverso)
+            esito ("mismatch", richiesta + " NON confermata: Live ha riletto " + juce::String (lettura.letto, 3)
+                                         + " invece di " + juce::String (verifica->atteso, 3) + ".",
+                   comando, std::move (avvisi));
+        else if (lettura.stato == EsitoLettura::Stato::NessunaRisposta)
+            esito ("submitted", richiesta + " consegnata al dispatcher. Live non ha risposto alla rilettura: "
+                                            "lo stato reale e' sconosciuto.", comando, std::move (avvisi));
+        else
+            esito ("submitted", richiesta + " consegnata al dispatcher. Invio OSC ed esecuzione "
+                                            "nella DAW non confermati: lo stato reale della DAW e' sconosciuto.",
+                   comando, std::move (avvisi));
     };
 
-    const bool liveHandler = dawHandler && dawHandler->isAbleton();
     const auto nessunAvviso = [] { return nlohmann::json::array(); };
 
     // ── Trasporto ───────────────────────────────────────────────────
@@ -2996,12 +3119,16 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
             auto avvisi = nessunAvviso();
             if (target && target->is_string() && ! juce::String (target->get<std::string>()).trim().isEmpty())
                 avvisi.push_back ("Il parametro target non e' supportato: la riproduzione parte dalla posizione corrente.");
-            invia (dawCmd ("play"), "Richiesta di play", std::move (avvisi));
+            const Verifica v { "/live/song/get/is_playing", {}, -1, 1.0, 0.5 };
+            invia (dawCmd ("play"), "Richiesta di play", std::move (avvisi), &v);
         }
     }
     else if (call.name == "daw.transport.stop") {
         if (! argsOk) rifiuta ("Argomenti non validi per stop.");
-        else invia (dawCmd ("stop"), "Richiesta di stop", nessunAvviso());
+        else {
+            const Verifica v { "/live/song/get/is_playing", {}, -1, 0.0, 0.5 };
+            invia (dawCmd ("stop"), "Richiesta di stop", nessunAvviso(), &v);
+        }
     }
     else if (call.name == "daw.transport.record") {
         const auto* arm = argOf (args, "arm");
@@ -3012,9 +3139,11 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
                            "della DAW e' un interruttore e potrebbe avviarla. Usa stop.");
         else {
             auto avvisi = nessunAvviso();
-            avvisi.push_back ("Il comando record e' un interruttore: senza feedback della DAW non so "
-                              "se la registrazione risulta attiva o no.");
-            invia (dawCmd ("record"), "Richiesta di record", std::move (avvisi));
+            if (! liveHandler)
+                avvisi.push_back ("Il comando record e' un interruttore: senza feedback della DAW non so "
+                                  "se la registrazione risulta attiva o no.");
+            const Verifica v { "/live/song/get/record_mode", {}, -1, 1.0, 0.5 };
+            invia (dawCmd ("record"), "Richiesta di record", std::move (avvisi), &v);
         }
     }
     else if (call.name == "daw.transport.setTempo") {
@@ -3024,7 +3153,8 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
         else {
             auto c = dawCmd ("setTempo");
             c["bpm"] = bpm;
-            invia (c, "Richiesta di tempo " + juce::String (bpm, 1) + " BPM", nessunAvviso());
+            const Verifica v { "/live/song/get/tempo", {}, -1, bpm, 0.05 };
+            invia (c, "Richiesta di tempo " + juce::String (bpm, 1) + " BPM", nessunAvviso(), &v);
         }
     }
     // ── Mixer: track -> trackId, volume -> valueDb, pan -> value,
@@ -3041,11 +3171,15 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
             c["trackId"] = track;
             c["valueDb"] = db;
             auto avvisi = nessunAvviso();
+            const double attesoLive = AbletonDawHandler::liveVolumeFromGain (
+                juce::Decibels::decibelsToGain ((float) db));
             if (liveHandler)
-                avvisi.push_back ("Live: viene inviato il guadagno lineare (dB->gain) limitato a 0..1 sul fader "
-                                  "normalizzato di Live; il livello raggiunto non corrisponde ai dB richiesti.");
+                avvisi.push_back ("Live: la conversione dB -> fader di Live e' approssimata fuori da 0 dB e +6 dB; "
+                                  "confermato il valore del fader (" + std::to_string (attesoLive).substr (0, 5)
+                                  + "), non i dB esatti.");
+            const Verifica v { "/live/track/get/volume", { (float) track }, track, attesoLive, 0.01 };
             invia (c, "Richiesta di volume " + juce::String (db, 1) + " dB sulla traccia "
-                          + juce::String (track), std::move (avvisi));
+                          + juce::String (track), std::move (avvisi), &v);
         }
     }
     else if (call.name == "daw.track.setPan") {
@@ -3059,12 +3193,9 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
             auto c = dawCmd ("setPan");
             c["trackId"] = track;
             c["value"]   = pan;
-            auto avvisi = nessunAvviso();
-            if (liveHandler && pan < 0.0)
-                avvisi.push_back ("Live: il gestore attuale limita il pan a 0..1, un pan a sinistra "
-                                  "arriva alla DAW come centro.");
+            const Verifica v { "/live/track/get/panning", { (float) track }, track, pan, 0.02 };
             invia (c, "Richiesta di pan " + juce::String (pan, 2) + " sulla traccia "
-                          + juce::String (track), std::move (avvisi));
+                          + juce::String (track), nessunAvviso(), &v);
         }
     }
     else if (call.name == "daw.track.mute") {
@@ -3078,8 +3209,9 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
             auto c = dawCmd ("muteTrack");
             c["trackId"] = track;
             c["muted"]   = mute;
+            const Verifica v { "/live/track/get/mute", { (float) track }, track, mute ? 1.0 : 0.0, 0.5 };
             invia (c, juce::String ("Richiesta di mute ") + (mute ? "ON" : "OFF") + " sulla traccia "
-                          + juce::String (track), nessunAvviso());
+                          + juce::String (track), nessunAvviso(), &v);
         }
     }
     else if (call.name == "daw.track.solo") {
@@ -3093,8 +3225,9 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
             auto c = dawCmd ("soloTrack");
             c["trackId"] = track;
             c["soloed"]  = solo;
+            const Verifica v { "/live/track/get/solo", { (float) track }, track, solo ? 1.0 : 0.0, 0.5 };
             invia (c, juce::String ("Richiesta di solo ") + (solo ? "ON" : "OFF") + " sulla traccia "
-                          + juce::String (track), nessunAvviso());
+                          + juce::String (track), nessunAvviso(), &v);
         }
     }
     // ── Plugin di terze parti: manca la discovery ───────────────────
