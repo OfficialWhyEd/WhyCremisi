@@ -112,6 +112,17 @@ void ToolRegistry::registerBuiltinTools()
         "una lavorazione: sono le stesse misure su cui si giudica un pezzo "
         "fuori dal DAW, ma prese sul suono che sta passando adesso.", {}});
 
+    registerTool({"ui.showPanels",
+        "Mostra nella chat uno o piu' pannelli grafici sotto la tua risposta. "
+        "Decidi tu quando servono: usali solo se un grafico o un controllo "
+        "aiuta DAVVERO a capire o a fare quello che l'utente sta chiedendo "
+        "(es. parla di frequenze, di picchi, di larghezza stereo, di "
+        "compressione, oppure chiede di vedere o regolare qualcosa). Per una "
+        "domanda a parole, un saluto o una spiegazione NON chiamarlo: la "
+        "risposta resta solo testo. Scegli pochi pannelli, di norma 1 o 2.", {
+        {"panels", "string", "Pannelli separati da virgola, fra: eq, spectral, loudness, clipping, stereo, vectorscope, compressor, transport, slider (volume), knob (pan), metrics", true}
+    }});
+
     registerTool({"dsp.getState",
         "Riporta com'e' messa adesso la catena interna: quali moduli sono "
         "attivi e con quali valori. Chiamalo prima di modificare qualcosa, "

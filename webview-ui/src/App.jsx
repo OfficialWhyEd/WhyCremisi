@@ -43,7 +43,9 @@ export default function App() {
     { id: 1, type: 'system', text: '[--:--:--] WHYCREMISI ATTIVO' },
   ])
   const chatEndRef  = useRef(null)
-  const msgSeq      = useRef(0)          // id messaggi: contatore, mai collisioni
+  const msgSeq      = useRef(100)        // id messaggi: contatore, mai collisioni (il primo messaggio ha id 1)
+  const panelsRef   = useRef([])         // pannelli scelti dal modello (ui.showPanels) in questo turno
+  const turnBotRef  = useRef(null)       // id della risposta già chiusa di questo turno
   const chunkBuf    = useRef('')         // token in arrivo, applicati una volta per frame
   const chunkRaf      = useRef(0)
   const lastTransportRef = useRef(null)  // per non scrivere in chat ogni evento transport
@@ -376,6 +378,7 @@ export default function App() {
     // ── AI response (complete) ──
     // I token si accumulano in chunkBuf e arrivano in React una volta per
     // frame: un setState per token faceva ridisegnare la chat centinaia di volte.
+    const boxDelTurno = () => [...new Set([...detectBoxType(lastPromptRef.current), ...panelsRef.current])]
     const flushChunks = () => {
       chunkRaf.current = 0
       const add = chunkBuf.current
@@ -398,14 +401,17 @@ export default function App() {
       const sid = streamingIdRef.current
       streamingIdRef.current = null
       if (payload?.content) {
-        const boxType = detectBoxType(lastPromptRef.current)
+        const boxType = boxDelTurno()
+        turnBotRef.current = sid
         if (sid) {
           // finalize existing streaming message instead of duplicating
           setMessages(prev => prev.map(m =>
             m.id === sid ? { ...m, text: payload.content, streaming: false, boxType } : m
           ))
         } else {
-          addMsg({ type: 'bot', text: payload.content, time: ts(), boxType })
+          const nid = ++msgSeq.current
+          turnBotRef.current = nid
+          setMessages(prev => [...prev, { id: nid, type: 'bot', text: payload.content, time: ts(), boxType }])
         }
       }
     })
@@ -432,7 +438,8 @@ export default function App() {
         flushNow()
         const sid = streamingIdRef.current
         if (sid) {
-          const boxType = detectBoxType(lastPromptRef.current)
+          const boxType = boxDelTurno()
+          turnBotRef.current = sid
           setMessages(prev => prev.map(m =>
             m.id === sid ? { ...m, streaming: false, boxType } : m
           ))
@@ -441,6 +448,19 @@ export default function App() {
         setBotState('success')
         setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
       }
+    })
+
+    // ── Pannelli scelti dal modello ──
+    // Il modello chiama ui.showPanels solo quando un grafico serve davvero.
+    // Se la risposta è già chiusa i pannelli si aggiungono lì, altrimenti
+    // restano in attesa e si agganciano alla chiusura.
+    const unsubPanels = whycremisi.on('ai.panels', (payload) => {
+      const nuovi = Array.isArray(payload?.panels) ? payload.panels.filter(p => typeof p === 'string') : []
+      if (nuovi.length === 0) return
+      panelsRef.current = [...new Set([...panelsRef.current, ...nuovi])]
+      const tid = turnBotRef.current
+      if (tid) setMessages(prev => prev.map(m =>
+        m.id === tid ? { ...m, boxType: [...new Set([...(m.boxType || []), ...nuovi])] } : m))
     })
 
     // ── DAW transport ──
@@ -633,7 +653,7 @@ export default function App() {
       intervalsRef.current.forEach(clearInterval)
       intervalsRef.current = []
       window.removeEventListener('whycremisi-botstate', onBotState)
-      stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
+      stateUnsub(); unsubAI(); unsubStream(); unsubPanels(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
       unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubStereo(); unsubDsp(); unsubCpu(); unsubUsage(); unsubActionLog(); unsubPersAction(); unsubPersContext()
       unsubWsStyle(); unsubWsMemory(); unsubWsBootstrap(); unsubWsRefresh()
@@ -656,6 +676,8 @@ export default function App() {
     const cmd = inputVal.trim()
     const t = ts()
     lastPromptRef.current = cmd
+    panelsRef.current = []
+    turnBotRef.current = null
     stickRef.current = true
     addMsg({ type: 'user', text: cmd, time: t })
 

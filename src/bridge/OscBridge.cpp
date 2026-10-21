@@ -3311,6 +3311,39 @@ void OscBridge::setAiEngine(AiEngine* engine)
         // percorso, tryExecuteDawTool, coperto dai test di regressione.
         if (tryExecuteDawTool (call, result)) {
         }
+        // ── Pannelli nella chat: li sceglie il modello ──────────────
+        else if (call.name == "ui.showPanels") {
+            static const juce::StringArray validi { "eq", "spectral", "loudness", "clipping", "stereo",
+                                                    "vectorscope", "compressor", "transport", "slider",
+                                                    "knob", "metrics" };
+            juce::StringArray scelti, scartati;
+            if (call.arguments.is_object() && call.arguments.contains("panels")
+                && call.arguments["panels"].is_string())
+            {
+                juce::StringArray richiesti;
+                richiesti.addTokens (juce::String (call.arguments["panels"].get<std::string>()), ", ;", "");
+                richiesti.removeEmptyStrings();
+                for (auto id : richiesti) {
+                    id = id.trim().toLowerCase();
+                    if (validi.contains (id)) scelti.addIfNotAlreadyThere (id);
+                    else                      scartati.addIfNotAlreadyThere (id);
+                }
+            }
+            if (scelti.isEmpty()) {
+                result.success = false;
+                result.output = "Nessun pannello valido. Validi: " + validi.joinIntoString (", ").toStdString();
+            } else {
+                nlohmann::json msg;
+                msg["type"] = "ai.panels";
+                msg["payload"]["panels"] = nlohmann::json::array();
+                for (const auto& id : scelti) msg["payload"]["panels"].push_back (id.toStdString());
+                broadcastJson (msg);
+                result.success = true;
+                result.output = "Mostrati sotto la risposta: " + scelti.joinIntoString (", ").toStdString();
+                if (! scartati.isEmpty())
+                    result.output = result.output + std::string (" (ignorati: ") + scartati.joinIntoString (", ").toStdString() + ")";
+            }
+        }
         // ── Catena DSP interna ──────────────────────────────────────
         else if (call.name == "dsp.compressor.set") {
             auto* dsp = getDspEngine();
