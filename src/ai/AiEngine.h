@@ -77,9 +77,18 @@ public:
     struct StructuredResponse {
         juce::String text;
         std::vector<AiAction> actions;
+        // Box da mostrare sotto la risposta, scelti dal modello (solo id validi).
+        juce::StringArray panels;
         bool success = false;
         juce::String rawToolResponse;
     };
+
+    /** Box che la chat sa disegnare. Unica lista: la usano il tool ui.showPanels
+        e il campo "panels" del JSON dei fornitori senza strumenti nativi. */
+    static const juce::StringArray& validPanelIds();
+
+    /** Tiene solo gli id validi, senza doppioni (minuscolo, ordine di arrivo). */
+    static juce::StringArray filterPanelIds (const juce::StringArray& requested);
 
     struct WidgetInfo {
         juce::String widgetId;

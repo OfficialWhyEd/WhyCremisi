@@ -1996,6 +1996,18 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
                             wsServer->broadcast(actionLog);
                         }
                         response["payload"]["actions"] = actionsArray;
+
+                        // I box scelti dal modello arrivano prima della risposta:
+                        // la UI li aggancia alla bolla del turno quando la chiude.
+                        if (! structured.panels.isEmpty())
+                        {
+                            nlohmann::json msg;
+                            msg["type"] = "ai.panels";
+                            msg["payload"]["panels"] = nlohmann::json::array();
+                            for (const auto& id : structured.panels)
+                                msg["payload"]["panels"].push_back(id.toStdString());
+                            broadcastJson(msg);
+                        }
                         wsServer->broadcast(response);
                     }
                 });
@@ -2057,6 +2069,15 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
         }
         response["payload"]["actions"] = actionsArray;
 
+        if (! structured.panels.isEmpty())
+        {
+            nlohmann::json msg;
+            msg["type"] = "ai.panels";
+            msg["payload"]["panels"] = nlohmann::json::array();
+            for (const auto& id : structured.panels)
+                msg["payload"]["panels"].push_back(id.toStdString());
+            broadcastJson(msg);
+        }
         wsServer->broadcast(response);
         } // end non-streaming else
       }
@@ -3308,9 +3329,7 @@ void OscBridge::setAiEngine(AiEngine* engine)
         }
         // ── Pannelli nella chat: li sceglie il modello ──────────────
         else if (call.name == "ui.showPanels") {
-            static const juce::StringArray validi { "eq", "spectral", "loudness", "clipping", "stereo",
-                                                    "vectorscope", "compressor", "transport", "slider",
-                                                    "knob", "metrics" };
+            const juce::StringArray& validi = AiEngine::validPanelIds();
             juce::StringArray scelti, scartati;
             if (call.arguments.is_object() && call.arguments.contains("panels")
                 && call.arguments["panels"].is_string())

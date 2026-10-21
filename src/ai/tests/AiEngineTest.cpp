@@ -55,6 +55,25 @@ public:
                     "Gli spazi attorno non devono far perdere la scelta");
         }
 
+        beginTest ("I box scelti dal modello nel JSON: solo id validi, senza doppioni");
+        {
+            AiEngine engine;
+            auto r = engine.parseStructuredResponse (
+                R"({"text":"Ecco","actions":[],"panels":["EQ","spectral","eq","finto"," loudness "]})");
+            expect (r.success);
+            expect (r.text == "Ecco");
+            expect (r.panels.size() == 3, "Attesi 3 box: " + r.panels.joinIntoString (","));
+            expect (r.panels[0] == "eq" && r.panels[1] == "spectral" && r.panels[2] == "loudness");
+
+            // Senza il campo (chat normale) non esce nessun box.
+            auto c = engine.parseStructuredResponse (R"({"text":"Ciao"})");
+            expect (c.panels.isEmpty());
+
+            // Un campo di tipo sbagliato non deve rompere la risposta.
+            auto s = engine.parseStructuredResponse (R"({"text":"x","panels":"eq"})");
+            expect (s.success && s.panels.isEmpty());
+        }
+
         beginTest ("Claude Code non viene scambiato per Anthropic");
         {
             // Anthropic usa la chiave API, Claude Code il login del programma

@@ -481,8 +481,13 @@ juce::String AiEngine::buildSystemPrompt() const
     prompt += "  \"text\": \"Your natural language explanation to the user\",\n";
     prompt += "  \"actions\": [\n";
     prompt += "    { \"widgetId\": \"<id>\", \"value\": <0.0-1.0>, \"description\": \"what this does\" }\n";
-    prompt += "  ]\n";
-    prompt += "}\n\n";
+    prompt += "  ],\n";
+    prompt += "  \"panels\": [\"eq\"]\n";
+    prompt += "}\n";
+    prompt += "\"panels\" is optional: list a chart box (eq, spectral, loudness, clipping, stereo, "
+              "vectorscope, compressor, transport, slider, knob, metrics) ONLY when seeing it helps "
+              "the user right now. For a normal answer or a chat, omit it. Never repeat a box the "
+              "user already has in view.\n\n";
 
     prompt += buildPersonalityPrefix();
     prompt += "\n";
@@ -801,6 +806,26 @@ bool AiEngine::testConnection()
 
 // ── Response Parser ────────────────────────────────────────
 
+const juce::StringArray& AiEngine::validPanelIds()
+{
+    static const juce::StringArray validi { "eq", "spectral", "loudness", "clipping", "stereo",
+                                            "vectorscope", "compressor", "transport", "slider",
+                                            "knob", "metrics" };
+    return validi;
+}
+
+juce::StringArray AiEngine::filterPanelIds (const juce::StringArray& requested)
+{
+    juce::StringArray out;
+    for (auto id : requested)
+    {
+        id = id.trim().toLowerCase();
+        if (validPanelIds().contains (id))
+            out.addIfNotAlreadyThere (id);
+    }
+    return out;
+}
+
 AiEngine::StructuredResponse AiEngine::parseStructuredResponse(const juce::String& raw) const
 {
     StructuredResponse response;
@@ -811,6 +836,13 @@ AiEngine::StructuredResponse AiEngine::parseStructuredResponse(const juce::Strin
         auto j = nlohmann::json::parse(raw.toStdString());
         if (j.contains("text"))
             response.text = juce::String(j["text"].get<std::string>());
+        if (j.contains("panels") && j["panels"].is_array()) {
+            juce::StringArray richiesti;
+            for (const auto& p : j["panels"])
+                if (p.is_string())
+                    richiesti.add(juce::String(p.get<std::string>()));
+            response.panels = filterPanelIds(richiesti);
+        }
         if (j.contains("actions") && j["actions"].is_array()) {
             for (const auto& a : j["actions"]) {
                 AiAction action;
