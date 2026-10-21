@@ -110,7 +110,7 @@ export default function App() {
     setActionLog(prev => [action, ...prev].slice(0, 50))
   }
   const addToast = (message, type = 'info') => {
-    const id = Date.now()
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     setToasts(prev => prev.some(t => t.message === message) ? prev : [...prev, { id, message, type }].slice(-3))
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
   }
@@ -796,35 +796,6 @@ export default function App() {
     }
   }, [sysMsg])
 
-  // ── advisory actions ──────────────────────────────────────────────
-  const executeChain = useCallback(() => {
-    if (botState !== 'idle') return
-    setBotState('loading')
-    if (whycremisi.isConnected()) {
-      whycremisi.sendAIPrompt('Execute suggested mastering chain: apply -2.4dB at 200-400Hz, preserve transients at 84%')
-    } else {
-      const id = Date.now()
-      streamingIdRef.current = id
-      setMessages(prev => [...prev, { id, type: 'bot', text: '', time: ts(), streaming: true }])
-      setBotState('typing')
-      const reply = 'Executing suggested chain.\nDynamic dip of -2.4dB applied at 300Hz.\nTransient preservation locked at 84%.\nSpectral clarity increased.\n\n[ CHAIN APPLIED ]'
-      let i = 0
-      const t = setInterval(() => {
-        if (!mounted.current) { clearInterval(t); return }
-        i++
-        setMessages(prev => prev.map(m => m.id === id ? { ...m, text: reply.slice(0, i) } : m))
-        if (i >= reply.length) {
-          clearInterval(t)
-          setMessages(prev => prev.map(m => m.id === id ? { ...m, streaming: false, telemetry: true } : m))
-          streamingIdRef.current = null
-          setBotState('success')
-          setTimeout(() => { if (mounted.current) setBotState('idle') }, 1500)
-        }
-      }, 16)
-      intervalsRef.current.push(t)
-    }
-  }, [botState])
-
   const analyzeFurther = useCallback((style) => {
     if (botState !== 'idle') return
     const prompt = style === 'direct' ? 'Analyze low-end buildup and suggest aggressive EQ cuts in 200-400Hz range'
@@ -845,9 +816,6 @@ export default function App() {
       whycremisi.send({ type: 'ai.personalityStyle', payload: { style: styleId } })
   }, [setPersonalityStyle, setShowStylePicker])
 
-  const dismissAdvisory = useCallback(() => {
-    setMessages(prev => prev.filter(m => m.type !== 'advisory'))
-  }, [])
 
     // ── Box nella chat: SOLO se l'utente li chiede ────────────────────
     //  Prima il tipo di box si ricavava con regex sul testo della risposta
@@ -1082,7 +1050,7 @@ export default function App() {
               cambiare è quello che si legge, non quello che si confronta.
               Sono pulsanti, non link: non portano da nessuna parte. */}
           <nav className="flex gap-4" role="tablist">
-            {[['COMMAND','Comandi'],['MASTER','Master'],['TELEMETRY','Telemetria'],['SESSIONS','Sessioni']].map(([tab, nome]) => (
+            {[['COMMAND','Comandi'],['TELEMETRY','Telemetria'],['SESSIONS','Sessioni']].map(([tab, nome]) => (
               <button key={tab} role="tab" aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 className="etichetta border-b pb-0.5 cursor-pointer transition-colors hover:text-[#FFB000]"
@@ -1194,37 +1162,8 @@ export default function App() {
 
           <div className="w-px h-4" style={{ backgroundColor: 'var(--bg-elevated)' }} />
 
-          {/* Personality style picker */}
-          <div className="relative">
-            <button
-              aria-label={`Personality style: ${PERSONALITY_STYLES.find(s => s.id === personalityStyle)?.name || 'Analytical'}`}
-              className="text-xs font-mono hover:text-[#FFB000] transition-colors cursor-pointer px-1.5 py-0.5 border rounded"
-              style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
-              onClick={() => setShowStylePicker(!showStylePicker)}
-              title={`Style: ${PERSONALITY_STYLES.find(s => s.id === personalityStyle)?.name || 'Analytical'}`}
-            >
-              {PERSONALITY_STYLES.find(s => s.id === personalityStyle)?.label || 'AN'}
-            </button>
-            {showStylePicker && (
-              <div className="absolute top-full right-0 mt-1 border rounded shadow-lg z-50 min-w-[140px]" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-                {PERSONALITY_STYLES.map(s => (
-                  <button key={s.id}
-                    className={`block w-full text-left px-3 py-1.5 text-xs font-mono transition-colors`}
-                    style={{ color: personalityStyle === s.id ? 'var(--amber)' : 'var(--text-secondary)' }}
-                    onClick={() => applyPersonalityStyle(s.id)}
-                  >
-                    {s.label} — {s.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* Action icons */}
           <div className="flex gap-1.5 items-center">
-            <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
-              {theme === 'dark' ? '☀' : '☾'}
-            </button>
             <span className="material-symbols-outlined text-base hover:text-[#FFB000] cursor-pointer transition-colors"
               style={{ color: 'var(--text-secondary)' }}
               role="button" aria-label="Open setup"
@@ -1237,48 +1176,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── SIDEBAR ────────────────────────────────────────────────── */}
-      {/* La barra era larga 48 px con etichette da 12 px: "TRANSPORT" e
-          "ACTIONS" non ci stavano e uscivano dal bordo, tagliate a metà
-          parola — si leggeva "RANSPORT". Ora la barra è larga quanto serve
-          alla parola più lunga, e l'etichetta scende alla misura minima
-          leggibile invece di traboccare.
-          Via anche la scritta "MOD" ruotata di 180°, che si leggeva dal
-          basso verso l'alto e non diceva niente. */}
-      <aside
-        className="fixed left-0 top-9 h-[calc(100vh-2.25rem)] w-[4.5rem] flex flex-col items-stretch py-2 z-40"
-        style={{ backgroundColor: 'var(--bg-panel)', borderRight: '1px solid var(--border)' }}
-        aria-label="Moduli"
-      >
-        {sideModules.map(mod => {
-          const attivo = activeMod === mod.id
-          return (
-            <motion.button
-              key={mod.id}
-              aria-label={mod.label}
-              aria-current={attivo ? 'true' : undefined}
-              title={mod.label}
-              className="w-full py-2.5 flex flex-col items-center gap-1 transition-colors border-l-2"
-              style={{
-                borderLeftColor: attivo ? 'var(--cremisi)' : 'transparent',
-                color: attivo ? 'var(--cremisi)' : 'var(--text-secondary)',
-                backgroundColor: attivo ? 'var(--bg-card)' : 'transparent'
-              }}
-              whileHover={{ backgroundColor: attivo ? 'var(--bg-card)' : 'var(--bg-hover-card)' }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => setActiveMod(mod.id)}
-            >
-              <span className="material-symbols-outlined text-lg" aria-hidden="true">{mod.icon}</span>
-              <span
-                className="font-semibold uppercase leading-none"
-                style={{ fontSize: '0.625rem', letterSpacing: '0.02em' }}
-              >
-                {mod.label}
-              </span>
-            </motion.button>
-          )
-        })}
-      </aside>
 
       {/* ── SESSION PANEL — absolute overlay, mai sposta il main ──── */}
       <AnimatePresence>
@@ -1289,7 +1186,7 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="fixed top-9 left-[4.5rem] right-0 bottom-0 z-30"
+            className="fixed top-9 left-0 right-0 bottom-0 z-30"
             style={{ backgroundColor: 'var(--bg-primary)' }}
           >
             <SessionPanel />
@@ -1306,7 +1203,7 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="fixed top-9 left-[4.5rem] right-0 bottom-9 z-30 overflow-y-auto custom-scrollbar p-4"
+            className="fixed top-9 left-0 right-0 bottom-9 z-30 overflow-y-auto custom-scrollbar p-4"
             style={{ backgroundColor: 'var(--bg-primary)' }}
           >
             <div className="max-w-full space-y-4">
@@ -1462,7 +1359,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* ── MAIN GRID — sempre nel DOM, mai mosso ──────────────────── */}
-      <main className="ml-[4.5rem] mt-0 h-[calc(100vh-2.25rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden relative z-10" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <main className="ml-0 mt-0 h-[calc(100vh-2.25rem)] grid grid-cols-12 grid-rows-6 p-1 gap-1 overflow-hidden relative z-10" style={{ backgroundColor: 'var(--bg-primary)' }}>
 
         {/* ── AI CHAT CONSOLE (9/12 × 4/6) ──────────────────────── */}
         <section className="col-span-9 row-span-4 border flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
@@ -1472,12 +1369,6 @@ export default function App() {
               <span className="text-xs font-bold tracking-widest uppercase" style={{ color: 'var(--amber)' }}>AI Command Console</span>
             </div>
             <div className="flex items-center gap-3 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
-              <span>v4.2.0</span>
-              {['inline','grid','popover'].map(l => (
-                <span key={l} className={`text-[9px] uppercase tracking-widest cursor-pointer px-1 border-b ${boxLayout === l ? 'border-[#FFB000]' : 'border-transparent hover:text-[#FFB000]'}`}
-                  style={{ color: boxLayout === l ? 'var(--amber)' : 'var(--text-faint)' }}
-                  onClick={() => setBoxLayout(l)}>{l}</span>
-              ))}
               {dawConnected && <span style={{ color: 'var(--green)' }}>● DAW SYNC</span>}
               {personality?.style && personality.style !== 'warm' && (
                 <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-px border"
@@ -1557,62 +1448,6 @@ export default function App() {
                     <div className="w-1 h-full min-h-[10px] flex-shrink-0" style={{ backgroundColor: 'var(--border-light)' }} />
                     <span className="text-[10px] font-mono tracking-wide" style={{ color: 'var(--text-secondary)' }}>{msg.text}</span>
                   </div>
-                )
-
-                if (msg.type === 'advisory') return (
-                  <motion.div key="advisory"
-                    initial={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(4px)' }}
-                    animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0)' }}
-                    exit={{ opacity: 0, scale: 0.97 }}
-                    transition={{ duration: 0.55, ease: [0.22,1,0.36,1] }}
-                    className="mt-2 mb-4"
-                  >
-                    <div className="advisory-breathe bg-[#121212] border border-[#DC143C]/40 p-4 relative overflow-hidden">
-                      {/* Decorative mini bar chart */}
-                      <div className="absolute top-2 right-4 flex items-end gap-[2px] h-5 opacity-30">
-                        {[35,70,50,90,60].map((h,i) => (
-                          <div key={i} className="w-[2px] bg-[#DC143C]" style={{ height:`${h}%` }} />
-                        ))}
-                      </div>
-<div className="flex items-start gap-3 mb-3 border-b pb-2" style={{ borderColor: 'var(--border)' }}>
-                         <div className="w-1 h-6 bg-[#DC143C] relative overflow-hidden flex-shrink-0 mt-0.5">
-                           <motion.div className="absolute inset-0 bg-white/20"
-                             animate={{ y:['0%','100%','0%'] }}
-                             transition={{ repeat:Infinity, duration:2 }}
-                           />
-                         </div>
-                         <div>
-                           <span className="text-xs font-bold tracking-tighter uppercase block" style={{ color: 'var(--cremisi)' }}>Suggerimento di mastering</span>
-                           <span className="text-xs tracking-[0.2em]" style={{ color: 'var(--text-secondary)' }}>NODE: CREMISI_X9 · PRIORITY: HIGH</span>
-                         </div>
-                       </div>
-                       <p className="text-sm leading-relaxed mb-4 break-words" style={{ color: 'var(--amber)' }}>
-                        Detected harmonic crowding in <span className="text-white font-bold border-b border-[#DC143C]/40 px-1">200Hz–400Hz</span> range.{' '}
-                        Suggesting dynamic dip of <span className="bg-[#DC143C] text-white px-1.5 font-bold">-2.4dB</span>.{' '}
-                        Transient preservation at <span className="text-white underline decoration-dotted">84%</span>.
-                      </p>
-                      <div className="flex gap-3 flex-wrap">
-                        <motion.button
-                          className="bg-[#DC143C] text-white px-4 py-1.5 text-xs font-bold uppercase hover:bg-white hover:text-[#DC143C] transition-colors tracking-widest disabled:opacity-40"
-                          whileTap={{ scale: 0.95 }}
-                          onClick={executeChain}
-                          disabled={botState !== 'idle'}
-                        >
-                          <span className="material-symbols-outlined text-[9px] align-middle mr-1">bolt</span>
-                          EXECUTE CHAIN
-                        </motion.button>
-<motion.button
-                           className="border px-4 py-1.5 text-xs font-bold uppercase hover:border-[#FFB000] hover:text-[#FFB000] transition-colors tracking-widest"
-                           style={{ borderColor: 'var(--text-muted)', color: 'var(--text-secondary)' }}
-                           whileTap={{ scale: 0.95 }}
-                           onClick={() => analyzeFurther(personality?.style)}
-                         >ANALYZE FURTHER</motion.button>
-                         <button className="hover:text-white text-xs font-bold uppercase self-center transition-colors"
-                           style={{ color: 'var(--text-secondary)' }}
-                           onClick={dismissAdvisory}>DISMISS</button>
-                      </div>
-                    </div>
-                  </motion.div>
                 )
 
                 if (msg.type === 'user') return <UserBubble key={msg.id} msg={msg} />
