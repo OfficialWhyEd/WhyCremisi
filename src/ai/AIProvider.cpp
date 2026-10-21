@@ -1108,8 +1108,17 @@ bool CodexProvider::testConnection()
 
 juce::StringArray CodexProvider::getAvailableModels()
 {
-    // I modelli dipendono dall'abbonamento: l'elenco serve solo come suggerimento.
-    return { "default", "gpt-5-codex", "gpt-5" };
+    // I modelli dipendono dall'abbonamento: "default" e' sempre valido. Gli altri
+    // si leggono dall'elenco che Codex stesso tiene aggiornato per l'account.
+    juce::StringArray out { "default" };
+    const auto cache = juce::File::getSpecialLocation (juce::File::userHomeDirectory)
+                           .getChildFile (".codex").getChildFile ("models_cache.json");
+    const auto j = juce::JSON::parse (cache);
+    if (auto* arr = j["models"].getArray())
+        for (auto& m : *arr)
+            if (m["visibility"].toString() == "list" && m["slug"].toString().isNotEmpty())
+                out.addIfNotAlreadyThere (m["slug"].toString());
+    return out;
 }
 
 juce::String AnthropicProvider::displayNameFor (const juce::String& modelId)

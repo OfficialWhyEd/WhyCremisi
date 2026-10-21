@@ -10,7 +10,7 @@ const modelsByProvider = {
   // Con l'account Claude i modelli sono gli alias del programma ufficiale.
   claudecode: ['sonnet', 'opus', 'haiku'],
   // Con l'account ChatGPT il modello predefinito è quello dell'abbonamento.
-  codex: ['default', 'gpt-5-codex', 'gpt-5'],
+  codex: ['default', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-6-luna'],
   openrouter: [
     'deepseek/deepseek-v4.1-flash',
     'nvidia/nemotron-3-ultra-550b-a55b:free',
