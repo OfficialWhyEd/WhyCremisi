@@ -274,6 +274,9 @@ private:
     /** samples.scan, samples.search, beat.create: indice dei suoni e costruzione del beat. */
     void eseguiToolSample(const ToolCall& call, ToolResult& result);
 
+    /** mix.levels, mix.snapshot.save, mix.snapshot.recall: mixer di Live riletto traccia per traccia. */
+    void eseguiToolMix(const ToolCall& call, ToolResult& result);
+
     // I test di regressione iniettano un IDawHandler che registra le
     // chiamate e invocano il percorso produttivo qui sopra.
     friend class OscBridgeTest;

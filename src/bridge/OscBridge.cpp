@@ -26,6 +26,7 @@
 #include "DawDetector.h"
 #include "../samples/SampleLibrary.h"
 #include "../samples/BeatBuilder.h"
+#include "../daw/MixSnapshots.h"
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -3019,6 +3020,108 @@ void OscBridge::setDawTarget(const juce::String& host, int sendPort)
 //    message    testo leggibile, warnings opzionali
 //  result.success e' vero solo con status "confirmed".
 //==============================================================================
+void OscBridge::eseguiToolMix(const ToolCall& call, ToolResult& result)
+{
+    const auto& a = call.arguments;
+    auto numero = [&](const char* k, double def) -> double {
+        if (! a.is_object() || ! a.contains(k)) return def;
+        if (a[k].is_number()) return a[k].get<double>();
+        if (a[k].is_string()) {
+            const auto s = juce::String(a[k].get<std::string>()).trim();
+            if (s.isNotEmpty() && s.containsOnly("0123456789.-")) return s.getDoubleValue();
+        }
+        return def;
+    };
+    const juce::String nome = (a.is_object() && a.contains("name") && a["name"].is_string())
+        ? juce::String(a["name"].get<std::string>()).trim() : juce::String();
+
+    if (! dawHandler || ! dawHandler->isAbleton()) {
+        result.success = false;
+        result.output = "Il mixer si legge solo da Ableton Live con AbletonOSC attivo. Nessuna DAW Live collegata.";
+        return;
+    }
+
+    // Legge un valore da Live. NaN come atteso: la lettura risulta sempre "diversa" e restituisce il valore.
+    auto leggi = [&](const char* indirizzo, int traccia, double& out) -> bool {
+        const auto e = verificaConLettura(indirizzo, { (float) traccia }, traccia,
+                                          std::numeric_limits<double>::quiet_NaN(), 0.0, 2, 300);
+        if (e.stato == EsitoLettura::Stato::Diverso) { out = e.letto; return true; }
+        return false;
+    };
+    auto leggiTracce = [&](int quante, std::vector<MixTrackState>& tracce, juce::StringArray& nonLette) {
+        for (int i = 0; i < quante; ++i) {
+            double v = 0, p = 0, m = 0;
+            if (leggi("/live/track/get/volume", i, v) && leggi("/live/track/get/panning", i, p)
+                && leggi("/live/track/get/mute", i, m))
+                tracce.push_back({ i, MixSnapshots::dbFromLiveVolume(v), p, m > 0.5 });
+            else
+                nonLette.add(juce::String(i));
+        }
+    };
+    auto descrivi = [](const std::vector<MixTrackState>& tracce) {
+        nlohmann::json j = nlohmann::json::array();
+        for (const auto& t : tracce)
+            j.push_back({ { "track", t.index }, { "volumeDb", std::round(t.volumeDb * 10.0) / 10.0 },
+                          { "pan", std::round(t.pan * 100.0) / 100.0 }, { "mute", t.mute } });
+        return juce::String(j.dump());
+    };
+
+    MixSnapshots snap;
+
+    if (call.name == "mix.levels" || call.name == "mix.snapshot.save") {
+        const int quante = (int) juce::jlimit(1.0, 32.0, numero("tracks", 8.0));
+        std::vector<MixTrackState> tracce;
+        juce::StringArray nonLette;
+        leggiTracce(quante, tracce, nonLette);
+        if (tracce.empty()) {
+            result.success = false;
+            result.output = "Live non ha risposto: AbletonOSC e' attivo e la porta e' quella giusta?";
+            return;
+        }
+        juce::String r = juce::String((int) tracce.size()) + " tracce lette da Live: " + descrivi(tracce);
+        if (! nonLette.isEmpty()) r << ". Senza risposta: " << nonLette.joinIntoString(", ");
+        if (call.name == "mix.snapshot.save") {
+            if (nome.isEmpty()) { result.success = false; result.output = "Serve un nome per l'istantanea (name)."; return; }
+            if (! snap.save(nome, tracce)) { result.success = false; result.output = "Non sono riuscito a scrivere l'istantanea su disco."; return; }
+            r = "Istantanea '" + nome + "' salvata. " + r;
+        }
+        result.success = true;
+        result.output = r;
+        return;
+    }
+
+    // mix.snapshot.recall
+    std::vector<MixTrackState> volute;
+    if (nome.isEmpty() || ! snap.recall(nome, volute)) {
+        result.success = false;
+        result.output = "Istantanea non trovata: '" + nome + "'. Disponibili: " + snap.names().joinIntoString(", ");
+        return;
+    }
+    for (const auto& t : volute) {
+        dawHandler->setVolume(t.index, juce::Decibels::decibelsToGain((float) t.volumeDb, -99.0f));
+        dawHandler->setPan(t.index, (float) t.pan);
+        dawHandler->muteTrack(t.index, t.mute);
+    }
+    // Live applica al giro dopo: rilettura con ritentativi, come per i comandi singoli.
+    int tornate = 0;
+    juce::StringArray diverse;
+    for (const auto& t : volute) {
+        const double attesoLive = AbletonDawHandler::liveVolumeFromGain(juce::Decibels::decibelsToGain((float) t.volumeDb, -99.0f));
+        const auto ev = verificaConLettura("/live/track/get/volume", { (float) t.index }, t.index, attesoLive, 0.01, 3, 300);
+        const auto ep = verificaConLettura("/live/track/get/panning", { (float) t.index }, t.index, t.pan, 0.02, 3, 300);
+        const auto em = verificaConLettura("/live/track/get/mute", { (float) t.index }, t.index, t.mute ? 1.0 : 0.0, 0.5, 3, 300);
+        if (ev.stato == EsitoLettura::Stato::Confermato && ep.stato == EsitoLettura::Stato::Confermato
+            && em.stato == EsitoLettura::Stato::Confermato)
+            ++tornate;
+        else
+            diverse.add(juce::String(t.index));
+    }
+    result.success = diverse.isEmpty();
+    result.output = "Istantanea '" + nome + "': " + juce::String(tornate) + " tracce su " + juce::String((int) volute.size())
+                  + " riportate e riconfermate da Live"
+                  + (diverse.isEmpty() ? juce::String(".") : ". Non confermate: " + diverse.joinIntoString(", ") + ".");
+}
+
 void OscBridge::eseguiToolSample(const ToolCall& call, ToolResult& result)
 {
     const auto& a = call.arguments;
@@ -3509,6 +3612,9 @@ void OscBridge::setAiEngine(AiEngine* engine)
         // ── Sample e beat dai suoni dell'utente ─────────────────────
         else if (call.name == "samples.scan" || call.name == "samples.search" || call.name == "beat.create") {
             eseguiToolSample (call, result);
+        }
+        else if (call.name == "mix.levels" || call.name == "mix.snapshot.save" || call.name == "mix.snapshot.recall") {
+            eseguiToolMix (call, result);
         }
         // ── Catena DSP interna ──────────────────────────────────────
         else if (call.name == "dsp.compressor.set") {

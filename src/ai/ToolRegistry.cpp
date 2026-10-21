@@ -158,6 +158,26 @@ void ToolRegistry::registerBuiltinTools()
         {"slot", "number", "Slot della clip, di norma 0", false, 0, 127}
     }});
 
+    registerTool({"mix.levels",
+        "Legge da Ableton Live lo stato REALE del mixer, traccia per traccia: "
+        "volume in dB, pan e mute. Usalo prima di toccare il mix e dopo, per "
+        "provare che i valori sono quelli che servono. Solo Live.", {
+        {"tracks", "number", "Quante tracce leggere partendo dalla 0 (di norma 8, massimo 32)", false, 1, 32}
+    }});
+
+    registerTool({"mix.snapshot.save",
+        "Salva con un nome lo stato attuale del mixer (volume, pan, mute di "
+        "ogni traccia, riletti da Live) per poterlo richiamare dopo.", {
+        {"name", "string", "Nome dell'istantanea, es. 'mix-prima-del-drop'", true},
+        {"tracks", "number", "Quante tracce salvare, di norma 8", false, 1, 32}
+    }});
+
+    registerTool({"mix.snapshot.recall",
+        "Rimette il mixer di Live com'era in un'istantanea salvata e rilegge "
+        "ogni traccia per dire quali valori sono tornati davvero.", {
+        {"name", "string", "Nome dell'istantanea da richiamare", true}
+    }});
+
     registerTool({"dsp.getState",
         "Riporta com'e' messa adesso la catena interna: quali moduli sono "
         "attivi e con quali valori. Chiamalo prima di modificare qualcosa, "
