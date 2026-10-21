@@ -424,6 +424,8 @@ private:
     // AI thread (async dispatch)
     std::unique_ptr<std::thread> aiThread;
     std::unique_ptr<std::thread> undoThread;   // annulla dalla UI: rilegge Live, non deve bloccare il WebSocket
+    std::atomic<bool> accessoStop { false };
+    std::unique_ptr<std::thread> accessoThread; // login OpenRouter: aspetta il rientro dal browser
 
     // Meter state written from processBlock, read by timerCallback
     std::atomic<float> lastMeterL { -60.0f };

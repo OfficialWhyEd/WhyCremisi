@@ -131,6 +131,22 @@ public:
             expect (ClaudeCodeProvider::composePrompt ("rotto", "x").trim() == "Utente: x");
         }
 
+        beginTest ("OpenRouter PKCE: sfida, codice e indirizzo");
+        {
+            const auto a = OpenRouterAuth::creaSfida();
+            const auto b = OpenRouterAuth::creaSfida();
+            expect (a.verifier.length() >= 43 && a.verifier != b.verifier);
+            expect (a.challenge.length() == 43);   // SHA-256 in base64url senza padding
+            expect (! a.challenge.containsAnyOf ("+/="));
+            const auto h = juce::SHA256 (a.verifier.toRawUTF8(), (size_t) a.verifier.getNumBytesAsUTF8()).toHexString();
+            expect (h.length() == 64);
+            expect (OpenRouterAuth::codiceDaRichiesta ("GET /?code=abc123 HTTP/1.1") == "abc123");
+            expect (OpenRouterAuth::codiceDaRichiesta ("GET /favicon.ico HTTP/1.1").isEmpty());
+            const auto u = OpenRouterAuth::urlAutorizzazione (4321, "XYZ");
+            expect (u.startsWith ("https://openrouter.ai/auth?callback_url="));
+            expect (u.contains ("localhost%3A4321") && u.contains ("code_challenge=XYZ") && u.contains ("S256"));
+        }
+
         beginTest ("Codex legge gli eventi JSONL e riconosce gli errori");
         {
             const juce::String ok =

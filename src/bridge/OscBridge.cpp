@@ -172,6 +172,9 @@ void OscBridge::stop()
         log("[OscBridge] Waiting for AI thread to join...");
         aiThread->join();
     }
+    accessoStop = true;
+    if (accessoThread && accessoThread->joinable())
+        accessoThread->join();
     if (undoThread && undoThread->joinable())
         undoThread->join();
 
@@ -2703,6 +2706,48 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         rp["codex"] = stato.installed;
         rp["method"] = stato.method.toStdString();
         sendConfigResponse(rp);
+    }
+    else if (configKey == "ai.linkOpenRouter")
+    {
+        // Login con un clic (PKCE): apre la pagina ufficiale di OpenRouter, aspetta il
+        // rientro su una porta locale e salva la chiave ricevuta come tutte le altre.
+        accessoStop = true;
+        if (accessoThread && accessoThread->joinable())
+            accessoThread->join();
+        accessoStop = false;
+        accessoThread = std::make_unique<std::thread> ([this]()
+        {
+            juce::String errore;
+            const auto chiave = OpenRouterAuth::accedi (180, errore,
+                [] (const juce::String& url) { juce::URL (url).launchInDefaultBrowser(); }, &accessoStop);
+            if (accessoStop) return;
+            if (chiave.isNotEmpty() && aiEngine)
+            {
+                aiEngine->updateConfig ([&chiave] (AiEngine::Config& cfg)
+                {
+                    cfg.provider = AiEngine::Provider::OpenRouter;
+                    cfg.apiKey = chiave;
+                    cfg.authToken = {};
+                });
+            }
+            nlohmann::json rp;
+            rp["key"] = "ai.linkOpenRouter";
+            rp["status"] = chiave.isNotEmpty() ? "ok" : "error";
+            rp["masked"] = true;
+            rp["message"] = chiave.isNotEmpty() ? "Account OpenRouter collegato." : errore.toStdString();
+            nlohmann::json risposta = nlohmann::json::object();
+            risposta["type"] = "config.response";
+            risposta["timestamp"] = juce::Time::currentTimeMillis();
+            risposta["payload"] = rp;
+            if (wsServer)
+                wsServer->broadcast (risposta);
+            if (chiave.isNotEmpty())
+                juce::MessageManager::callAsync ([this] { if (pluginProcessor) pluginProcessor->saveUserSettings(); });
+        });
+        nlohmann::json rp;
+        rp["key"] = "ai.linkOpenRouter";
+        rp["status"] = "opened";
+        sendConfigResponse (rp);
     }
     else if (configKey == "ai.linkCodex")
     {

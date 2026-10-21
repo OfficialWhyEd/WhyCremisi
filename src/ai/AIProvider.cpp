@@ -1646,3 +1646,94 @@ juce::StringArray GeminiProvider::getAvailableModels()
     // partenza ragionevole, che verra' sostituito appena la chiave c'e'.
     return { "gemini-2.0-flash" };
 }
+
+//==============================================================================
+//  OpenRouterAuth (PKCE)
+//==============================================================================
+static juce::String base64Url (const void* dati, size_t n)
+{
+    auto s = juce::Base64::toBase64 (dati, n);
+    return s.replace ("+", "-").replace ("/", "_").replace ("=", "");
+}
+
+OpenRouterAuth::Sfida OpenRouterAuth::creaSfida()
+{
+    juce::MemoryBlock casuale (48);
+    juce::Random r;
+    r.setSeedRandomly();
+    for (size_t i = 0; i < casuale.getSize(); ++i)
+        casuale[i] = (char) r.nextInt (256);
+
+    Sfida s;
+    s.verifier = base64Url (casuale.getData(), casuale.getSize());
+    const auto hash = juce::SHA256 (s.verifier.toRawUTF8(), (size_t) s.verifier.getNumBytesAsUTF8());
+    const auto raw = hash.getRawData();
+    s.challenge = base64Url (raw.getData(), raw.getSize());
+    return s;
+}
+
+juce::String OpenRouterAuth::codiceDaRichiesta (const juce::String& primaRiga)
+{
+    const int q = primaRiga.indexOf ("code=");
+    if (q < 0) return {};
+    auto resto = primaRiga.substring (q + 5);
+    const int fine = resto.indexOfAnyOf (" &\r\n");
+    return (fine >= 0 ? resto.substring (0, fine) : resto).trim();
+}
+
+juce::String OpenRouterAuth::urlAutorizzazione (int porta, const juce::String& challenge)
+{
+    return "https://openrouter.ai/auth?callback_url="
+         + juce::URL::addEscapeChars ("http://localhost:" + juce::String (porta) + "/", true)
+         + "&code_challenge=" + challenge + "&code_challenge_method=S256";
+}
+
+juce::String OpenRouterAuth::accedi (int timeoutSecondi, juce::String& errore, std::function<void (const juce::String&)> apriUrl,
+                                  const std::atomic<bool>* stop)
+{
+    juce::StreamingSocket ascolto;
+    if (! ascolto.createListener (0, "127.0.0.1"))
+    {
+        errore = "Non riesco ad aprire la porta locale per il rientro.";
+        return {};
+    }
+    const auto sfida = creaSfida();
+    apriUrl (urlAutorizzazione (ascolto.getBoundPort(), sfida.challenge));
+
+    std::unique_ptr<juce::StreamingSocket> client;
+    const auto fine = juce::Time::getMillisecondCounter() + (juce::uint32) timeoutSecondi * 1000u;
+    juce::String codice;
+    while (juce::Time::getMillisecondCounter() < fine && codice.isEmpty() && ! (stop && stop->load()))
+    {
+        if (ascolto.waitUntilReady (true, 500) != 1) continue;
+        client.reset (ascolto.waitForNextConnection());
+        if (client == nullptr) continue;
+        char buf[2048] = {};
+        client->waitUntilReady (true, 2000);
+        const int n = client->read (buf, sizeof (buf) - 1, false);
+        if (n > 0)
+            codice = codiceDaRichiesta (juce::String::fromUTF8 (buf, n).upToFirstOccurrenceOf ("\r\n", false, false));
+        const juce::String pagina = codice.isNotEmpty()
+            ? "<html><body style='font-family:sans-serif;background:#0b0b0b;color:#eee;text-align:center;padding-top:20vh'><h2>Fatto. Puoi tornare a WhyCremisi.</h2></body></html>"
+            : "<html><body>Niente codice ricevuto.</body></html>";
+        const juce::String risposta = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: "
+                                    + juce::String ((int) pagina.getNumBytesAsUTF8()) + "\r\n\r\n" + pagina;
+        client->write (risposta.toRawUTF8(), (int) risposta.getNumBytesAsUTF8());
+        client.reset();
+    }
+    if (codice.isEmpty())
+    {
+        errore = "L'accesso non è stato completato in tempo.";
+        return {};
+    }
+
+    nlohmann::json corpo = { { "code", codice.toStdString() },
+                             { "code_verifier", sfida.verifier.toStdString() },
+                             { "code_challenge_method", "S256" } };
+    const auto risposta = makeHttp ("https://openrouter.ai/api/v1/auth/keys", "POST", corpo.dump(), 15000);
+    const auto j = parseJsonSafe (risposta);
+    if (j.is_object() && j.contains ("key") && j["key"].is_string())
+        return juce::String (j["key"].get<std::string>().data());
+    errore = "OpenRouter non ha restituito la chiave.";
+    return {};
+}

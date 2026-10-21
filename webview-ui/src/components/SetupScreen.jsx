@@ -99,7 +99,10 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const modelList = (provider === 'gemini' && modelliVivi) || modelsByProvider[effectiveProvider] || []
   // Il campo credenziale non serve quando si usa Ollama in locale né quando
   // si entra con l'abbonamento Claude.
-  const needsApiKey = provider !== 'ollama' && !usingSubscription
+  // OpenRouter: l'accesso con un clic ha già salvato la chiave nel plugin.
+  const [orCollegato, setOrCollegato] = useState(false)
+  const [orInCorso, setOrInCorso] = useState(false)
+  const needsApiKey = provider !== 'ollama' && !usingSubscription && !(provider === 'openrouter' && orCollegato)
 
   useEffect(() => {
     return () => {
@@ -119,6 +122,15 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   // Su Gemini l'elenco dei modelli lo dà Google, non una lista scritta qui:
   // le liste fisse invecchiano e chi sceglie un modello ritirato riceve un
   // errore senza capire perché. Si chiede appena c'è una chiave.
+  useEffect(() => {
+    const unsub = whycremisi.on('config.response', (payload) => {
+      if (payload?.key !== 'ai.linkOpenRouter') return
+      if (payload.status === 'ok') { setOrCollegato(true); setOrInCorso(false); setErrorMsg('') }
+      else if (payload.status === 'error') { setOrInCorso(false); setErrorMsg(payload.message || 'Accesso non riuscito.') }
+    })
+    return () => unsub()
+  }, [])
+
   useEffect(() => {
     if (provider !== 'gemini' || !apiKey || apiKey.length < 20) return
     if (!whycremisi.isConnected()) return
@@ -428,6 +440,9 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                   <p className="text-[8px] text-[#00E5FF] font-bold uppercase tracking-widest mb-0.5">
                     Nessun abbonamento necessario
                   </p>
+                  {orCollegato && (
+                    <p className="text-[8px] text-[#00FFaa] font-bold mb-0.5">Account OpenRouter collegato, nessuna chiave da incollare.</p>
+                  )}
                   <p className="text-[7px] text-[#777] leading-relaxed">
                     La chiave di OpenRouter si crea gratis su openrouter.ai. DeepSeek V4.1 Flash è il primo modello:
                     costa pochi centesimi ogni migliaia di richieste. I modelli{' '}
@@ -447,14 +462,19 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                       email. Da lì si copia la chiave e si torna qui — una
                       volta sola, poi resta salvata. */}
                   <button
-                    onClick={() => whycremisi.send({
-                      type: 'config.set',
-                      payload: { key: 'ai.openLogin', provider },
-                    })}
+                    onClick={() => {
+                      if (provider === 'openrouter') {
+                        // Un clic: login ufficiale nel browser, la chiave torna da sola.
+                        setOrInCorso(true)
+                        whycremisi.send({ type: 'config.set', payload: { key: 'ai.linkOpenRouter' } })
+                      } else {
+                        whycremisi.send({ type: 'config.set', payload: { key: 'ai.openLogin', provider } })
+                      }
+                    }}
                     className="group w-full mb-1.5 inline-flex items-center justify-between rounded-full pl-3.5 pr-1.5 py-1.5 text-[10px] font-bold tracking-tight transition-all duration-500"
                     style={{ backgroundColor: '#ffffff', color: '#0a0a0a' }}
                   >
-                    Accedi con {providerNames[provider]}
+                    {provider === 'openrouter' && orInCorso ? 'In attesa dell’accesso…' : `Accedi con ${providerNames[provider]}`}
                     <span className="w-5 h-5 rounded-full bg-black/10 flex items-center justify-center transition-transform duration-500 group-hover:translate-x-0.5">
                       <span className="material-symbols-outlined text-[12px]">open_in_new</span>
                     </span>

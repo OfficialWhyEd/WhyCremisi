@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
+#include <juce_cryptography/juce_cryptography.h>
 #include <nlohmann/json.hpp>
 #include <functional>
 #include <memory>
@@ -347,4 +348,19 @@ public:
     juce::String getName() const override { return "Groq"; }
 private:
     juce::String getApiUrl() const override { return "https://api.groq.com/openai/v1/chat/completions"; }
+};
+
+//==============================================================================
+// Accesso a OpenRouter con un clic (OAuth PKCE): si apre la pagina ufficiale,
+// l'utente accede, OpenRouter rimanda a una porta locale con un codice che si
+// scambia con una chiave. Nessun segreto da copiare a mano.
+struct OpenRouterAuth
+{
+    struct Sfida { juce::String verifier, challenge; };
+    static Sfida creaSfida();                                   // verifier casuale + SHA-256 in base64url
+    static juce::String codiceDaRichiesta (const juce::String& primaRiga);   // "GET /?code=XYZ HTTP/1.1" -> "XYZ"
+    static juce::String urlAutorizzazione (int porta, const juce::String& challenge);
+    // Blocca fino al rientro (o al tempo massimo). Ritorna la chiave, o stringa vuota con l'errore in 'errore'.
+    static juce::String accedi (int timeoutSecondi, juce::String& errore, std::function<void (const juce::String&)> apriUrl,
+                                const std::atomic<bool>* stop = nullptr);
 };

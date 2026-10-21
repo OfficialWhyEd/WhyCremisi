@@ -163,6 +163,7 @@ target_link_libraries(WhyCremisiVSTPlugin
         juce::juce_graphics
         # Core
         juce::juce_core
+        juce::juce_cryptography
         juce::juce_data_structures
         juce::juce_events
 )
@@ -289,6 +290,7 @@ if(BUILD_UNIT_TESTS)
             juce::juce_gui_extra
             juce::juce_graphics
             juce::juce_core
+            juce::juce_cryptography
             juce::juce_data_structures
             juce::juce_events
     )
