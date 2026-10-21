@@ -93,8 +93,6 @@ export default function App() {
   const [historyIdx, setHistoryIdx] = useState(-1)
   const [debugOverlay, setDebugOverlay] = useState(false)
   const [theme, setTheme] = useState(() => localStorage.getItem('whycremisi_theme') || 'dark')
-  const [actionHistory, setActionHistory] = useState([])
-  const [actionRedoStack, setActionRedoStack] = useState([])
   const [actionLog, setActionLog] = useState([])
   const [toasts, setToasts] = useState([])
   const [pluginChain, setPluginChain] = useState([])
@@ -106,7 +104,6 @@ export default function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark')
   }, [])
   const pushAction = (action) => {
-    setActionHistory(prev => [...prev, action])
     setActionLog(prev => [action, ...prev].slice(0, 50))
   }
   const addToast = (message, type = 'info') => {
@@ -115,20 +112,6 @@ export default function App() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
   }
   const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id))
-  const undoLastAction = () => {
-    setActionHistory(prev => {
-      if (prev.length === 0) return prev
-      setActionRedoStack(r => [prev[prev.length-1], ...r])
-      return prev.slice(0, -1)
-    })
-  }
-  const redoLastAction = () => {
-    setActionRedoStack(prev => {
-      if (prev.length === 0) return prev
-      setActionHistory(h => [...h, prev[0]])
-      return prev.slice(1)
-    })
-  }
   const PERSONALITY_STYLES = [
     { id: 'analytical',  label: 'AN', name: 'Analytical',  icon: '📊' },
     { id: 'consultative',label: 'CS', name: 'Consultative',icon: '💬' },
@@ -1950,28 +1933,6 @@ export default function App() {
            <div className="w-40 flex-shrink-0 flex flex-col justify-center px-3 py-2 gap-1 overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
              <div className="flex items-center justify-between mb-1">
                <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--green)' }}>Azioni</span>
-               <div className="flex gap-0.5">
-                 <motion.button
-                   className="text-[11px] px-1.5 py-0.5 border"
-                   style={{ 
-                     color: actionHistory.length > 0 ? 'var(--text-primary)' : '#333',
-                     borderColor: actionHistory.length > 0 ? '#444' : 'var(--border)'
-                   }}
-                   onClick={undoLastAction}
-                   disabled={actionHistory.length === 0}
-                   whileTap={{ scale: 0.9 }}
-                 >↩</motion.button>
-                 <motion.button
-                   className="text-[11px] px-1.5 py-0.5 border"
-                   style={{ 
-                     color: actionRedoStack.length > 0 ? 'var(--text-primary)' : '#333',
-                     borderColor: actionRedoStack.length > 0 ? '#444' : 'var(--border)'
-                   }}
-                   onClick={redoLastAction}
-                   disabled={actionRedoStack.length === 0}
-                   whileTap={{ scale: 0.9 }}
-                 >↪</motion.button>
-               </div>
              </div>
              <div className="flex-1 overflow-y-auto max-h-24 space-y-0.5 custom-scrollbar">
                {actionLog.length === 0 ? (
