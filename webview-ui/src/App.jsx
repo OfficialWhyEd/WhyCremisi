@@ -7,7 +7,7 @@ import { MaskLogo } from './components/MaskLogo'
 import { SessionPanel } from './components/SessionPanel'
 import { SetupScreen } from './components/SetupScreen'
 import './index.css'
-import BoxChat from './panels/BoxChat'
+import { UserBubble, BotBubble } from './components/ChatBubble'
 
 export default function App() {
   // ── setup state ───────────────────────────────────────────────────
@@ -43,6 +43,10 @@ export default function App() {
     { id: 1, type: 'system', text: '[--:--:--] WHYCREMISI ATTIVO' },
   ])
   const chatEndRef  = useRef(null)
+  const msgSeq      = useRef(0)          // id messaggi: contatore, mai collisioni
+  const chunkBuf    = useRef('')         // token in arrivo, applicati una volta per frame
+  const chunkRaf      = useRef(0)
+  const lastTransportRef = useRef(null)  // per non scrivere in chat ogni evento transport
   const [inputVal, setInputVal] = useState('')
   const streamingIdRef = useRef(null)
   const lastPromptRef  = useRef('')
@@ -232,7 +236,7 @@ export default function App() {
   const ts = () => new Date().toLocaleTimeString('en-US', { hour12: false })
 
   const addMsg = useCallback((msg) => {
-    setMessages(prev => [...prev, { id: Date.now() + Math.random(), ...msg }])
+    setMessages(prev => [...prev, { id: ++msgSeq.current, ...msg }])
   }, [])
 
   const sysMsg = useCallback((text) => addMsg({ type: 'system', text }), [addMsg])
@@ -286,7 +290,19 @@ export default function App() {
     input.click()
   }, [sysMsg])
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  // Auto-scroll solo se l'utente è già in fondo; istantaneo, non smooth:
+  // lo smooth ad ogni chunk faceva "nuotare" il testo durante lo streaming.
+  const listRef   = useRef(null)
+  const stickRef  = useRef(true)
+  const onListScroll = useCallback(() => {
+    const el = listRef.current
+    if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }, [])
+  useEffect(() => {
+    if (!stickRef.current) return
+    const el = listRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages])
 
   // ── bridge init ───────────────────────────────────────────────────
   useEffect(() => {
@@ -358,21 +374,38 @@ export default function App() {
     window.addEventListener('whycremisi-botstate', onBotState)
 
     // ── AI response (complete) ──
+    // I token si accumulano in chunkBuf e arrivano in React una volta per
+    // frame: un setState per token faceva ridisegnare la chat centinaia di volte.
+    const flushChunks = () => {
+      chunkRaf.current = 0
+      const add = chunkBuf.current
+      if (!add) return
+      chunkBuf.current = ''
+      const sid = streamingIdRef.current
+      if (!sid) return
+      setMessages(prev => prev.map(m => m.id === sid ? { ...m, text: m.text + add } : m))
+    }
+    const flushNow = () => {
+      if (chunkRaf.current) { cancelAnimationFrame(chunkRaf.current); chunkRaf.current = 0 }
+      flushChunks()
+    }
+
     const unsubAI = whycremisi.on('ai.response', (payload) => {
       setBotState('success')
       setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
+      chunkBuf.current = ''
+      if (chunkRaf.current) { cancelAnimationFrame(chunkRaf.current); chunkRaf.current = 0 }
       const sid = streamingIdRef.current
       streamingIdRef.current = null
       if (payload?.content) {
+        const boxType = detectBoxType(lastPromptRef.current)
         if (sid) {
           // finalize existing streaming message instead of duplicating
-          const boxType = detectBoxType(lastPromptRef.current, payload.content)
           setMessages(prev => prev.map(m =>
-            m.id === sid ? { ...m, text: payload.content, streaming: false, telemetry: true, boxType } : m
+            m.id === sid ? { ...m, text: payload.content, streaming: false, boxType } : m
           ))
         } else {
-          const boxType = detectBoxType(lastPromptRef.current, payload.content)
-          addMsg({ type: 'bot', text: payload.content, time: ts(), telemetry: true, boxType })
+          addMsg({ type: 'bot', text: payload.content, time: ts(), boxType })
         }
       }
     })
@@ -381,27 +414,29 @@ export default function App() {
     const unsubStream = whycremisi.on('ai.stream', (payload) => {
       setBotState('typing')
       const chunk = payload?.chunk ?? payload?.content ?? ''
-      if (!chunk) return
 
-      if (!streamingIdRef.current) {
-        // start new streaming message
-        const newId = Date.now()
-        streamingIdRef.current = newId
-        setMessages(prev => [...prev, { id: newId, type: 'bot', text: chunk, time: ts(), streaming: true }])
-      } else {
-        // append chunk to existing streaming message
-        const sid = streamingIdRef.current
-        setMessages(prev => prev.map(m =>
-          m.id === sid ? { ...m, text: m.text + chunk } : m
-        ))
+      if (chunk) {
+        if (!streamingIdRef.current) {
+          // start new streaming message
+          const newId = ++msgSeq.current
+          streamingIdRef.current = newId
+          setMessages(prev => [...prev, { id: newId, type: 'bot', text: chunk, time: ts(), streaming: true }])
+        } else {
+          chunkBuf.current += chunk
+          if (!chunkRaf.current) chunkRaf.current = requestAnimationFrame(flushChunks)
+        }
       }
 
       // finalize if isDone
       if (payload?.isDone) {
+        flushNow()
         const sid = streamingIdRef.current
-        setMessages(prev => prev.map(m =>
-          m.id === sid ? { ...m, streaming: false, telemetry: true } : m
-        ))
+        if (sid) {
+          const boxType = detectBoxType(lastPromptRef.current)
+          setMessages(prev => prev.map(m =>
+            m.id === sid ? { ...m, streaming: false, boxType } : m
+          ))
+        }
         streamingIdRef.current = null
         setBotState('success')
         setTimeout(() => { if (mounted.current) setBotState('idle') }, 2000)
@@ -417,7 +452,10 @@ export default function App() {
         position:    payload.positionSeconds ?? 0
       })
       setDawConnected(true)
-      sysMsg(`[${ts()}] TRANSPORT: ${payload.isPlaying ? '▶ PLAY' : '■ STOP'} | BPM ${payload.bpm?.toFixed(1) ?? '--'}`)
+      const statoTransport = `${!!payload.isPlaying}|${!!payload.isRecording}`
+      if (lastTransportRef.current !== null && lastTransportRef.current !== statoTransport)
+        sysMsg(`[${ts()}] ${payload.isPlaying ? '▶ PLAY' : '■ STOP'} | BPM ${payload.bpm?.toFixed(1) ?? '--'}`)
+      lastTransportRef.current = statoTransport
     })
 
     // ── DAW meters ──
@@ -435,7 +473,7 @@ export default function App() {
 
     // ── OSC messages ──
     const unsubOSC = whycremisi.on('osc.message', (payload) => {
-      sysMsg(`[${ts()}] OSC ${payload.address}: ${payload.value}`)
+      // un messaggio OSC per riga riempiva la chat: restano nei log, non qui
     })
 
     // ── plugin stats (SR, buffer, latency from prepareToPlay) ──
@@ -445,7 +483,6 @@ export default function App() {
         bufferSize: payload.bufferSize ?? null,
         latencyMs:  payload.latencyMs  ?? null,
       })
-      sysMsg(`[${ts()}] AUDIO: ${payload.sampleRate}Hz / buf ${payload.bufferSize} / lat ${payload.latencyMs?.toFixed(1)}ms`)
     })
 
     // ── plugin errors ──
@@ -610,12 +647,16 @@ export default function App() {
     return bots.length > 0 ? bots[bots.length - 1].id : null
   }, [messages])
 
+  // Misure live per i box: servono solo ai messaggi che mostrano un box
+  const boxProps = { meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd: dawCmd, personality, onAnalyzeFurther: analyzeFurther, suggestion: currentSuggestion, layout: boxLayout, clippingCount, cpuUsage, rms, lufsShort, scopePoints, gainReduction, stereoState }
+
   // ── send AI prompt ────────────────────────────────────────────────
   const handleCommand = (e) => {
     if (e.key !== 'Enter' || !inputVal.trim() || botState === 'thinking' || botState === 'typing') return
     const cmd = inputVal.trim()
     const t = ts()
     lastPromptRef.current = cmd
+    stickRef.current = true
     addMsg({ type: 'user', text: cmd, time: t })
 
     // Store in history, reset index
@@ -799,55 +840,33 @@ export default function App() {
     setMessages(prev => prev.filter(m => m.type !== 'advisory'))
   }, [])
 
-    // ── detect boxchat type(s) from prompt + response ─────────────────
-    const detectBoxType = (prompt = '', response = '') => {
-      const t = (prompt + ' ' + response).toLowerCase()
-
-      // first try explicit user requests (e.g. "show me eq", "show eq and spectral")
-      const showMatch = t.match(/show\s+(?:me\s+)?(?:the\s+)?(\w+(?:\s*(?:and|,|&)\s*\w+)*)/)
-      if (showMatch) {
-        const raw = showMatch[1]
-        const explicit = []
-        const words = raw.split(/\s+(?:and|,|&)\s+|\s+/)
-        for (const w of words) {
-          if (/eq|frequen|bass|sub|mid|high|treble|presence|air/.test(w)) explicit.push('eq')
-          else if (/spectrum|spectral|fft|analyzer/.test(w)) explicit.push('spectral')
-          else if (/clip|clipping|distort|overload/.test(w)) explicit.push('clipping')
-          else if (/vector|scope|vectorscope|xy|phase/.test(w)) explicit.push('vectorscope')
-          else if (/stereo|width|side|balance|correlation/.test(w)) explicit.push('stereo')
-          else if (/loud|lufs|peak|rms|dynamic|crest/.test(w)) explicit.push('loudness')
-          else if (/volume|gain|fader|level/.test(w)) explicit.push('slider')
-          else if (/pan|panning|position/.test(w)) explicit.push('knob')
-          else if (/play|stop|record|transport|bpm|tempo/.test(w)) explicit.push('transport')
-          else if (/compres|ratio|attack|release|threshold|knee/.test(w)) explicit.push('compressor')
-          else if (/advisory|suggest|recommend/.test(w)) explicit.push('advisory')
-        }
-        if (explicit.length > 0) {
-          const dedup = [...new Set(explicit)]
-          if (/all|everything|every/.test(raw)) return ['vectorscope','stereo','loudness','clipping','eq','spectral','slider','knob','transport','compressor','metrics']
-          return dedup
-        }
-      }
-      if (/show\s+(?:me\s+)?(?:the\s+)?(?:all|everything)/.test(t)) {
+    // ── Box nella chat: SOLO se l'utente li chiede ────────────────────
+    //  Prima il tipo di box si ricavava con regex sul testo della risposta
+    //  (basta la parola "level" o "should") e quasi ogni risposta si
+    //  riempiva di box con le misure live. Ora una risposta è testo
+    //  normale; un box compare solo con "show/mostra …" nel prompt.
+    const detectBoxType = (prompt = '') => {
+      const t = prompt.toLowerCase()
+      const m = t.match(/(?:show|mostra(?:mi)?|fammi\s+vedere)\s+(?:me\s+|the\s+|il\s+|lo\s+|la\s+|i\s+|le\s+)*(.+)/)
+      if (!m) return []
+      const raw = m[1]
+      if (/\b(all|everything|every|tutto|tutti)\b/.test(raw))
         return ['vectorscope','stereo','loudness','clipping','eq','spectral','slider','knob','transport','compressor','metrics']
+      const explicit = []
+      for (const w of raw.split(/[\s,&]+/)) {
+        if (/^(eq|equali|frequen|bass|sub|mid|high|treble|presence|air)/.test(w)) explicit.push('eq')
+        else if (/^(spectrum|spectral|spettro|fft|analyzer)/.test(w)) explicit.push('spectral')
+        else if (/^(clip|distort|overload)/.test(w)) explicit.push('clipping')
+        else if (/^(vector|scope|xy)/.test(w)) explicit.push('vectorscope')
+        else if (/^(stereo|width|side|balance|correlation)/.test(w)) explicit.push('stereo')
+        else if (/^(loud|lufs|peak|rms|dynamic|crest)/.test(w)) explicit.push('loudness')
+        else if (/^(volume|gain|fader|level|livell)/.test(w)) explicit.push('slider')
+        else if (/^(pan|panning|position)/.test(w)) explicit.push('knob')
+        else if (/^(play|stop|record|transport|bpm|tempo)/.test(w)) explicit.push('transport')
+        else if (/^(compres|ratio|attack|release|threshold|knee)/.test(w)) explicit.push('compressor')
+        else if (/^(metrics|misure|meter)/.test(w)) explicit.push('metrics')
       }
-
-      // content-based matching
-      const types = []
-      if (/spectrum|spectral|fft|analyzer|freq\s*response/.test(t)) types.push('spectral')
-      if (/clip|clipping|distort|overload|red|limit(?!er)|ceiling/.test(t)) types.push('clipping')
-      if (/vector|scope|vectorscope|xy|phase\s*meter/.test(t)) types.push('vectorscope')
-      if (/stereo|width|side|balance|phase(?!\s*meter)|mono|correlation/.test(t)) types.push('stereo')
-      if (/lufs|loud|peak|rms|dynamic|crest|limiter/.test(t)) types.push('loudness')
-      if (/eq|frequen|bass|sub|mid|high|treble|presence|air|100hz|200hz|1khz|4khz/.test(t)) types.push('eq')
-      if (/volume|gain|fader|db(?!\s)|level/.test(t)) types.push('slider')
-      if (/pan|panning|position|center|left|right/.test(t)) types.push('knob')
-      if (/play|stop|record|transport|bpm|tempo/.test(t)) types.push('transport')
-      if (/compres|ratio|attack|release|threshold|knee/.test(t)) types.push('compressor')
-      if (/search|internet|find|look\s*up|web|google/.test(t)) types.push('advisory')
-      if (/chain|apply|execute|suggest|recommend|action|advisory|do it|should|could|try|consider/.test(t)) types.push('advisory')
-      if (types.length === 0) types.push('metrics')
-      return types
+      return [...new Set(explicit)]
     }
 
   // ── Suggerimento di correzione, da misure vere ────────────────────
@@ -1484,7 +1503,7 @@ export default function App() {
           </AnimatePresence>
 
           {/* Messages */}
-          <div className="flex-1 px-4 py-3 font-mono overflow-y-auto overflow-x-hidden custom-scrollbar space-y-3">
+          <div ref={listRef} onScroll={onListScroll} className="flex-1 px-4 py-3 font-mono overflow-y-auto overflow-x-hidden custom-scrollbar space-y-3">
 
             {/* Empty state — mostrato finché non ci sono risposte AI */}
             {messages.filter(m => m.type === 'bot').length === 0 && (
@@ -1523,15 +1542,10 @@ export default function App() {
 
               {messages.filter(msg => !searchQuery || msg.text?.toLowerCase().includes(searchQuery.toLowerCase())).map((msg) => {
                 if (msg.type === 'system') return (
-                  <motion.div key={msg.id}
-                    initial={{ opacity: 0, x: -6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="flex items-center gap-2"
-                  >
+                  <div key={msg.id} className="flex items-center gap-2">
                     <div className="w-1 h-full min-h-[10px] flex-shrink-0" style={{ backgroundColor: 'var(--border-light)' }} />
                     <span className="text-[10px] font-mono tracking-wide" style={{ color: 'var(--text-secondary)' }}>{msg.text}</span>
-                  </motion.div>
+                  </div>
                 )
 
                 if (msg.type === 'advisory') return (
@@ -1590,71 +1604,11 @@ export default function App() {
                   </motion.div>
                 )
 
-                if (msg.type === 'user') return (
-                  <motion.div key={msg.id}
-                    initial={{ opacity:0, x:20 }}
-                    animate={{ opacity:1, x:0 }}
-                    transition={{ duration:0.3 }}
-                    className="flex flex-col items-end gap-0.5"
-                  >
-<div className="border px-3 py-1.5 max-w-[80%] text-[9px] text-white font-mono italic" style={{ backgroundColor: 'color-mix(in srgb, var(--bg-elevated) 50%, transparent)', borderColor: 'color-mix(in srgb, var(--amber) 20%, transparent)' }}>
-                       {msg.text}
-                     </div>
-                     <span className="text-xs mr-1 uppercase font-bold tracking-widest" style={{ color: 'var(--text-secondary)' }}>
-                       User // {msg.time}
-                     </span>
-                   </motion.div>
-                 )
+                if (msg.type === 'user') return <UserBubble key={msg.id} msg={msg} />
 
-                 if (msg.type === 'bot') {
-                   const isLatest = msg.id === lastBotId
-                   return (
-                     <motion.div key={msg.id}
-                       initial={{ opacity:0, y:6 }}
-                       animate={{ opacity:1, y:0 }}
-                       transition={{ duration:0.35 }}
-                       className="flex gap-2 min-w-0"
-                     >
-                       <div className="flex-shrink-0 mt-0.5 w-8">
-                         {isLatest && <BotFace state={botState} className="w-8 h-8" personality={personality} audioLevel={(meterL + meterR) / 2} />}
-                       </div>
-                       <div className={`flex-1 min-w-0 p-3 relative overflow-hidden transition-colors duration-300 border ${
-                         isLatest && msg.streaming
-                           ? 'shadow-[0_0_10px_rgba(255,176,0,0.06)]'
-                           : ''
-                       }`}
-                       style={{
-                         backgroundColor: isLatest && msg.streaming ? 'var(--bg-active)' : 'var(--bg-hover-card)',
-                         borderColor: isLatest && msg.streaming ? 'color-mix(in srgb, var(--amber) 25%, transparent)' : 'var(--border-subtle)'
-                       }}>
-                         {/* left accent bar */}
-                         <div className={`absolute top-0 left-0 w-[2px] h-full transition-colors duration-300 ${isLatest ? 'bg-[#FFB000]' : 'bg-[#2e2e2e]'}`} />
-                         {/* streaming scan */}
-                         {isLatest && msg.streaming && (
-                           <motion.div className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#FFB000]/30 to-transparent pointer-events-none"
-                             animate={{ top: ['0%','100%','0%'] }}
-                             transition={{ repeat: Infinity, duration: 2.5, ease: 'linear' }}
-                           />
-                         )}
-                         <div className="flex justify-between items-center mb-1">
-                           <span className="text-xs font-bold tracking-widest uppercase" style={{ color: isLatest ? 'var(--amber)' : 'var(--text-tertiary)' }}>
-                             WHYCREMISI AI
-                           </span>
-                           <span className="text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>{msg.time}</span>
-                         </div>
-                         <p className="text-[11px] leading-5 whitespace-pre-wrap" style={{ color: 'var(--text-primary)' }}>
-                          {msg.text}
-                          {msg.streaming && (
-                            <motion.span className="inline-block w-1 h-3 bg-[#FFB000] ml-1 align-middle"
-                              animate={{ opacity:[1,0,1] }} transition={{ repeat:Infinity, duration:0.55 }}
-                            />
-                          )}
-                        </p>
-                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} suggestion={currentSuggestion} layout={boxLayout} clippingCount={clippingCount} cpuUsage={cpuUsage} rms={rms} lufsShort={lufsShort} scopePoints={scopePoints} gainReduction={gainReduction} stereoState={stereoState} />}
-                      </div>
-                    </motion.div>
-                  )
-                }
+                if (msg.type === 'bot') return (
+                  <BotBubble key={msg.id} msg={msg} isLatest={msg.id === lastBotId} box={boxProps} />
+                )
                 return null
               })}
             </AnimatePresence>
