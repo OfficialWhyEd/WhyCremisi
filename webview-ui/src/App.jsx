@@ -576,6 +576,18 @@ export default function App() {
       }
     })
 
+    // Annulla vero: il bridge registra un punto di ripristino e poi riconferma da Live
+    const unsubActionRec = whycremisi.on('action.recorded', (payload) => {
+      if (payload?.id) {
+        pushAction({ undoId: payload.id, description: payload.description || 'Azione', timestamp: Date.now() })
+      }
+    })
+    const unsubActionUndone = whycremisi.on('action.undone', (payload) => {
+      setActionLog(prev => prev.map(a => a.undoId === payload?.id
+        ? { ...a, undoState: payload.success ? 'fatto' : 'errore', undoMessage: payload.message || '' }
+        : a))
+    })
+
     // ── Personality events from PersonalityCore ──
     const unsubPersAction = whycremisi.on('personality.action', () => {
     })
@@ -627,7 +639,7 @@ export default function App() {
       window.removeEventListener('whycremisi-botstate', onBotState)
       stateUnsub(); unsubAI(); unsubStream(); unsubPanels(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
-      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubStereo(); unsubDsp(); unsubCpu(); unsubUsage(); unsubActionLog(); unsubPersAction(); unsubPersContext()
+      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubStereo(); unsubDsp(); unsubCpu(); unsubUsage(); unsubActionLog(); unsubActionRec(); unsubActionUndone(); unsubPersAction(); unsubPersContext()
       unsubWsStyle(); unsubWsMemory(); unsubWsBootstrap(); unsubWsRefresh()
       whycremisi.disconnect()
     }
@@ -1941,7 +1953,20 @@ export default function App() {
                  actionLog.slice(0, 6).map((a, i) => (
                    <div key={a.timestamp + '-' + i} className="text-[9px] font-mono flex justify-between items-center group px-1 -mx-1 rounded-sm transition-colors">
                      <span className="truncate mr-1 max-w-[70%]" style={{ color: 'var(--text-secondary)' }}>{a.description || a.widgetId}</span>
-                     <span className="flex-shrink-0 font-bold" style={{ color: 'var(--amber)' }}>{a.value?.toFixed(2)}</span>
+                     {a.undoId ? (
+                       <button
+                         disabled={!!a.undoState}
+                         title={a.undoMessage || 'Riporta il valore di prima e lo riconferma da Live'}
+                         onClick={() => {
+                           setActionLog(prev => prev.map(x => x.undoId === a.undoId ? { ...x, undoState: 'in corso' } : x))
+                           whycremisi.send({ type: 'action.undo', payload: { id: a.undoId } })
+                         }}
+                         className="flex-shrink-0 font-bold uppercase"
+                         style={{ color: a.undoState === 'errore' ? 'var(--red, #f55)' : 'var(--amber)', opacity: a.undoState === 'fatto' ? 0.5 : 1 }}
+                       >{a.undoState === 'fatto' ? 'Annullato' : a.undoState === 'errore' ? 'Errore' : a.undoState === 'in corso' ? '...' : 'Annulla'}</button>
+                     ) : (
+                       <span className="flex-shrink-0 font-bold" style={{ color: 'var(--amber)' }}>{a.value?.toFixed(2)}</span>
+                     )}
                    </div>
                  ))
                )}

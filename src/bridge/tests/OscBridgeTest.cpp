@@ -106,6 +106,7 @@ public:
         testUnconfirmedOutcome();
         testLiveReadback();
         testDevicePlugin();
+        testAnnulla();
         testLiveConversions();
         testUnsupportedAndUnknown();
         testUiDispatcherCompatibility();
@@ -674,6 +675,83 @@ private:
             expect (! r2.success && r2.output.contains ("non ha risposto"), r2.output);
             auto r3 = runDevice (rig2, "device.list", nlohmann::json::object());
             expect (! r3.success && r3.output.contains ("traccia"), r3.output);
+        }
+    }
+
+    void testAnnulla()
+    {
+        beginTest ("annulla: il volume torna a quello di prima e Live lo riconferma");
+        {
+            Rig rig; FakeLive live; collega (rig, live);
+            live.stato[OscBridge::chiaveRisposta ("/live/track/get/volume", 2)] = 0.60;
+            auto o = runTool (rig, "daw.track.setVolume", { { "track", 2 }, { "volume", -6.0 } });
+            expect (o.result.success, "comando confermato");
+            expect (o.out.contains ("undoId"), "il comando confermato porta un undoId");
+            expectEquals (rig.bridge.numeroRipristini(), 1);
+            juce::String msg;
+            const bool ok = rig.bridge.annullaAzione (o.out["undoId"].get<long long>(), msg);
+            expect (ok, msg);
+            expectWithinAbsoluteError (live.stato[OscBridge::chiaveRisposta ("/live/track/get/volume", 2)], 0.60, 0.02);
+            expectEquals (rig.bridge.numeroRipristini(), 0);
+        }
+
+        beginTest ("annulla: un punto si usa una volta sola, un id sconosciuto non fa nulla");
+        {
+            Rig rig; FakeLive live; collega (rig, live);
+            auto o = runTool (rig, "daw.track.setPan", { { "track", 1 }, { "pan", 0.5 } });
+            const auto id = o.out["undoId"].get<long long>();
+            juce::String m1, m2, m3;
+            expect (rig.bridge.annullaAzione (id, m1), m1);
+            expect (! rig.bridge.annullaAzione (id, m2), "secondo annulla rifiutato");
+            expect (m2.contains ("non si puo'"), m2);
+            expect (! rig.bridge.annullaAzione (9999, m3), "id sconosciuto");
+        }
+
+        beginTest ("annulla: mute e solo tornano allo stato di prima");
+        {
+            Rig rig; FakeLive live; collega (rig, live);
+            live.stato[OscBridge::chiaveRisposta ("/live/track/get/mute", 1)] = 0.0;
+            auto o = runTool (rig, "daw.track.mute", { { "track", 1 }, { "mute", true } });
+            expect (o.result.success, "mute confermato");
+            expectWithinAbsoluteError (live.stato[OscBridge::chiaveRisposta ("/live/track/get/mute", 1)], 1.0, 1e-6);
+            juce::String m;
+            expect (rig.bridge.annullaAzione (o.out["undoId"].get<long long>(), m), m);
+            expectWithinAbsoluteError (live.stato[OscBridge::chiaveRisposta ("/live/track/get/mute", 1)], 0.0, 1e-6);
+        }
+
+        beginTest ("annulla: un comando non confermato non crea un punto di ripristino");
+        {
+            Rig rig; FakeLive live; live.modo = FakeLive::Modo::Ignora; collega (rig, live);
+            auto o = runTool (rig, "daw.track.setVolume", { { "track", 2 }, { "volume", -6.0 } });
+            expect (! o.out.contains ("undoId"), "mismatch non e' annullabile");
+            expectEquals (rig.bridge.numeroRipristini(), 0);
+        }
+
+        beginTest ("annulla: due richieste, si annulla la prima e la seconda resta");
+        {
+            Rig rig; FakeLive live; collega (rig, live);
+            live.stato[OscBridge::chiaveRisposta ("/live/track/get/panning", 0)] = 0.0;
+            live.stato[OscBridge::chiaveRisposta ("/live/track/get/panning", 1)] = 0.0;
+            auto a = runTool (rig, "daw.track.setPan", { { "track", 0 }, { "pan", 0.5 } });
+            auto b = runTool (rig, "daw.track.setPan", { { "track", 1 }, { "pan", -0.5 } });
+            expectEquals (rig.bridge.numeroRipristini(), 2);
+            juce::String m;
+            expect (rig.bridge.annullaAzione (a.out["undoId"].get<long long>(), m), m);
+            expectEquals (rig.bridge.numeroRipristini(), 1);
+            expectWithinAbsoluteError (live.stato[OscBridge::chiaveRisposta ("/live/track/get/panning", 1)], -0.5, 0.02);
+            juce::ignoreUnused (b);
+        }
+
+        beginTest ("annulla: il parametro di un plugin torna al valore di prima");
+        {
+            Rig rig; FakeDevices fd; collegaDevice (rig, fd);
+            auto r = runDevice (rig, "device.setParam", { { "track", 0 }, { "device", "Serum" }, { "param", "cutoff" }, { "value", 90 } });
+            expect (r.success && r.output.contains ("undoId"), r.output);
+            expectWithinAbsoluteError (fd.valori[1], 90.0, 1e-6);
+            expectEquals (rig.bridge.numeroRipristini(), 1);
+            juce::String m;
+            expect (rig.bridge.annullaAzione (1, m), m);
+            expectWithinAbsoluteError (fd.valori[1], 50.0, 1e-6);
         }
     }
 

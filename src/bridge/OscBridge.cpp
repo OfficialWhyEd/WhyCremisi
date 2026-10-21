@@ -66,6 +66,7 @@ static MessageSchema getSchemaForType(const juce::String& type)
     if (type == "ai.prompt")        return {{"payload"}, {}};
     if (type == "ai.personalityStyle") return {{"payload"}, {}};
     if (type == "daw.command")      return {{"payload"}, {}};
+    if (type == "action.undo")      return {{"payload"}, {}};
     if (type == "daw.request")      return {{"payload"}, {}};
     if (type == "midi.learn.start") return {{"payload"}, {}};
     if (type == "widget.update")    return {{"payload"}, {}};
@@ -171,7 +172,9 @@ void OscBridge::stop()
         log("[OscBridge] Waiting for AI thread to join...");
         aiThread->join();
     }
-    
+    if (undoThread && undoThread->joinable())
+        undoThread->join();
+
     log("[OscBridge] Stopped");
 }
 
@@ -982,6 +985,26 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
     {
         if (message.contains("payload"))
             dispatchDawCommand(message["payload"]);
+    }
+    else if (msgType == "action.undo")
+    {
+        // Rilegge Live: non si fa sul thread del WebSocket.
+        const auto& p = message["payload"];
+        const juce::int64 id = (p.is_object() && p.contains ("id") && p["id"].is_number_integer())
+                                   ? (juce::int64) p["id"].get<long long>() : 0;
+        if (undoThread && undoThread->joinable())
+            undoThread->join();
+        undoThread = std::make_unique<std::thread> ([this, id]()
+        {
+            juce::String messaggio;
+            const bool ok = annullaAzione (id, messaggio);
+            nlohmann::json n;
+            n["type"]      = "action.undone";
+            n["timestamp"] = juce::Time::currentTimeMillis();
+            n["payload"]   = { { "id", id }, { "success", ok }, { "message", messaggio.toStdString() } };
+            if (wsServer)
+                wsServer->broadcast (n);
+        });
     }
     else if (msgType == "daw.request")
     {
@@ -3078,6 +3101,120 @@ void OscBridge::setDawTarget(const juce::String& host, int sendPort)
 }
 
 //==============================================================================
+//  Punti di ripristino (annulla vero). Vedi il commento nell'header.
+//==============================================================================
+OscBridge::PuntoRipristino OscBridge::preparaRipristino (const nlohmann::json& comando,
+                                                         const juce::String& descrizione)
+{
+    PuntoRipristino vuoto;
+    if (! dawHandler || ! dawHandler->isAbleton() || ! comando.is_object()
+        || ! comando.contains ("command") || ! comando["command"].is_string()
+        || ! comando.contains ("trackId") || ! comando["trackId"].is_number_integer())
+        return vuoto;
+
+    const std::string cmd = comando["command"].get<std::string>();
+    const int traccia = comando["trackId"].get<int>();
+
+    const char* indirizzo = nullptr;
+    double tolleranza = 0.01;
+    if      (cmd == "setVolume") { indirizzo = "/live/track/get/volume";  tolleranza = 0.02; }
+    else if (cmd == "setPan")    { indirizzo = "/live/track/get/panning"; tolleranza = 0.02; }
+    else if (cmd == "muteTrack") { indirizzo = "/live/track/get/mute";    tolleranza = 0.5; }
+    else if (cmd == "soloTrack") { indirizzo = "/live/track/get/solo";    tolleranza = 0.5; }
+    else return vuoto;
+
+    // Il valore di adesso. NaN come atteso: la lettura risulta sempre "diversa" e ridà il valore.
+    const auto prima = verificaConLettura (indirizzo, { (float) traccia }, traccia,
+                                           std::numeric_limits<double>::quiet_NaN(), 0.0, 2, 300);
+    if (prima.stato != EsitoLettura::Stato::Diverso)
+        return vuoto;
+
+    nlohmann::json contrario = nlohmann::json::object();
+    contrario["command"] = cmd;
+    contrario["trackId"] = traccia;
+    if (cmd == "setVolume")
+        contrario["valueDb"] = juce::jlimit (kMinAiDb, kMaxAiDb, MixSnapshots::dbFromLiveVolume (prima.letto));
+    else if (cmd == "setPan")
+        contrario["value"] = prima.letto;
+    else if (cmd == "muteTrack")
+        contrario["muted"] = prima.letto > 0.5;
+    else
+        contrario["soloed"] = prima.letto > 0.5;
+
+    const juce::String ind (indirizzo);
+    const double valorePrima = prima.letto;
+
+    vuoto.descrizione = descrizione;
+    vuoto.ripristina = [this, contrario, ind, traccia, valorePrima, tolleranza] (juce::String& messaggio)
+    {
+        if (! dispatchDawCommand (contrario))
+        {
+            messaggio = "Il dispatcher ha rifiutato il comando di ripristino.";
+            return false;
+        }
+        const auto e = verificaConLettura (ind, { (float) traccia }, traccia, valorePrima, tolleranza, 3, 300);
+        if (e.stato == EsitoLettura::Stato::Confermato)
+        {
+            messaggio = "Riportato e riconfermato da Live.";
+            return true;
+        }
+        messaggio = e.stato == EsitoLettura::Stato::Diverso
+                        ? "Inviato, ma Live ora dice " + juce::String (e.letto, 3) + " invece di " + juce::String (valorePrima, 3) + "."
+                        : "Inviato, Live non ha risposto alla rilettura: stato sconosciuto.";
+        return false;
+    };
+    return vuoto;
+}
+
+juce::int64 OscBridge::registraRipristino (PuntoRipristino&& p)
+{
+    if (! p.ripristina)
+        return 0;
+    juce::int64 id;
+    {
+        std::lock_guard<std::mutex> lock (ripristiniMutex);
+        id = prossimoRipristino++;
+        p.id = id;
+        ripristini.push_back (p);
+        if (ripristini.size() > 100)
+            ripristini.erase (ripristini.begin());
+    }
+    nlohmann::json n;
+    n["type"]      = "action.recorded";
+    n["timestamp"] = juce::Time::currentTimeMillis();
+    n["payload"]   = { { "id", id }, { "description", p.descrizione.toStdString() } };
+    if (wsServer)
+        wsServer->broadcast (n);
+    return id;
+}
+
+int OscBridge::numeroRipristini() const
+{
+    std::lock_guard<std::mutex> lock (ripristiniMutex);
+    return (int) ripristini.size();
+}
+
+bool OscBridge::annullaAzione (juce::int64 id, juce::String& messaggio)
+{
+    PuntoRipristino p;
+    {
+        std::lock_guard<std::mutex> lock (ripristiniMutex);
+        auto it = std::find_if (ripristini.begin(), ripristini.end(),
+                                [id] (const PuntoRipristino& x) { return x.id == id; });
+        if (it == ripristini.end())
+        {
+            messaggio = "Questa azione non si puo' piu' annullare (gia' annullata o troppo vecchia).";
+            return false;
+        }
+        p = *it;
+        ripristini.erase (it);
+    }
+    const bool ok = p.ripristina (messaggio);
+    messaggio = p.descrizione + ": " + messaggio;
+    return ok;
+}
+
+//==============================================================================
 // Strumenti AI daw.* -> dispatchDawCommand
 //
 //  Unico percorso per gli strumenti daw.* dell'AI, usato dalla lambda di
@@ -3318,7 +3455,34 @@ void OscBridge::eseguiToolDevice(const ToolCall& call, ToolResult& result)
     }
     const juce::String chi = nomeDev + " / " + p.name;
     if (ok)
-        fine(true, chi + ": impostato a " + juce::String(arrotonda(letto)) + " e riconfermato da Live (era " + juce::String(arrotonda(p.value)) + ").");
+    {
+        // Il valore di prima (p.value, appena letto da Live) permette di annullare.
+        PuntoRipristino rip;
+        const double prima = p.value;
+        const auto parametro = p;
+        rip.descrizione = chi + " a " + juce::String(arrotonda(letto));
+        rip.ripristina = [this, traccia, dev, par, prima, parametro] (juce::String& msg)
+        {
+            dawHandler->setFxParam(traccia, dev, par, (float) prima);
+            bool conferma = false;
+            double ora = 0.0;
+            for (int t = 0; t < 3 && ! conferma; ++t) {
+                std::vector<OscHandler::OscArg> v;
+                if (! leggiBlocco("/live/device/get/parameter/value", { (float) traccia, (float) dev, (float) par }, v, 1, 300))
+                    continue;
+                const auto numeri = LiveDevices::numeriDaRisposta(v, 3);
+                if (numeri.empty()) continue;
+                ora = numeri[0];
+                conferma = LiveDevices::uguali(parametro, ora, prima);
+            }
+            msg = conferma ? juce::String("Riportato e riconfermato da Live.")
+                           : "Inviato, ma Live non l'ha riconfermato (letto " + juce::String(ora, 3) + ").";
+            return conferma;
+        };
+        const auto idRip = registraRipristino(std::move(rip));
+        fine(true, chi + ": impostato a " + juce::String(arrotonda(letto)) + " e riconfermato da Live (era " + juce::String(arrotonda(p.value)) + ")."
+                       + (idRip != 0 ? " Annullabile: undoId " + juce::String(idRip) + "." : juce::String()));
+    }
     else if (arrivata)
         fine(false, chi + ": inviato " + juce::String(arrotonda(atteso)) + " ma Live ora dice " + juce::String(arrotonda(letto))
                     + ". Non confermato (il parametro puo' essere a gradini o bloccato).");
@@ -3490,6 +3654,7 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
     // Esito della lettura di ritorno, riempito da `invia` solo per Live.
     bool          confermato = false;
     nlohmann::json statoDaw  = "unknown";
+    juce::int64   undoIdCorrente = 0;   // punto di ripristino del comando appena confermato
 
     auto esito = [&](const char* status, const juce::String& message,
                      const nlohmann::json& comando, nlohmann::json avvisi)
@@ -3508,6 +3673,8 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
         out["accepted"]  = inviato;
         out["confirmed"] = confermato;
         out["dawState"]  = statoDaw;
+        if (undoIdCorrente != 0)
+            out["undoId"] = undoIdCorrente;
         out["message"]   = message.toStdString();
         if (! comando.is_null())
             out["command"] = comando;
@@ -3533,6 +3700,11 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
     auto invia = [&](const nlohmann::json& comando, const juce::String& richiesta,
                      nlohmann::json avvisi, const Verifica* verifica = nullptr)
     {
+        // Il valore di prima, letto da Live: serve a poter annullare.
+        PuntoRipristino ripristino;
+        if (liveHandler && verifica != nullptr)
+            ripristino = preparaRipristino (comando, richiesta);
+
         if (! dispatchDawCommand (comando))
         {
             rifiuta ("Il dispatcher ha rifiutato il comando.");
@@ -3551,6 +3723,10 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
         confermato = lettura.stato == EsitoLettura::Stato::Confermato;
         if (lettura.stato == EsitoLettura::Stato::Confermato || lettura.stato == EsitoLettura::Stato::Diverso)
             statoDaw = { { "read", lettura.letto }, { "expected", verifica->atteso } };
+
+        // Solo un comando confermato da Live si puo' annullare con certezza.
+        if (confermato)
+            undoIdCorrente = registraRipristino (std::move (ripristino));
 
         nlohmann::json notifica;
         notifica["type"]      = "daw.command.submitted";

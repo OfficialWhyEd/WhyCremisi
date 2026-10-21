@@ -287,6 +287,35 @@ private:
     /** mix.levels, mix.snapshot.save, mix.snapshot.recall: mixer di Live riletto traccia per traccia. */
     void eseguiToolMix(const ToolCall& call, ToolResult& result);
 
+    //==========================================================================
+    //  Punti di ripristino: annulla vero
+    //
+    //  Prima di un comando che cambia il mixer di Live (volume, pan, mute,
+    //  solo, parametro di un plugin) si legge il valore di adesso. Se il
+    //  comando viene confermato, quel valore resta qui con un numero. Annullare
+    //  rimette il valore di prima e lo riconferma rileggendo da Live.
+    //  Ogni punto si usa una volta. Annullare fuori ordine e' permesso: ogni
+    //  punto riporta solo la sua grandezza al valore che aveva prima.
+    //==========================================================================
+    struct PuntoRipristino
+    {
+        juce::int64  id = 0;
+        juce::String descrizione;
+        std::function<bool (juce::String&)> ripristina;   // blocca: thread AI o di lavoro
+    };
+
+    /** Annulla il punto `id`. Ritorna true solo se Live ha riconfermato il valore di prima. */
+    bool annullaAzione (juce::int64 id, juce::String& messaggio);
+
+    /** Quanti punti di ripristino sono ancora disponibili. */
+    int numeroRipristini() const;
+
+    /** Legge il valore di prima di un comando mixer e prepara il suo contrario. Vuoto se non annullabile. */
+    PuntoRipristino preparaRipristino (const nlohmann::json& comando, const juce::String& descrizione);
+
+    /** Registra il punto, avvisa la UI. Ritorna il suo id. */
+    juce::int64 registraRipristino (PuntoRipristino&& p);
+
     // I test di regressione iniettano un IDawHandler che registra le
     // chiamate e invocano il percorso produttivo qui sopra.
     friend class OscBridgeTest;
@@ -384,12 +413,17 @@ private:
     std::atomic<juce::int64>    rispostaSeq {0};
     struct RispostaPiena { std::vector<OscHandler::OscArg> args; juce::int64 seq = 0; };
     std::map<std::string, RispostaPiena> rispostePiene;
+
+    mutable std::mutex           ripristiniMutex;
+    std::vector<PuntoRipristino> ripristini;
+    juce::int64                  prossimoRipristino = 1;
 public:
 
 private:
 
     // AI thread (async dispatch)
     std::unique_ptr<std::thread> aiThread;
+    std::unique_ptr<std::thread> undoThread;   // annulla dalla UI: rilegge Live, non deve bloccare il WebSocket
 
     // Meter state written from processBlock, read by timerCallback
     std::atomic<float> lastMeterL { -60.0f };
