@@ -123,6 +123,9 @@ protected:
     // Header aggiuntivi oltre a Authorization, per i servizi compatibili
     // OpenAI che ne richiedono di propri.
     virtual juce::String getExtraHeaders() const { return {}; }
+    // Punto in cui un servizio compatibile aggiunge campi suoi al corpo
+    // della richiesta (per OpenRouter: la catena di modelli di riserva).
+    virtual void addRouting (nlohmann::json&) const {}
     juce::String makeHttpRequest(const juce::String& url, const juce::String& method,
                                   const juce::String& jsonBody, int timeoutMs,
                                   const juce::String& extraHeaders = {});
@@ -226,13 +229,22 @@ public:
     juce::StringArray getAvailableModels() override;
     bool testConnection() override;
 
-    // Modelli utilizzabili senza spendere nulla.
+    // Primo modello proposto: DeepSeek V4.1 Flash, costa frazioni di
+    // centesimo per migliaia di richieste e regge le chiamate di strumenti.
+    static juce::String defaultModel() { return "deepseek/deepseek-v4.1-flash"; }
+
+    // Catena di riserva: se il modello scelto e' sovraccarico, senza
+    // credito o limitato, OpenRouter passa da solo al successivo.
+    static juce::StringArray fallbackChain();
+
+    // Modelli utilizzabili senza spendere nulla (con chiamate di strumenti).
     static juce::StringArray freeModels();
     static bool isFreeModel (const juce::String& modelId) { return modelId.endsWith (":free"); }
 
 private:
     juce::String getApiUrl() const override { return "https://openrouter.ai/api/v1/chat/completions"; }
     juce::String getExtraHeaders() const override;
+    void addRouting (nlohmann::json& body) const override;
 };
 
 class GroqProvider : public OpenAIProvider

@@ -2280,10 +2280,10 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                         break;
 
                     case AiEngine::Provider::OpenRouter:
-                        // Solo modelli gratuiti: chi arriva qui non deve
-                        // ritrovarsi a pagare senza averlo chiesto.
-                        if (cfg.model.isEmpty() || ! OpenRouterProvider::isFreeModel (cfg.model))
-                            cfg.model = OpenRouterProvider::freeModels()[0];
+                        // Primo modello: DeepSeek V4.1 Flash. Un id scelto
+                        // dall'utente (contiene sempre "fornitore/nome") resta.
+                        if (cfg.model.isEmpty() || ! cfg.model.contains ("/"))
+                            cfg.model = OpenRouterProvider::defaultModel();
                         break;
 
                     case AiEngine::Provider::Gemini:

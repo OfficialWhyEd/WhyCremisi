@@ -360,9 +360,7 @@ AiEngine::ConfigValidation AiEngine::validateConfig() const
             result.errors.add("API key is empty for " + getProviderName());
     }
 
-    if (config.provider == Provider::OpenAI
-        || config.provider == Provider::OpenRouter
-        || config.provider == Provider::Groq) {
+    if (config.provider == Provider::OpenAI) {
         if (!config.model.startsWith("gpt"))
             result.warnings.add("Model \"" + config.model + "\" may not be compatible — expected \"gpt\" prefix");
     }

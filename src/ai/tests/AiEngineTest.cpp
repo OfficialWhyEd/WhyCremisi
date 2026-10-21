@@ -63,6 +63,22 @@ public:
             expect (AiEngine::providerFromId ("openai")     == Provider::OpenAI);
         }
 
+        beginTest ("OpenRouter parte da DeepSeek V4.1 Flash con riserva gratuita");
+        {
+            AIProvider::Config cfg;
+            cfg.apiKey = "sk-or-prova";
+            cfg.model  = OpenRouterProvider::defaultModel();
+            OpenRouterProvider p (cfg);
+            auto modelli = p.getAvailableModels();
+            expect (modelli[0] == "deepseek/deepseek-v4.1-flash", "Il primo modello deve essere DeepSeek V4.1 Flash");
+            expect (modelli.size() > 1, "Dopo DeepSeek ci sono i gratuiti");
+            for (const auto& m : OpenRouterProvider::freeModels())
+                expect (m.endsWith (":free") || m == "openrouter/free", "Gratuito atteso: " + m);
+            // OpenRouter accetta al massimo tre modelli nel campo "models"
+            expect (OpenRouterProvider::fallbackChain().size() <= 2);
+            expect (! OpenRouterProvider::fallbackChain().contains (OpenRouterProvider::defaultModel()));
+        }
+
         beginTest ("Un nome sconosciuto non cambia la scelta gia' fatta");
         {
             expect (AiEngine::providerFromId ("qualcosa-di-ignoto", Provider::Anthropic)

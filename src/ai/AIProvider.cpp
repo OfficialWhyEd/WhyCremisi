@@ -201,6 +201,7 @@ AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, 
     body["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["max_tokens"] = config.maxTokens;
     body["stream"] = false;
+    addRouting (body);
 
     if (config.toolsJson.isNotEmpty()) {
         auto tools = parseJsonSafe(config.toolsJson);
@@ -268,6 +269,7 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
     body["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["max_tokens"] = config.maxTokens;
     body["stream"] = true;
+    addRouting (body);
 
     if (config.toolsJson.isNotEmpty()) {
         auto tools = parseJsonSafe(config.toolsJson);
@@ -389,21 +391,43 @@ juce::String OpenRouterProvider::getExtraHeaders() const
 
 juce::StringArray OpenRouterProvider::freeModels()
 {
+    // Verificati sull'elenco /api/v1/models del 21/10/2026: tutti con
+    // supporto agli strumenti. Gli id DeepSeek ":free" di prima non
+    // esistono piu'.
     return {
-        "deepseek/deepseek-r1:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "qwen/qwen-2.5-72b-instruct:free",
-        "google/gemma-2-9b-it:free",
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "google/gemma-4-31b-it:free",
+        "minimax/minimax-m3.1-flash:free",
+        "openrouter/free",
     };
+}
+
+juce::StringArray OpenRouterProvider::fallbackChain()
+{
+    // OpenRouter accetta al massimo tre modelli in "models": il primo e'
+    // quello scelto, gli altri due sono la rete di sicurezza gratuita.
+    return { "nvidia/nemotron-3-ultra-550b-a55b:free", "openrouter/free" };
+}
+
+void OpenRouterProvider::addRouting (nlohmann::json& body) const
+{
+    nlohmann::json models = nlohmann::json::array();
+    models.push_back (config.model.toStdString());
+    for (const auto& m : fallbackChain())
+        if (m != config.model)
+            models.push_back (m.toStdString());
+    body["models"] = models;
 }
 
 juce::StringArray OpenRouterProvider::getAvailableModels()
 {
-    // Solo gratuiti. I modelli a pagamento sono stati tolti di proposito:
-    // questa e' la via d'accesso per chi non vuole spendere, e mettere
-    // accanto modelli che si pagano significa esporre qualcuno a un costo
-    // che non aveva chiesto.
-    return freeModels();
+    // DeepSeek V4.1 Flash per primo (a pagamento ma quasi gratis), poi i
+    // modelli senza costo. Chi non ha credito parte comunque: la catena
+    // di riserva passa ai gratuiti.
+    juce::StringArray all { defaultModel() };
+    all.addArray (freeModels());
+    return all;
 }
 
 bool OpenRouterProvider::testConnection()

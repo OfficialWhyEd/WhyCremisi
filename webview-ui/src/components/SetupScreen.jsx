@@ -8,19 +8,17 @@ const modelsByProvider = {
   openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'],
   openrouter: [
-    'deepseek/deepseek-r1:free',
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'qwen/qwen-2.5-72b-instruct:free',
-    'google/gemma-2-9b-it:free',
-    'anthropic/claude-opus-4.5',
-    'anthropic/claude-sonnet-4.5',
-    'openai/gpt-4o',
-    'google/gemini-2.0-flash-001',
+    'deepseek/deepseek-v4.1-flash',
+    'nvidia/nemotron-3-ultra-550b-a55b:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'google/gemma-4-31b-it:free',
+    'minimax/minimax-m3.1-flash:free',
+    'openrouter/free',
   ],
 }
 
 // I modelli con questo suffisso non si pagano.
-const isFreeModel = (m) => m.endsWith(':free')
+const isFreeModel = (m) => m.endsWith(':free') || m === 'openrouter/free'
 
 // Su OpenRouter gli id sono lunghi: nella UI mostriamo solo il nome.
 const shortModelName = (m) => m.replace(':free', '').split('/').pop()
@@ -383,9 +381,10 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                     Nessun abbonamento necessario
                   </p>
                   <p className="text-[7px] text-[#777] leading-relaxed">
-                    La chiave di OpenRouter si crea gratis su openrouter.ai e i modelli
-                    contrassegnati <span className="text-[#00FFaa] font-bold">FREE</span> non si pagano.
-                    In cambio hanno limiti di frequenza più stretti e nelle ore di punta possono essere lenti.
+                    La chiave di OpenRouter si crea gratis su openrouter.ai. DeepSeek V4.1 Flash è il primo modello:
+                    costa pochi centesimi ogni migliaia di richieste. I modelli{' '}
+                    <span className="text-[#00FFaa] font-bold">FREE</span> non si pagano, ma hanno limiti più stretti.
+                    Se uno è sovraccarico o senza credito, si passa da soli a uno gratuito.
                   </p>
                 </div>
               )}
