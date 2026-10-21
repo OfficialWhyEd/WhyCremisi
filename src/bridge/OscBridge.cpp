@@ -27,6 +27,7 @@
 #include "../samples/SampleLibrary.h"
 #include "../samples/BeatBuilder.h"
 #include "../daw/MixSnapshots.h"
+#include "../daw/LiveDevices.h"
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -99,6 +100,11 @@ OscBridge::OscBridge(int oscReceivePort, int wsListenPort)
     oscHandler->setMultiCallback([this](const juce::String& address, const std::vector<float>& args) {
         lastOscFromDawMs.store (juce::Time::currentTimeMillis());
         handleAbletonMultiArg(address, args);
+    });
+
+    // Liste di device e parametri: AbletonOSC le manda come testi e numeri mescolati.
+    oscHandler->setFullCallback([this](const juce::String& address, const std::vector<OscHandler::OscArg>& args) {
+        registraRispostaPiena(address, args);
     });
 
     // WebSocket → OSC: set callback for incoming messages from UI
@@ -587,6 +593,73 @@ OscBridge::RispostaDaw OscBridge::ultimaRispostaDaw (const std::string& chiave) 
     std::lock_guard<std::mutex> lock (rispostePerChiaveMutex);
     const auto it = rispostePerChiave.find (chiave);
     return it == rispostePerChiave.end() ? RispostaDaw{} : it->second;
+}
+
+// Quanti indici stanno in testa a una risposta di Live prima dei dati.
+static int indiciInTesta (const juce::String& address)
+{
+    if (address.startsWith ("/live/device/get/parameters/")) return 2;
+    if (address.startsWith ("/live/device/get/parameter/"))  return 3;
+    if (address.startsWith ("/live/track/get/"))             return 1;
+    return -1;
+}
+
+static std::string chiavePiena (const juce::String& address, const std::vector<OscHandler::OscArg>& args)
+{
+    const int k = indiciInTesta (address);
+    std::string chiave = address.toStdString();
+    for (int i = 0; i < k && i < (int) args.size(); ++i)
+        chiave += "#" + std::to_string ((int) args[(size_t) i].number);
+    return chiave;
+}
+
+void OscBridge::registraRispostaPiena (const juce::String& address, const std::vector<OscHandler::OscArg>& args)
+{
+    const int k = indiciInTesta (address);
+    if (k < 0 || args.size() < (size_t) k)
+        return;
+    std::lock_guard<std::mutex> lock (rispostePerChiaveMutex);
+    rispostePiene[chiavePiena (address, args)] = { args, ++rispostaSeq };
+}
+
+bool OscBridge::leggiBlocco (const juce::String& indirizzo, const std::vector<float>& argomenti,
+                             std::vector<OscHandler::OscArg>& out, int tentativi, int attesaMs)
+{
+    std::string chiave = indirizzo.toStdString();
+    for (float a : argomenti) chiave += "#" + std::to_string ((int) a);
+
+    for (int t = 0; t < tentativi; ++t)
+    {
+        juce::int64 seq0 = 0;
+        {
+            std::lock_guard<std::mutex> lock (rispostePerChiaveMutex);
+            const auto it = rispostePiene.find (chiave);
+            if (it != rispostePiene.end()) seq0 = it->second.seq;
+        }
+
+        const std::vector<bool> tuttiInteri (argomenti.size(), true);
+        if (inviaDomandaDaw)
+            inviaDomandaDaw (indirizzo, argomenti, tuttiInteri);
+        else if (oscHandler)
+            oscHandler->sendMessage (indirizzo, argomenti, tuttiInteri);
+
+        const auto limite = juce::Time::getMillisecondCounter() + (juce::uint32) juce::jmax (1, attesaMs);
+        for (;;)
+        {
+            {
+                std::lock_guard<std::mutex> lock (rispostePerChiaveMutex);
+                const auto it = rispostePiene.find (chiave);
+                if (it != rispostePiene.end() && it->second.seq > seq0)
+                {
+                    out = it->second.args;
+                    return true;
+                }
+            }
+            if (juce::Time::getMillisecondCounter() >= limite) break;
+            juce::Thread::sleep (5);
+        }
+    }
+    return false;
 }
 
 OscBridge::EsitoLettura OscBridge::verificaConLettura (const juce::String& indirizzoGet,
@@ -3122,6 +3195,137 @@ void OscBridge::eseguiToolMix(const ToolCall& call, ToolResult& result)
                   + (diverse.isEmpty() ? juce::String(".") : ". Non confermate: " + diverse.joinIntoString(", ") + ".");
 }
 
+//==============================================================================
+//  device.list, device.params, device.setParam
+//
+//  I plugin di una traccia di Live, letti davvero da AbletonOSC. device.setParam
+//  riscrive il valore e lo rilegge: dice "confermato" solo se Live lo ha.
+//  Valori in unita' reali del parametro (il suo min e max li dice device.params);
+//  con "normalized" si passa 0..1 sulla sua escursione.
+//==============================================================================
+void OscBridge::eseguiToolDevice(const ToolCall& call, ToolResult& result)
+{
+    const auto& a = call.arguments;
+    auto testo = [&](const char* k) -> juce::String {
+        if (! a.is_object() || ! a.contains(k)) return {};
+        if (a[k].is_string()) return juce::String(a[k].get<std::string>()).trim();
+        if (a[k].is_number_integer()) return juce::String(a[k].get<int>());
+        if (a[k].is_number()) return juce::String(a[k].get<double>());
+        return {};
+    };
+    auto fine = [&](bool ok, const juce::String& msg) { result.success = ok; result.output = msg; };
+
+    if (! dawHandler || ! dawHandler->isAbleton()) {
+        fine(false, "I plugin si leggono solo da Ableton Live con AbletonOSC attivo. Nessuna DAW Live collegata.");
+        return;
+    }
+    const juce::String sTraccia = testo("track");
+    if (sTraccia.isEmpty() || ! sTraccia.containsOnly("0123456789")) {
+        fine(false, "Serve il numero della traccia (track), da 0.");
+        return;
+    }
+    const int traccia = sTraccia.getIntValue();
+    const juce::String senzaLive = "Live non ha risposto: AbletonOSC e' attivo e la porta e' quella giusta?";
+
+    std::vector<OscHandler::OscArg> r;
+    if (! leggiBlocco("/live/track/get/devices/name", { (float) traccia }, r, 2, 400)) { fine(false, senzaLive); return; }
+    const auto nomiDevice = LiveDevices::nomiDaRisposta(r, 1);
+
+    if (call.name == "device.list") {
+        if (nomiDevice.isEmpty()) { fine(true, "Traccia " + juce::String(traccia) + ": nessun device."); return; }
+        juce::StringArray righe;
+        for (int i = 0; i < nomiDevice.size(); ++i) righe.add(juce::String(i) + " " + nomiDevice[i]);
+        fine(true, "Traccia " + juce::String(traccia) + ", " + juce::String(nomiDevice.size()) + " device: " + righe.joinIntoString(", "));
+        return;
+    }
+
+    juce::String errore;
+    const int dev = LiveDevices::trovaPerNome(nomiDevice, testo("device"), errore);
+    if (dev < 0) { fine(false, errore); return; }
+
+    // Nomi, valori, minimi e massimi di tutti i parametri del device.
+    auto leggiParametri = [&](std::vector<LiveParam>& params) -> bool {
+        std::vector<OscHandler::OscArg> n, v, lo, hi;
+        const std::vector<float> chiave { (float) traccia, (float) dev };
+        if (! leggiBlocco("/live/device/get/parameters/name", chiave, n, 2, 600)) return false;
+        if (! leggiBlocco("/live/device/get/parameters/value", chiave, v, 2, 600)) return false;
+        if (! leggiBlocco("/live/device/get/parameters/min", chiave, lo, 2, 600)) return false;
+        if (! leggiBlocco("/live/device/get/parameters/max", chiave, hi, 2, 600)) return false;
+        params = LiveDevices::uniscimi(LiveDevices::nomiDaRisposta(n, 2), LiveDevices::numeriDaRisposta(v, 2),
+                                       LiveDevices::numeriDaRisposta(lo, 2), LiveDevices::numeriDaRisposta(hi, 2));
+        return true;
+    };
+    std::vector<LiveParam> params;
+    if (! leggiParametri(params)) { fine(false, senzaLive); return; }
+    const juce::String nomeDev = nomiDevice[dev];
+    auto arrotonda = [](double x) { return std::round(x * 1000.0) / 1000.0; };
+
+    if (call.name == "device.params") {
+        const juce::String filtro = testo("query");
+        const int limite = (int) juce::jlimit(1.0, 200.0, testo("limit").isEmpty() ? 40.0 : testo("limit").getDoubleValue());
+        juce::StringArray righe;
+        int totali = 0;
+        for (const auto& p : params) {
+            if (filtro.isNotEmpty() && ! p.name.containsIgnoreCase(filtro)) continue;
+            ++totali;
+            if (righe.size() < limite)
+                righe.add(juce::String(p.index) + " " + p.name + " = " + juce::String(arrotonda(p.value))
+                          + " [" + juce::String(arrotonda(p.min)) + " .. " + juce::String(arrotonda(p.max)) + "]");
+        }
+        juce::String out = "Traccia " + juce::String(traccia) + ", device " + juce::String(dev) + " " + nomeDev + ": "
+                         + juce::String((int) params.size()) + " parametri";
+        if (filtro.isNotEmpty()) out << ", " << juce::String(totali) << " con '" << filtro << "'";
+        out << ". " << righe.joinIntoString("; ");
+        if (totali > righe.size()) out << "; ... altri " << juce::String(totali - righe.size()) << " (usa query o limit)";
+        fine(true, out);
+        return;
+    }
+
+    // device.setParam
+    const int par = LiveDevices::trovaParametro(params, testo("param"), errore);
+    if (par < 0) { fine(false, errore); return; }
+    const auto& p = params[(size_t) par];
+
+    const bool normalizzato = testo("normalized").isNotEmpty();
+    const juce::String sVal = normalizzato ? testo("normalized") : testo("value");
+    if (sVal.isEmpty() || ! sVal.containsOnly("0123456789.-")) {
+        fine(false, "Serve il valore: 'value' nelle unita' del parametro (da " + juce::String(arrotonda(p.min)) + " a "
+                    + juce::String(arrotonda(p.max)) + ") oppure 'normalized' da 0 a 1.");
+        return;
+    }
+    const double richiesto = sVal.getDoubleValue();
+    if (! normalizzato && (richiesto < p.min - 1e-9 || richiesto > p.max + 1e-9)) {
+        fine(false, p.name + " va da " + juce::String(arrotonda(p.min)) + " a " + juce::String(arrotonda(p.max))
+                    + ": " + juce::String(arrotonda(richiesto)) + " e' fuori scala, non inviato.");
+        return;
+    }
+    const double atteso = normalizzato ? LiveDevices::daNormalizzato(p, richiesto) : richiesto;
+
+    dawHandler->setFxParam(traccia, dev, par, (float) atteso);
+
+    // Live applica al giro dopo: si rilegge con ritentativi.
+    double letto = 0.0;
+    bool arrivata = false, ok = false;
+    for (int t = 0; t < 3 && ! ok; ++t) {
+        std::vector<OscHandler::OscArg> v;
+        if (! leggiBlocco("/live/device/get/parameter/value", { (float) traccia, (float) dev, (float) par }, v, 1, 300))
+            continue;
+        const auto numeri = LiveDevices::numeriDaRisposta(v, 3);
+        if (numeri.empty()) continue;
+        arrivata = true;
+        letto = numeri[0];
+        ok = LiveDevices::uguali(p, letto, atteso);
+    }
+    const juce::String chi = nomeDev + " / " + p.name;
+    if (ok)
+        fine(true, chi + ": impostato a " + juce::String(arrotonda(letto)) + " e riconfermato da Live (era " + juce::String(arrotonda(p.value)) + ").");
+    else if (arrivata)
+        fine(false, chi + ": inviato " + juce::String(arrotonda(atteso)) + " ma Live ora dice " + juce::String(arrotonda(letto))
+                    + ". Non confermato (il parametro puo' essere a gradini o bloccato).");
+    else
+        fine(false, chi + ": inviato " + juce::String(arrotonda(atteso)) + ", Live non ha risposto alla rilettura. Stato sconosciuto.");
+}
+
 void OscBridge::eseguiToolSample(const ToolCall& call, ToolResult& result)
 {
     const auto& a = call.arguments;
@@ -3615,6 +3819,9 @@ void OscBridge::setAiEngine(AiEngine* engine)
         }
         else if (call.name == "mix.levels" || call.name == "mix.snapshot.save" || call.name == "mix.snapshot.recall") {
             eseguiToolMix (call, result);
+        }
+        else if (call.name == "device.list" || call.name == "device.params" || call.name == "device.setParam") {
+            eseguiToolDevice (call, result);
         }
         // ── Catena DSP interna ──────────────────────────────────────
         else if (call.name == "dsp.compressor.set") {

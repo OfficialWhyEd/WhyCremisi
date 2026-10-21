@@ -107,10 +107,26 @@ public:
     using OscMultiCallback = std::function<void(const juce::String& address,
                                                 const std::vector<float>& values)>;
 
+    /** Un argomento di un messaggio OSC, numerico o di testo, nell'ordine
+        in cui la DAW lo ha mandato. */
+    struct OscArg
+    {
+        bool         isString = false;
+        float        number   = 0.0f;
+        juce::String text;
+    };
+
+    /** Tutti gli argomenti, numeri e testi mescolati e in ordine, una volta
+        per messaggio. Serve per le risposte di AbletonOSC sui device:
+        /live/track/get/devices/name risponde (traccia, nome, nome, ...). */
+    using OscFullCallback = std::function<void(const juce::String& address,
+                                               const std::vector<OscArg>& args)>;
+
     void setCallback(OscCallback cb);
     void setStringCallback(OscStringCallback cb);
     void setMessageCallback(MessageCallback cb);
     void setMultiCallback(OscMultiCallback cb) { multiCallback = std::move(cb); }
+    void setFullCallback(OscFullCallback cb) { fullCallback = std::move(cb); }
 
     //==============================================================================
     // Logging
@@ -163,6 +179,7 @@ private:
     OscStringCallback stringCallback;
     MessageCallback messageCallback;
     OscMultiCallback multiCallback;
+    OscFullCallback fullCallback;
 
     //==============================================================================
     // Logging

@@ -274,6 +274,16 @@ private:
     /** samples.scan, samples.search, beat.create: indice dei suoni e costruzione del beat. */
     void eseguiToolSample(const ToolCall& call, ToolResult& result);
 
+    /** device.list, device.params, device.setParam: plugin di una traccia di Live, letti e impostati con conferma. */
+    void eseguiToolDevice(const ToolCall& call, ToolResult& result);
+
+    /** Registra una risposta di Live con testi e numeri mescolati (liste di device e parametri). */
+    void registraRispostaPiena (const juce::String& address, const std::vector<OscHandler::OscArg>& args);
+
+    /** Interroga Live e ritorna gli argomenti della risposta (indici compresi). Blocca: thread AI. */
+    bool leggiBlocco (const juce::String& indirizzo, const std::vector<float>& argomenti,
+                      std::vector<OscHandler::OscArg>& out, int tentativi, int attesaMs);
+
     /** mix.levels, mix.snapshot.save, mix.snapshot.recall: mixer di Live riletto traccia per traccia. */
     void eseguiToolMix(const ToolCall& call, ToolResult& result);
 
@@ -372,6 +382,8 @@ private:
     mutable std::mutex          rispostePerChiaveMutex;
     std::map<std::string, RispostaDaw> rispostePerChiave;
     std::atomic<juce::int64>    rispostaSeq {0};
+    struct RispostaPiena { std::vector<OscHandler::OscArg> args; juce::int64 seq = 0; };
+    std::map<std::string, RispostaPiena> rispostePiene;
 public:
 
 private:

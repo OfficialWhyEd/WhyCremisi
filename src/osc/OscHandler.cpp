@@ -411,6 +411,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
     // Argomenti numerici raccolti per consegnarli tutti insieme a fine
     // parsing: separati non si capisce quale sia l'indice e quale il valore.
     std::vector<float> numericArgs;
+    std::vector<OscArg> allArgs;   // numeri e testi in ordine, per le risposte sui device
 
     // Niente controllo su ptr nella condizione: T e F non hanno byte di dato,
     // quindi un messaggio fatto solo di booleani ha argSize 0. Ogni caso
@@ -436,6 +437,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
 
                 if (!hasValue) { firstValue = value; hasValue = true; }
                 numericArgs.push_back(value);
+                allArgs.push_back({ false, value, {} });
                 if (callback) callback(address, value);
                 ptr += 4;
                 break;
@@ -453,6 +455,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
 
                 if (!hasValue) { firstValue = value; hasValue = true; }
                 numericArgs.push_back(static_cast<float>(value));
+                allArgs.push_back({ false, static_cast<float>(value), {} });
                 if (callback) callback(address, static_cast<float>(value));
                 ptr += 4;
                 break;
@@ -467,6 +470,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 addToLog("[OSC] " + address + " -> \"" + str + "\"");
 
                 if (!hasValue) { firstValue = str; hasValue = true; }
+                allArgs.push_back({ true, 0.0f, str });
                 if (stringCallback) stringCallback(address, str);
 
                 ptr += (4 - ((str.length() + 1) % 4)) % 4;
@@ -487,6 +491,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
 
                 if (!hasValue) { firstValue = value; hasValue = true; }
                 numericArgs.push_back(value);
+                allArgs.push_back({ false, value, {} });
                 if (callback) callback(address, value);
                 break;
             }
@@ -504,6 +509,9 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
     // ordine in cui la DAW li ha mandati.
     if (multiCallback && ! numericArgs.empty())
         multiCallback(address, numericArgs);
+
+    if (fullCallback && ! allArgs.empty())
+        fullCallback(address, allArgs);
 }
 
 //==============================================================================

@@ -105,6 +105,7 @@ public:
         testTransportAndTempo();
         testUnconfirmedOutcome();
         testLiveReadback();
+        testDevicePlugin();
         testLiveConversions();
         testUnsupportedAndUnknown();
         testUiDispatcherCompatibility();
@@ -538,6 +539,142 @@ private:
             if (traccia) rig.bridge.registraRispostaDaw (a, { v[0], (float) valore });
             else         rig.bridge.registraRispostaDaw (a, { (float) valore });
         };
+    }
+
+    //==========================================================================
+    // Plugin di una traccia: Live finto che risponde come AbletonOSC
+    //==========================================================================
+    struct FakeDevices
+    {
+        bool applica = true;
+        std::vector<std::string> device { "EQ Eight", "Serum" };
+        std::vector<std::string> nomi   { "Device On", "Filter Cutoff", "Filter Res", "Master" };
+        std::vector<double> valori { 1.0, 50.0, 0.2, 0.8 };
+        std::vector<double> minimi { 0.0, 0.0, 0.0, 0.0 };
+        std::vector<double> massimi { 1.0, 127.0, 1.0, 1.0 };
+        int inviati = 0;
+    };
+
+    void collegaDevice (Rig& rig, FakeDevices& fd)
+    {
+        using Arg = OscHandler::OscArg;
+        auto handler = std::make_unique<AbletonDawHandler>();
+        handler->setSendMultiCallback ([&fd] (const juce::String& a, const std::vector<float>& v, const std::vector<bool>&)
+        {
+            if (a != "/live/device/set/parameter/value" || v.size() < 4) return;
+            ++fd.inviati;
+            if (fd.applica && v[0] == 0.0f && v[1] == 1.0f)
+                fd.valori[(size_t) v[2]] = v[3];
+        });
+        rig.bridge.dawHandler = std::move (handler);
+        rig.daw = nullptr;
+
+        rig.bridge.inviaDomandaDaw = [&rig, &fd] (const juce::String& a, const std::vector<float>& v, const std::vector<bool>&)
+        {
+            std::vector<Arg> r;
+            for (float x : v) r.push_back ({ false, x, {} });
+            auto aggiungi = [&r] (const std::vector<double>& xs) { for (double x : xs) r.push_back ({ false, (float) x, {} }); };
+            if (a == "/live/track/get/devices/name")
+            {
+                if (v[0] != 0.0f) r.push_back ({ true, 0.0f, "Utility" });
+                else for (auto& n : fd.device) r.push_back ({ true, 0.0f, juce::String (n) });
+            }
+            else if (a == "/live/device/get/parameters/name")
+                for (auto& n : fd.nomi) r.push_back ({ true, 0.0f, juce::String (n) });
+            else if (a == "/live/device/get/parameters/value") aggiungi (fd.valori);
+            else if (a == "/live/device/get/parameters/min")   aggiungi (fd.minimi);
+            else if (a == "/live/device/get/parameters/max")   aggiungi (fd.massimi);
+            else if (a == "/live/device/get/parameter/value")  r.push_back ({ false, (float) fd.valori[(size_t) v[2]], {} });
+            else return;
+            rig.bridge.registraRispostaPiena (a, r);
+        };
+    }
+
+    ToolResult runDevice (Rig& rig, const juce::String& name, const nlohmann::json& args)
+    {
+        ToolCall call;
+        call.id = "d1";
+        call.name = name;
+        call.arguments = args;
+        ToolResult r;
+        r.toolCallId = call.id;
+        r.name = call.name;
+        rig.bridge.eseguiToolDevice (call, r);
+        return r;
+    }
+
+    void testDevicePlugin()
+    {
+        beginTest ("device.list: nomi e numeri letti da Live");
+        {
+            Rig rig; FakeDevices fd; collegaDevice (rig, fd);
+            auto r = runDevice (rig, "device.list", { { "track", 0 } });
+            expect (r.success, r.output);
+            expect (r.output.contains ("1 Serum") && r.output.contains ("0 EQ Eight"), r.output);
+        }
+
+        beginTest ("device.params: valori e escursioni reali, con filtro");
+        {
+            Rig rig; FakeDevices fd; collegaDevice (rig, fd);
+            auto r = runDevice (rig, "device.params", { { "track", 0 }, { "device", "serum" }, { "query", "cutoff" } });
+            expect (r.success, r.output);
+            expect (r.output.contains ("1 Filter Cutoff = 50 [0 .. 127]"), r.output);
+            expect (! r.output.contains ("Master"), "il filtro esclude gli altri");
+        }
+
+        beginTest ("device.setParam: scrive, rilegge, conferma");
+        {
+            Rig rig; FakeDevices fd; collegaDevice (rig, fd);
+            auto r = runDevice (rig, "device.setParam", { { "track", 0 }, { "device", "Serum" }, { "param", "cutoff" }, { "value", 90 } });
+            expect (r.success, r.output);
+            expect (r.output.contains ("riconfermato"), r.output);
+            expectEquals (fd.inviati, 1);
+            expectWithinAbsoluteError (fd.valori[1], 90.0, 1e-6);
+        }
+
+        beginTest ("device.setParam normalized: 0..1 sull'escursione del parametro");
+        {
+            Rig rig; FakeDevices fd; collegaDevice (rig, fd);
+            auto r = runDevice (rig, "device.setParam", { { "track", 0 }, { "device", 1 }, { "param", 1 }, { "normalized", 0.5 } });
+            expect (r.success, r.output);
+            expectWithinAbsoluteError (fd.valori[1], 63.5, 1e-4);
+        }
+
+        beginTest ("device.setParam: Live non applica -> non confermato, non successo");
+        {
+            Rig rig; FakeDevices fd; fd.applica = false; collegaDevice (rig, fd);
+            auto r = runDevice (rig, "device.setParam", { { "track", 0 }, { "device", "Serum" }, { "param", "Master" }, { "value", 0.1 } });
+            expect (! r.success, r.output);
+            expect (r.output.contains ("Non confermato"), r.output);
+        }
+
+        beginTest ("device.setParam: fuori scala o nome sbagliato non inviano nulla");
+        {
+            Rig rig; FakeDevices fd; collegaDevice (rig, fd);
+            auto r = runDevice (rig, "device.setParam", { { "track", 0 }, { "device", "Serum" }, { "param", "cutoff" }, { "value", 500 } });
+            expect (! r.success && r.output.contains ("fuori scala"), r.output);
+            auto r2 = runDevice (rig, "device.setParam", { { "track", 0 }, { "device", "Serum" }, { "param", "wobble" }, { "value", 1 } });
+            expect (! r2.success && r2.output.contains ("Filter Cutoff"), r2.output);
+            auto r3 = runDevice (rig, "device.setParam", { { "track", 0 }, { "device", "Reverb" }, { "param", "x" }, { "value", 1 } });
+            expect (! r3.success && r3.output.contains ("Serum"), r3.output);
+            auto r4 = runDevice (rig, "device.setParam", { { "track", 0 }, { "device", "Serum" }, { "param", "cutoff" } });
+            expect (! r4.success, r4.output);
+            expectEquals (fd.inviati, 0);
+        }
+
+        beginTest ("device.*: senza Live o senza risposta lo dice, niente finto successo");
+        {
+            Rig rig; install (rig);
+            auto r = runDevice (rig, "device.list", { { "track", 0 } });
+            expect (! r.success && r.output.contains ("Ableton Live"), r.output);
+
+            Rig rig2; FakeDevices fd; collegaDevice (rig2, fd);
+            rig2.bridge.inviaDomandaDaw = [] (const juce::String&, const std::vector<float>&, const std::vector<bool>&) {};
+            auto r2 = runDevice (rig2, "device.list", { { "track", 0 } });
+            expect (! r2.success && r2.output.contains ("non ha risposto"), r2.output);
+            auto r3 = runDevice (rig2, "device.list", nlohmann::json::object());
+            expect (! r3.success && r3.output.contains ("traccia"), r3.output);
+        }
     }
 
     void testLiveReadback()

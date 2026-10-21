@@ -178,6 +178,34 @@ void ToolRegistry::registerBuiltinTools()
         {"name", "string", "Nome dell'istantanea da richiamare", true}
     }});
 
+    registerTool({"device.list",
+        "Elenca i device e plugin di una traccia di Ableton Live, letti davvero "
+        "da Live (numero e nome). Solo Live.", {
+        {"track", "number", "Traccia di Live, da 0", true, 0, 255}
+    }});
+
+    registerTool({"device.params",
+        "Legge i parametri di un plugin su una traccia di Live: nome, valore "
+        "attuale, minimo e massimo reali. Con 'query' filtra per nome (es. "
+        "'cutoff'); senza filtro mostra i primi 40.", {
+        {"track", "number", "Traccia di Live, da 0", true, 0, 255},
+        {"device", "string", "Nome (anche parziale) o numero del device, da device.list", true},
+        {"query", "string", "Filtra i parametri il cui nome contiene questo testo", false},
+        {"limit", "number", "Quanti parametri mostrare (di norma 40, massimo 200)", false, 1, 200}
+    }});
+
+    registerTool({"device.setParam",
+        "Imposta un parametro di un plugin su una traccia di Live e lo rilegge: "
+        "dice 'riconfermato' solo se Live ha davvero quel valore. Prima leggi "
+        "device.params per sapere minimo e massimo. Passa 'value' nelle unita' "
+        "del parametro, oppure 'normalized' da 0 a 1 sulla sua escursione.", {
+        {"track", "number", "Traccia di Live, da 0", true, 0, 255},
+        {"device", "string", "Nome (anche parziale) o numero del device", true},
+        {"param", "string", "Nome (anche parziale) o numero del parametro", true},
+        {"value", "number", "Valore nelle unita' del parametro, entro il suo minimo e massimo", false},
+        {"normalized", "number", "Alternativa a value: da 0 (minimo) a 1 (massimo)", false, 0, 1}
+    }});
+
     registerTool({"dsp.getState",
         "Riporta com'e' messa adesso la catena interna: quali moduli sono "
         "attivi e con quali valori. Chiamalo prima di modificare qualcosa, "
