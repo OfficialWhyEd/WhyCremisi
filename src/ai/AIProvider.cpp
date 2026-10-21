@@ -1,5 +1,6 @@
 #include "AIProvider.h"
 #include <nlohmann/json.hpp>
+#include <thread>
 
 // ═══════════════════════════════════════════════════════════════════
 //  Shared HTTP Helper
@@ -461,39 +462,27 @@ juce::String AnthropicProvider::makeHttpRequest(const juce::String& url, const j
 
 juce::String AnthropicProvider::detectSubscriptionToken()
 {
-    // Meccanismo ufficiale: ANTHROPIC_AUTH_TOKEN e' la variabile che l'SDK e
-    // la CLI Anthropic leggono per un token di abbonamento, ed e' quella che
-    // "ant auth print-credentials --env" esporta.
-    //
-    // Di proposito NON andiamo a leggere i file di credenziali di Claude Code
-    // o della CLI: sono segreti di un altro programma, con una struttura che
-    // puo' cambiare, e un plugin audio non ha motivo di frugarci dentro.
-    auto fromEnv = juce::SystemStats::getEnvironmentVariable ("ANTHROPIC_AUTH_TOKEN", {});
-    if (fromEnv.trim().isNotEmpty())
-        return fromEnv.trim();
-
-    // Token gia' emesso e conservato da noi in un collegamento precedente.
-    // E' roba nostra, non di un altro programma: qui possiamo guardare.
-    auto salvato = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                       .getChildFile ("WhyCremisi").getChildFile ("accesso-claude.txt");
-    if (salvato.existsAsFile())
-        return salvato.loadFileAsString().trim();
-
-    return {};
+    // Solo il meccanismo ufficiale: ANTHROPIC_AUTH_TOKEN e' la variabile che
+    // l'SDK e la CLI Anthropic leggono, messa dall'utente stesso. Non
+    // frughiamo nei file di credenziali di altri programmi e non
+    // conserviamo token: per entrare con l'account Claude c'e'
+    // ClaudeCodeProvider, che lascia il login al programma ufficiale.
+    return juce::SystemStats::getEnvironmentVariable ("ANTHROPIC_AUTH_TOKEN", {}).trim();
 }
 
-juce::File AnthropicProvider::findClaudeCodeExecutable()
+// ═══════════════════════════════════════════════════════════════════
+//  Claude Code Provider (account Claude, login fatto dal programma ufficiale)
+// ═══════════════════════════════════════════════════════════════════
+
+juce::File ClaudeCodeProvider::findExecutable()
 {
-    // Cerchiamo il programma, non i suoi segreti: sapere che Claude Code
-    // c'e' basta per offrire il collegamento con un clic.
+    // Cerchiamo il programma, non i suoi segreti.
    #if JUCE_WINDOWS
-    const char* nomi[] = { "claude.exe", "claude.cmd", "claude.bat" };
+    const char* nomi[] = { "claude.exe", "claude.cmd" };
    #else
     const char* nomi[] = { "claude" };
    #endif
 
-    // Posti dove finisce di solito l'installazione, prima del PATH: e' piu'
-    // veloce e non dipende da come e' configurata la shell dell'utente.
     const auto home = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
     juce::Array<juce::File> cartelle {
         home.getChildFile (".local").getChildFile ("bin"),
@@ -506,7 +495,13 @@ juce::File AnthropicProvider::findClaudeCodeExecutable()
             if (auto f = dir.getChildFile (n); f.existsAsFile())
                 return f;
 
-    // Poi il PATH, voce per voce.
+    // Installazione con npm: il programma vero sta dentro il pacchetto.
+    if (auto f = home.getChildFile ("AppData").getChildFile ("Roaming").getChildFile ("npm")
+                     .getChildFile ("node_modules").getChildFile ("@anthropic-ai")
+                     .getChildFile ("claude-code").getChildFile ("bin").getChildFile ("claude.exe");
+        f.existsAsFile())
+        return f;
+
     const auto path = juce::SystemStats::getEnvironmentVariable ("PATH", {});
    #if JUCE_WINDOWS
     auto voci = juce::StringArray::fromTokens (path, ";", "\"");
@@ -525,65 +520,308 @@ juce::File AnthropicProvider::findClaudeCodeExecutable()
     return {};
 }
 
-AnthropicProvider::LinkResult AnthropicProvider::linkAccountViaClaudeCode()
+// Un argomento nel comando di shell: tra virgolette, senza virgolette dentro.
+static juce::String shellArg (const juce::String& s)
 {
-    LinkResult r;
+    return "\"" + s.replace ("\"", "") + "\"";
+}
 
-    const auto exe = findClaudeCodeExecutable();
+// Modello e livello di effort finiscono in una riga di shell: ammessi solo
+// i caratteri che servono davvero.
+static juce::String soloSicuri (const juce::String& s)
+{
+    return s.retainCharacters ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-");
+}
+
+juce::String ClaudeCodeProvider::buildShellCommand (const juce::File& exe,
+                                                    const juce::StringArray& args,
+                                                    const juce::File& promptFile,
+                                                    const juce::File& workDir)
+{
+    juce::String cmd = shellArg (exe.getFullPathName());
+    for (const auto& a : args)
+        cmd += " " + shellArg (a);
+
+    if (promptFile != juce::File())
+        cmd += " < " + shellArg (promptFile.getFullPathName());
+
+    if (workDir != juce::File())
+       #if JUCE_WINDOWS
+        cmd = "cd /d " + shellArg (workDir.getFullPathName()) + " && " + cmd;
+       #else
+        cmd = "cd " + shellArg (workDir.getFullPathName()) + " && " + cmd;
+       #endif
+
+   #if JUCE_WINDOWS
+    // Con /s cmd toglie solo le virgolette esterne.
+    return "cmd.exe /d /s /c \"" + cmd + "\"";
+   #else
+    return "/bin/sh -c " + shellArg (cmd);
+   #endif
+}
+
+ClaudeCodeProvider::LoginState ClaudeCodeProvider::queryLoginState()
+{
+    LoginState st;
+    const auto exe = findExecutable();
+    if (! exe.existsAsFile())
+        return st;
+    st.installed = true;
+
+    juce::ChildProcess proc;
+    const auto cmd = buildShellCommand (exe, { "auth", "status", "--json" }, {}, {});
+    if (! proc.start (cmd, juce::ChildProcess::wantStdOut))
+        return st;
+
+    const auto out = proc.readAllProcessOutput();
+    proc.waitForProcessToFinish (15000);
+
+    const auto j = nlohmann::json::parse (out.toStdString(), nullptr, false);
+    if (j.is_object())
+    {
+        st.loggedIn = j.value ("loggedIn", false);
+        st.method = juce::String (j.value ("authMethod", std::string()));
+    }
+    return st;
+}
+
+bool ClaudeCodeProvider::openLoginTerminal()
+{
+    const auto exe = findExecutable();
+    if (! exe.existsAsFile())
+        return false;
+
+    const auto cmd = shellArg (exe.getFullPathName()) + " auth login";
+
+    juce::ChildProcess p;
+   #if JUCE_WINDOWS
+    return p.start ("cmd.exe /d /c start \"Accedi a Claude\" cmd.exe /k \"" + cmd + "\"");
+   #elif JUCE_MAC
+    return p.start (juce::StringArray { "osascript", "-e",
+        "tell application \"Terminal\" to do script \"" + cmd.replace ("\"", "\\\"") + "\"",
+        "-e", "tell application \"Terminal\" to activate" });
+   #else
+    return p.start (juce::StringArray { "x-terminal-emulator", "-e", "sh", "-c", cmd + "; exec sh" });
+   #endif
+}
+
+juce::StringArray ClaudeCodeProvider::buildArguments (const juce::String& model,
+                                                      const juce::String& effort,
+                                                      const juce::String& systemPromptFile)
+{
+    juce::StringArray a;
+    a.add ("-p");
+    a.add ("--output-format"); a.add ("json");
+    // Solo testo: niente strumenti, niente sessione salvata, niente
+    // impostazioni o comandi dell'utente. Le azioni sulla DAW passano dalle
+    // azioni JSON che il system prompt chiede gia'.
+    a.add ("--tools"); a.add ("");
+    a.add ("--no-session-persistence");
+    a.add ("--disable-slash-commands");
+    a.add ("--setting-sources"); a.add ("");
+    if (soloSicuri (model).isNotEmpty())
+    {
+        a.add ("--model"); a.add (soloSicuri (model));
+    }
+    if (soloSicuri (effort).isNotEmpty())
+    {
+        a.add ("--effort"); a.add (soloSicuri (effort));
+    }
+    if (systemPromptFile.isNotEmpty())
+    {
+        a.add ("--system-prompt-file"); a.add (systemPromptFile);
+    }
+    return a;
+}
+
+juce::String ClaudeCodeProvider::composePrompt (const juce::String& contextMessagesJson,
+                                                const juce::String& userMessage)
+{
+    juce::String out;
+    if (contextMessagesJson.isNotEmpty())
+    {
+        const auto prior = nlohmann::json::parse (contextMessagesJson.toStdString(), nullptr, false);
+        if (prior.is_array())
+            for (const auto& m : prior)
+            {
+                if (! m.is_object() || ! m.contains ("content") || ! m["content"].is_string())
+                    continue;
+                const auto role = juce::String (m.value ("role", std::string()));
+                const auto content = juce::String (m["content"].get<std::string>());
+                if (content.isEmpty()) continue;
+                if (role == "user")           out += "Utente: " + content + "\n\n";
+                else if (role == "assistant") out += "Assistente: " + content + "\n\n";
+            }
+    }
+
+    // Prompt troppo lungo: si tiene la parte piu' recente.
+    constexpr int massimo = 60000;
+    if (out.length() > massimo)
+        out = out.substring (out.length() - massimo);
+
+    return out + "Utente: " + userMessage + "\n";
+}
+
+AIProvider::Result ClaudeCodeProvider::parseCliOutput (const juce::String& raw)
+{
+    Result r;
+    const auto j = nlohmann::json::parse (raw.toStdString(), nullptr, false);
+    if (! j.is_object())
+    {
+        r.error = "Risposta di Claude non leggibile.";
+        return r;
+    }
+
+    const auto testo = juce::String (j.value ("result", std::string()));
+    if (j.value ("is_error", false))
+    {
+        r.error = testo.isNotEmpty() ? testo : "Claude ha restituito un errore.";
+        return r;
+    }
+
+    r.success = true;
+    r.text = testo;
+    r.stopReason = juce::String (j.value ("stop_reason", std::string()));
+
+    if (j.contains ("usage") && j["usage"].is_object())
+    {
+        const auto& u = j["usage"];
+        r.usage.inputTokens      = u.value ("input_tokens", 0);
+        r.usage.outputTokens     = u.value ("output_tokens", 0);
+        r.usage.cacheReadTokens  = u.value ("cache_read_input_tokens", 0);
+        r.usage.cacheWriteTokens = u.value ("cache_creation_input_tokens", 0);
+    }
+    if (j.contains ("modelUsage") && j["modelUsage"].is_object() && ! j["modelUsage"].empty())
+        r.modelUsed = juce::String (j["modelUsage"].begin().key());
+
+    return r;
+}
+
+void ClaudeCodeProvider::abort()
+{
+    abortRequested = true;
+    std::lock_guard<std::mutex> lock (procMutex);
+    if (running != nullptr)
+        running->kill();
+}
+
+AIProvider::Result ClaudeCodeProvider::sendPrompt (const juce::String& systemPrompt, const juce::String& userMessage)
+{
+    beginRequest();
+    Result r;
+
+    const auto exe = findExecutable();
     if (! exe.existsAsFile())
     {
-        r.message = "Claude Code non risulta installato su questa macchina.";
+        r.error = "Claude non risulta installato su questa macchina. Installa Claude Code e riprova.";
+        lastError = r.error;
         return r;
     }
 
-    // "setup-token" e' il comando che Claude Code espone apposta per emettere
-    // un token destinato a programmi terzi. Passiamo di qui, e non dal file
-    // delle credenziali, per due motivi: quel file appartiene a un altro
-    // programma e la sua forma puo' cambiare senza preavviso, e soprattutto
-    // il token che contiene e' emesso per Claude Code, non per noi. Qui
-    // invece l'utente approva nel browser e il token nasce autorizzato.
+    // File di lavoro in una cartella temporanea vuota: cosi' non si
+    // caricano CLAUDE.md o memorie di altri progetti.
+    const auto base = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("WhyCremisi-claude");
+    base.createDirectory();
+    const auto id = juce::Uuid().toString();
+    const auto sysFile = base.getChildFile ("sys-" + id + ".txt");
+    const auto promptFile = base.getChildFile ("prompt-" + id + ".txt");
+    sysFile.replaceWithText (systemPrompt);
+    promptFile.replaceWithText (composePrompt (config.contextMessages, userMessage));
+
+    const auto model = config.model.isNotEmpty() ? config.model : defaultModel();
+    const auto cmd = buildShellCommand (exe, buildArguments (model, config.effort, sysFile.getFullPathName()),
+                                        promptFile, base);
+
     juce::ChildProcess proc;
-    if (! proc.start (exe.getFullPathName().quoted() + " setup-token",
-                      juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
+    if (! proc.start (cmd, juce::ChildProcess::wantStdOut))
     {
-        r.message = "Non sono riuscito ad avviare Claude Code.";
+        r.error = "Non sono riuscito ad avviare Claude.";
+        lastError = r.error;
+        sysFile.deleteFile(); promptFile.deleteFile();
         return r;
     }
 
-    // L'utente deve approvare nel browser: il tempo lo detta lui, non noi.
-    const auto uscita = proc.readAllProcessOutput();
-    proc.waitForProcessToFinish (300000);
-
-    // Il token si riconosce dal prefisso; l'uscita contiene anche istruzioni
-    // e righe di cortesia che qui non servono.
-    for (const auto& riga : juce::StringArray::fromLines (uscita))
     {
-        const auto t = riga.trim();
-        const auto inizio = t.indexOf ("sk-ant-");
-        if (inizio < 0) continue;
-
-        auto token = t.substring (inizio);
-        // Taglia la punteggiatura o il testo attaccato subito dopo il token.
-        int fine = 0;
-        while (fine < token.length()
-               && (juce::CharacterFunctions::isLetterOrDigit (token[fine])
-                   || token[fine] == '-' || token[fine] == '_'))
-            ++fine;
-        token = token.substring (0, fine);
-
-        if (token.length() > 20)
-        {
-            r.ok = true;
-            r.token = token;
-            r.message = "Account Claude collegato.";
-            return r;
-        }
+        std::lock_guard<std::mutex> lock (procMutex);
+        running = &proc;
     }
 
-    r.message = uscita.containsIgnoreCase ("login")
-              ? "Claude Code chiede prima l'accesso: aprilo una volta e riprova."
-              : "Claude Code non ha restituito un token.";
+    // Se qualcosa si pianta il processo va fermato: ci pensa questo guardiano.
+    const int limite = juce::jmax (config.timeoutMs, 180000);
+    std::atomic<bool> finito { false };
+    std::thread guardiano ([&]
+    {
+        for (int ms = 0; ms < limite && ! finito; ms += 100)
+            juce::Thread::sleep (100);
+        if (! finito)
+        {
+            std::lock_guard<std::mutex> lock (procMutex);
+            if (running != nullptr) running->kill();
+        }
+    });
+
+    const auto out = proc.readAllProcessOutput();
+    proc.waitForProcessToFinish (5000);
+    finito = true;
+    guardiano.join();
+
+    {
+        std::lock_guard<std::mutex> lock (procMutex);
+        running = nullptr;
+    }
+    sysFile.deleteFile();
+    promptFile.deleteFile();
+
+    if (abortRequested)
+    {
+        lastAborted = true;
+        r.error = "Interrotto.";
+        return r;
+    }
+
+    r = parseCliOutput (out);
+    if (! r.success)
+    {
+        if (r.error.isEmpty() || out.trim().isEmpty())
+            r.error = "Claude non ha risposto. Se non hai ancora fatto l'accesso, usa \"Accedi con Claude\".";
+        lastError = r.error;
+    }
     return r;
+}
+
+void ClaudeCodeProvider::sendPromptStreaming (const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk)
+{
+    // Il programma ufficiale restituisce la risposta intera: la si consegna
+    // in un colpo solo.
+    const auto r = sendPrompt (systemPrompt, userMessage);
+    if (onChunk)
+    {
+        if (r.success && r.text.isNotEmpty())
+            onChunk (r.text, false);
+        onChunk ({}, true);
+    }
+}
+
+bool ClaudeCodeProvider::testConnection()
+{
+    beginRequest();
+    const auto st = queryLoginState();
+    if (! st.installed)
+    {
+        lastError = "Claude non risulta installato su questa macchina.";
+        return false;
+    }
+    if (! st.loggedIn)
+    {
+        lastError = "Accesso a Claude non ancora fatto.";
+        return false;
+    }
+    return true;
+}
+
+juce::StringArray ClaudeCodeProvider::getAvailableModels()
+{
+    return { "sonnet", "opus", "haiku" };
 }
 
 juce::String AnthropicProvider::displayNameFor (const juce::String& modelId)

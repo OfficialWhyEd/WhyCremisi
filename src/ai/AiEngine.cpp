@@ -220,6 +220,7 @@ juce::String AiEngine::providerToId (Provider p)
         case Provider::OpenAI:     return "openai";
         case Provider::OpenRouter: return "openrouter";
         case Provider::Groq:       return "groq";
+        case Provider::ClaudeCode: return "claudecode";
     }
     return "ollama";
 }
@@ -236,6 +237,9 @@ AiEngine::Provider AiEngine::providerFromId (const juce::String& id, Provider fa
     if (s.startsWith ("ollama"))     return Provider::Ollama;
     if (s.startsWith ("gemini")
      || s.startsWith ("google"))     return Provider::Gemini;
+    if (s.startsWith ("claudecode")
+     || s.startsWith ("claude code")
+     || s.startsWith ("claude (")) return Provider::ClaudeCode;   // prima di "claude"
     if (s.startsWith ("anthropic")
      || s.startsWith ("claude"))     return Provider::Anthropic;
     if (s.startsWith ("openrouter")) return Provider::OpenRouter;   // prima di "openai"
@@ -267,6 +271,7 @@ std::unique_ptr<AIProvider> AiEngine::createProvider(Provider type)
         case Provider::Anthropic:  return std::make_unique<AnthropicProvider>(pcfg);
         case Provider::Ollama:     return std::make_unique<OllamaProvider>(pcfg);
         case Provider::Gemini:     return std::make_unique<GeminiProvider>(pcfg);
+        case Provider::ClaudeCode: return std::make_unique<ClaudeCodeProvider>(pcfg);
     }
     return nullptr;
 }
@@ -279,10 +284,19 @@ void AiEngine::ensureProvider()
         syncProviderConfig();
 }
 
+// Chi non ha le funzioni native (Ollama, Gemini, Claude tramite il programma
+// ufficiale) risponde con le azioni JSON del system prompt.
+static bool nativeToolsSupported (AiEngine::Provider p)
+{
+    return p != AiEngine::Provider::Ollama
+        && p != AiEngine::Provider::Gemini
+        && p != AiEngine::Provider::ClaudeCode;
+}
+
 void AiEngine::syncProviderConfig()
 {
     if (!currentProvider) return;
-    if (toolsEnabled && config.provider != Provider::Ollama && config.provider != Provider::Gemini)
+    if (toolsEnabled && nativeToolsSupported (config.provider))
         currentProvider->setToolsJson(buildToolsJson());
     else
         currentProvider->setToolsJson({});
@@ -355,6 +369,8 @@ AiEngine::ConfigValidation AiEngine::validateConfig() const
     if (config.provider == Provider::Ollama) {
         if (config.baseUrl == "http://localhost:11434")
             result.warnings.add("Ollama is using default localhost base URL — common dev setup");
+    } else if (config.provider == Provider::ClaudeCode) {
+        // Nessuna chiave: l'accesso lo gestisce il programma "claude".
     } else {
         if (config.apiKey.isEmpty())
             result.errors.add("API key is empty for " + getProviderName());
@@ -494,7 +510,7 @@ juce::String AiEngine::buildSystemPrompt() const
     prompt += "\nIMPORTANT: values must be in 0.0-1.0 normalized range.\n";
     prompt += "Only output valid JSON, no other text outside the JSON block.\n";
 
-    if (toolsEnabled) {
+    if (toolsEnabled && nativeToolsSupported (config.provider)) {
         prompt += "\nYou also have access to DAW function tools. ";
         prompt += "For direct widget control, use the provided tools instead of JSON actions when appropriate.\n";
     }
@@ -745,6 +761,7 @@ juce::String AiEngine::getProviderName() const
         case Provider::OpenAI: return "OpenAI";
         case Provider::OpenRouter: return "OpenRouter";
         case Provider::Groq: return "Groq";
+        case Provider::ClaudeCode: return "Claude (il tuo account)";
         default: return "Unknown";
     }
 }

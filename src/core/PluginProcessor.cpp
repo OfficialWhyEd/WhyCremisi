@@ -55,7 +55,7 @@ WhyCremisiProcessor::WhyCremisiProcessor()
         // AI Provider
         params.push_back(std::make_unique<juce::AudioParameterChoice>(
             "aiProvider", "AI Provider",
-            juce::StringArray{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq"},
+            juce::StringArray{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq", "ClaudeCode"},
             0));
         
         // AI Model
@@ -844,6 +844,7 @@ void WhyCremisiProcessor::updateAiEngineConfig()
         case 3: config.provider = AiEngine::Provider::Anthropic; break;
         case 4: config.provider = AiEngine::Provider::OpenRouter; break;
         case 5: config.provider = AiEngine::Provider::Groq; break;
+        case 6: config.provider = AiEngine::Provider::ClaudeCode; break;
         default: config.provider = AiEngine::Provider::Ollama; break;
     }
     
@@ -866,7 +867,7 @@ juce::String WhyCremisiProcessor::getAiProvider() const
 {
     if (!aiProvider) return "Ollama";
     int idx = static_cast<int>(aiProvider->load());
-    juce::StringArray providers{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq"};
+    juce::StringArray providers{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq", "ClaudeCode"};
     return providers[idx];
 }
 

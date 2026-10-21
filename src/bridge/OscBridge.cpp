@@ -2220,7 +2220,11 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                 const auto& cfg = aiEngine->getConfig();
                 const bool haChiave  = cfg.apiKey.isNotEmpty();
                 const bool haAbbon   = cfg.authToken.isNotEmpty();
+                // Per Claude l'accesso sta nel programma ufficiale, non qui.
+                const bool conClaude = cfg.provider == AiEngine::Provider::ClaudeCode;
                 const bool inLocale  = cfg.provider == AiEngine::Provider::Ollama;
+                const auto claudeLogin = conClaude ? ClaudeCodeProvider::queryLoginState()
+                                                   : ClaudeCodeProvider::LoginState {};
 
                 rp["provider"]        = AiEngine::providerToId (cfg.provider).toStdString();
                 rp["label"]           = aiEngine->getProviderName().toStdString();
@@ -2230,7 +2234,12 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                 rp["hasSubscription"] = haAbbon;
                 // "pronto" significa: c'e' una credenziale utilizzabile,
                 // oppure il fornitore non ne richiede nessuna.
-                rp["ready"]           = inLocale || haChiave || haAbbon;
+                rp["ready"]           = inLocale || haChiave || haAbbon || claudeLogin.loggedIn;
+                if (conClaude)
+                {
+                    rp["claudeInstalled"] = claudeLogin.installed;
+                    rp["claudeLoggedIn"]  = claudeLogin.loggedIn;
+                }
             }
             else
             {
@@ -2299,6 +2308,12 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                     case AiEngine::Provider::Groq:
                         if (cfg.model.isEmpty())
                             cfg.model = "llama-3.3-70b-versatile";
+                        break;
+
+                    case AiEngine::Provider::ClaudeCode:
+                        // Alias del programma ufficiale: sonnet, opus, haiku.
+                        if (! juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
+                            cfg.model = ClaudeCodeProvider::defaultModel();
                         break;
                 }
             });
@@ -2503,67 +2518,47 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
     }
     else if (configKey == "ai.detectSubscription")
     {
-        // La UI chiede se sulla macchina c'e' gia' un abbonamento Claude
-        // utilizzabile, per poter offrire l'accesso senza chiedere nulla.
-        auto token = AnthropicProvider::detectSubscriptionToken();
+        // La UI chiede come sta l'accesso con l'account Claude: installato,
+        // gia' collegato oppure da collegare. Lo dice il programma ufficiale
+        // ("claude auth status"); qui non si legge ne' si conserva nessun token.
+        const auto stato = ClaudeCodeProvider::queryLoginState();
 
-        if (token.isNotEmpty() && aiEngine)
+        // Se e' gia' collegato si passa direttamente a quel modo di entrare.
+        if (stato.loggedIn && aiEngine)
         {
-            aiEngine->updateConfig([&token](AiEngine::Config& cfg)
+            aiEngine->updateConfig([](AiEngine::Config& cfg)
             {
-                cfg.authToken = token;
+                cfg.provider = AiEngine::Provider::ClaudeCode;
                 cfg.apiKey = {};
-                cfg.provider = AiEngine::Provider::Anthropic;
-                if (cfg.model.isEmpty() || ! cfg.model.startsWith ("claude-"))
-                    cfg.model = AnthropicProvider::defaultModel();
+                cfg.authToken = {};
+                if (! juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
+                    cfg.model = ClaudeCodeProvider::defaultModel();
             });
         }
 
         nlohmann::json rp;
         rp["key"] = "ai.detectSubscription";
         rp["status"] = "ok";
-        rp["found"] = token.isNotEmpty();
-        // Se non c'e' un token ma Claude Code e' installato, si puo' ancora
-        // offrire il collegamento con un clic invece di un campo vuoto.
-        rp["claudeCode"] = AnthropicProvider::findClaudeCodeExecutable().existsAsFile();
-        // Il token non torna mai indietro: alla UI basta sapere che c'e'.
+        rp["found"] = stato.loggedIn;
+        rp["claudeCode"] = stato.installed;
+        rp["method"] = stato.method.toStdString();
         sendConfigResponse(rp);
     }
     else if (configKey == "ai.linkClaude")
     {
-        // Un clic solo: Claude Code apre il browser, l'utente approva, il
-        // token torna qui gia' autorizzato per l'uso da programmi terzi.
-        // Non si chiede all'utente di incollare niente.
-        auto esito = AnthropicProvider::linkAccountViaClaudeCode();
-
-        if (esito.ok && aiEngine)
-        {
-            aiEngine->updateConfig([&esito](AiEngine::Config& cfg)
-            {
-                cfg.authToken = esito.token;
-                cfg.apiKey = {};
-                cfg.provider = AiEngine::Provider::Anthropic;
-                if (cfg.model.isEmpty() || ! cfg.model.startsWith ("claude-"))
-                    cfg.model = AnthropicProvider::defaultModel();
-            });
-
-            // Conservato a parte, fuori dalle impostazioni: cosi' resta
-            // valido fra un avvio e l'altro senza doverlo riemettere.
-            auto f = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                         .getChildFile ("WhyCremisi").getChildFile ("accesso-claude.txt");
-            f.getParentDirectory().createDirectory();
-            f.replaceWithText (esito.token);
-        }
-
-        log("[AUTH] Collegamento Claude Code: " + juce::String(esito.ok ? "riuscito" : "fallito")
-            + " - " + esito.message);
+        // Apre il login del programma ufficiale "claude" in una finestra di
+        // terminale: l'utente approva nel browser. Il plugin non vede mai
+        // credenziali; poi la UI richiama ai.detectSubscription per sapere
+        // quando l'accesso e' completo.
+        const bool aperto = ClaudeCodeProvider::openLoginTerminal();
+        log("[AUTH] Accesso Claude: " + juce::String (aperto ? "terminale aperto" : "non avviato"));
 
         nlohmann::json rp;
         rp["key"] = "ai.linkClaude";
-        rp["status"] = esito.ok ? "ok" : "error";
-        rp["linked"] = esito.ok;
-        rp["message"] = esito.message.toStdString();
-        // Anche qui il token resta dentro: la UI non deve mai vederlo.
+        rp["status"] = aperto ? "opened" : "error";
+        rp["message"] = aperto
+            ? "Completa l'accesso nella finestra e nel browser, poi torna qui."
+            : "Claude non risulta installato su questa macchina.";
         sendConfigResponse(rp);
     }
     else if (configKey == "ai.effort")

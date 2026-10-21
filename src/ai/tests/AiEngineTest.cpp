@@ -31,7 +31,8 @@ public:
         {
             const Provider tutti[] = { Provider::Ollama, Provider::Gemini,
                                        Provider::Anthropic, Provider::OpenAI,
-                                       Provider::OpenRouter, Provider::Groq };
+                                       Provider::OpenRouter, Provider::Groq,
+                                       Provider::ClaudeCode };
 
             for (auto p : tutti)
             {
@@ -52,6 +53,63 @@ public:
             expect (AiEngine::providerFromId ("OpenRouter")       == Provider::OpenRouter);
             expect (AiEngine::providerFromId ("  gemini  ")       == Provider::Gemini,
                     "Gli spazi attorno non devono far perdere la scelta");
+        }
+
+        beginTest ("Claude Code non viene scambiato per Anthropic");
+        {
+            // Anthropic usa la chiave API, Claude Code il login del programma
+            // ufficiale: confonderli manderebbe l'utente su un percorso senza chiave.
+            expect (AiEngine::providerFromId ("claudecode")             == Provider::ClaudeCode);
+            expect (AiEngine::providerFromId ("Claude (il tuo account)") == Provider::ClaudeCode);
+            expect (AiEngine::providerFromId ("anthropic")              == Provider::Anthropic);
+            expect (AiEngine::providerFromId ("Anthropic Claude")       == Provider::Anthropic);
+        }
+
+        beginTest ("Claude Code legge la risposta del programma ufficiale");
+        {
+            auto ok = ClaudeCodeProvider::parseCliOutput (
+                R"({"type":"result","is_error":false,"result":"Ciao!","stop_reason":"end_turn",)"
+                R"("usage":{"input_tokens":12,"output_tokens":3,"cache_read_input_tokens":5},)"
+                R"("modelUsage":{"claude-sonnet-5-5":{}}})");
+            expect (ok.success);
+            expect (ok.text == "Ciao!");
+            expect (ok.stopReason == "end_turn");
+            expect (ok.usage.inputTokens == 12 && ok.usage.outputTokens == 3 && ok.usage.cacheReadTokens == 5);
+            expect (ok.modelUsed == "claude-sonnet-5-5");
+
+            auto err = ClaudeCodeProvider::parseCliOutput (R"({"is_error":true,"result":"Not logged in"})");
+            expect (! err.success);
+            expect (err.error == "Not logged in");
+
+            expect (! ClaudeCodeProvider::parseCliOutput ("non e' json").success);
+            expect (! ClaudeCodeProvider::parseCliOutput ({}).success);
+        }
+
+        beginTest ("Claude Code parte senza strumenti ne' sessione, con argomenti sicuri");
+        {
+            auto a = ClaudeCodeProvider::buildArguments ("sonnet", "high", "C:/t/sys.txt");
+            expect (a.contains ("-p"));
+            expect (a.contains ("--no-session-persistence"));
+            expect (a.contains ("--tools") && a[a.indexOf ("--tools") + 1].isEmpty(),
+                    "Nessuno strumento: deve rispondere solo con testo");
+            expect (a[a.indexOf ("--model") + 1] == "sonnet");
+            expect (a[a.indexOf ("--system-prompt-file") + 1] == "C:/t/sys.txt");
+
+            // Un modello con caratteri di shell non deve arrivare alla riga di comando.
+            auto b = ClaudeCodeProvider::buildArguments ("sonnet\" & calc & \"", {}, {});
+            expect (b[b.indexOf ("--model") + 1] == "sonnetcalc",
+                    "Il modello va ripulito: " + b[b.indexOf ("--model") + 1]);
+            expect (! b.contains ("--effort"));
+        }
+
+        beginTest ("Claude Code compone il turno con la cronologia");
+        {
+            auto p = ClaudeCodeProvider::composePrompt (
+                R"([{"role":"user","content":"ciao"},{"role":"assistant","content":"eccomi"}])", "alza il basso");
+            expect (p.contains ("Utente: ciao"));
+            expect (p.contains ("Assistente: eccomi"));
+            expect (p.trimEnd().endsWith ("Utente: alza il basso"));
+            expect (ClaudeCodeProvider::composePrompt ("rotto", "x").trim() == "Utente: x");
         }
 
         beginTest ("OpenRouter non viene scambiato per OpenAI");

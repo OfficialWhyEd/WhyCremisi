@@ -4,6 +4,8 @@
 #include <nlohmann/json.hpp>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <atomic>
 
 class AIProvider
 {
@@ -148,26 +150,10 @@ public:
     // Etichetta leggibile per la UI: "Opus 5" invece di "claude-opus-5".
     static juce::String displayNameFor (const juce::String& modelId);
 
-    // Cerca un token di abbonamento gia' presente sulla macchina, cosi' chi
-    // ha gia' Claude non deve incollare niente. Stringa vuota se non c'e'.
+    // Token passato dall'utente stesso con la variabile ANTHROPIC_AUTH_TOKEN
+    // (il meccanismo ufficiale dell'SDK). Non cerchiamo e non conserviamo
+    // niente altro: per usare l'abbonamento c'e' ClaudeCodeProvider.
     static juce::String detectSubscriptionToken();
-
-    // Percorso dell'eseguibile di Claude Code, se installato. Vuoto altrimenti.
-    // Cerchiamo il programma, non i suoi file di credenziali.
-    static juce::File findClaudeCodeExecutable();
-
-    // Esito del collegamento dell'account tramite Claude Code.
-    struct LinkResult
-    {
-        bool ok = false;
-        juce::String token;    // vuoto se non riuscito
-        juce::String message;  // spiegazione leggibile per la UI
-    };
-
-    // Chiede a Claude Code di emettere un token per l'uso da programmi terzi
-    // ("claude setup-token"). L'utente approva nel browser: e' un consenso
-    // esplicito, non un prelievo di segreti dal disco.
-    static LinkResult linkAccountViaClaudeCode();
 
     // true quando l'autenticazione avviene con un abbonamento Claude invece
     // che con una chiave API.
@@ -184,6 +170,69 @@ private:
     // Corpo della richiesta condiviso fra chiamata singola e streaming.
     nlohmann::json buildRequestBody (const juce::String& systemPrompt,
                                      const juce::String& userMessage) const;
+};
+
+// ── Account Claude tramite il programma ufficiale ───────────────────
+//
+//  Chi ha un abbonamento Claude entra con il login del programma ufficiale
+//  "claude": WhyCremisi lo lancia per ogni richiesta e legge la risposta.
+//  Il login lo fa l'utente nel browser, dentro "claude"; il plugin non vede,
+//  non copia e non salva nessun token o file di credenziali.
+class ClaudeCodeProvider : public AIProvider
+{
+public:
+    ClaudeCodeProvider(const Config& cfg) { configure(cfg); }
+    Result sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage) override;
+    void sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk) override;
+    void abort() override;
+    bool testConnection() override;
+    juce::StringArray getAvailableModels() override;
+    juce::String getName() const override { return "Claude (il tuo account)"; }
+
+    static juce::String defaultModel() { return "sonnet"; }
+
+    // Percorso dell'eseguibile "claude", se installato. Vuoto altrimenti.
+    static juce::File findExecutable();
+
+    struct LoginState
+    {
+        bool installed = false;
+        bool loggedIn = false;
+        juce::String method;    // es. "claude.ai"
+    };
+
+    // Chiede a "claude auth status" se l'utente ha gia' fatto il login.
+    static LoginState queryLoginState();
+
+    // Apre una finestra di terminale con "claude auth login": l'utente
+    // completa l'accesso nel browser. Ritorna false se non parte.
+    static bool openLoginTerminal();
+
+    // Estrae il testo da {"result": ...} di "--output-format json".
+    // Separato dal resto per poterlo provare senza lanciare niente.
+    static Result parseCliOutput (const juce::String& raw);
+
+    // Argomenti fissi: niente strumenti, niente sessione salvata, niente
+    // impostazioni dell'utente. Solo il modello che risponde al testo.
+    static juce::StringArray buildArguments (const juce::String& model,
+                                             const juce::String& effort,
+                                             const juce::String& systemPromptFile);
+
+    // Comando completo per la shell: cartella di lavoro, eseguibile,
+    // argomenti e prompt letto da file (virgolette e a capo non passano
+    // bene dagli argomenti).
+    static juce::String buildShellCommand (const juce::File& exe,
+                                           const juce::StringArray& args,
+                                           const juce::File& promptFile,
+                                           const juce::File& workDir);
+
+    // Testo da dare a "claude" per un turno: cronologia + messaggio.
+    static juce::String composePrompt (const juce::String& contextMessagesJson,
+                                       const juce::String& userMessage);
+
+private:
+    std::mutex procMutex;
+    juce::ChildProcess* running = nullptr;
 };
 
 class OllamaProvider : public AIProvider

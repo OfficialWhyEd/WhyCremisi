@@ -336,7 +336,7 @@ export default function App() {
               provider: payload.provider || prev?.provider,
               model:    payload.model    || prev?.model,
               effort:   payload.effort   || prev?.effort,
-              claudeAuthMode: payload.hasSubscription ? 'subscription' : 'apikey',
+              claudeAuthMode: (payload.hasSubscription || payload.provider === 'claudecode') ? 'subscription' : 'apikey',
             }))
             setSetupComplete(true)
             return

@@ -7,6 +7,8 @@ const modelsByProvider = {
   gemini:    ['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite-preview', 'gemini-2.0-flash', 'gemini-1.5-pro'],
   openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'],
+  // Con l'account Claude i modelli sono gli alias del programma ufficiale.
+  claudecode: ['sonnet', 'opus', 'haiku'],
   openrouter: [
     'deepseek/deepseek-v4.1-flash',
     'nvidia/nemotron-3-ultra-550b-a55b:free',
@@ -28,6 +30,9 @@ const modelLabels = {
   'claude-opus-5':    { name: 'Opus 5',    note: 'Il più capace' },
   'claude-sonnet-5':  { name: 'Sonnet 5',  note: 'Equilibrato' },
   'claude-haiku-4-5': { name: 'Haiku 4.5', note: 'Rapido ed economico' },
+  sonnet: { name: 'Sonnet', note: 'Equilibrato: ideale per il lavoro in DAW' },
+  opus:   { name: 'Opus',   note: 'Il più capace, più lento' },
+  haiku:  { name: 'Haiku',  note: 'Rapido ed economico' },
 }
 
 // Profondità di ragionamento. Alza la qualità sui compiti difficili e
@@ -49,29 +54,38 @@ const providerNames = {
 }
 
 export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
-  const [provider, setProvider] = useState(initialConfig.provider || 'ollama')
-  const [model, setModel] = useState(initialConfig.model || modelsByProvider[initialConfig.provider]?.[0] || 'llama3.2')
+  // "claudecode" è come il plugin chiama l'accesso con l'account Claude; qui
+  // sta sotto la card Claude, con la modalità "Abbonamento".
+  const savedClaudeCode = initialConfig.provider === 'claudecode'
+  const [provider, setProvider] = useState(savedClaudeCode ? 'anthropic' : (initialConfig.provider || 'ollama'))
+  const [model, setModel] = useState(
+    initialConfig.model
+    || modelsByProvider[savedClaudeCode ? 'claudecode' : initialConfig.provider]?.[0]
+    || 'llama3.2')
   const [apiKey, setApiKey] = useState(initialConfig.apiKey || '')
   const [status, setStatus] = useState('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [showKey, setShowKey] = useState(false)
   // Su Claude si può entrare con un abbonamento invece che con una chiave API.
-  const [claudeAuthMode, setClaudeAuthMode] = useState(initialConfig.claudeAuthMode || 'subscription')
+  const [claudeAuthMode, setClaudeAuthMode] = useState(
+    savedClaudeCode ? 'subscription' : (initialConfig.claudeAuthMode || 'subscription'))
   const [effort, setEffort] = useState(initialConfig.effort || 'high')
-  // Token incollato a mano; resta vuoto quando il plugin ne trova già uno.
-  const [subscriptionToken, setSubscriptionToken] = useState('')
   // null = non ancora verificato, true/false = esito del rilevamento.
   const [subscriptionDetected, setSubscriptionDetected] = useState(null)
   // Modelli riportati dal fornitore, quando li sa dire lui.
   const [modelliVivi, setModelliVivi] = useState(null)
-  // Claude Code installato: permette il collegamento con un clic.
-  const [claudeCodePresente, setClaudeCodePresente] = useState(false)
+  // Il programma "claude" è installato su questa macchina?
+  const [claudeCodePresente, setClaudeCodePresente] = useState(null)
   const [collegamento, setCollegamento] = useState(null) // null | 'corso' | 'fatto' | messaggio d'errore
   const unsubRef = useRef(null)
   const timeoutsRef = useRef([])
+  const pollRef = useRef(null)
 
   const isClaude = provider === 'anthropic'
   const usingSubscription = isClaude && claudeAuthMode === 'subscription'
+  // Il fornitore che il plugin deve usare davvero.
+  const effectiveProvider = usingSubscription ? 'claudecode' : provider
+  const modelList = (provider === 'gemini' && modelliVivi) || modelsByProvider[effectiveProvider] || []
   // Il campo credenziale non serve quando si usa Ollama in locale né quando
   // si entra con l'abbonamento Claude.
   const needsApiKey = provider !== 'ollama' && !usingSubscription
@@ -80,8 +94,16 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     return () => {
       if (unsubRef.current) unsubRef.current()
       timeoutsRef.current.forEach(clearTimeout)
+      if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [])
+
+  // Il modello deve appartenere al fornitore scelto: passando da chiave API
+  // ad abbonamento (o viceversa) l'elenco cambia nome.
+  useEffect(() => {
+    const lista = modelsByProvider[effectiveProvider]
+    if (lista && !lista.includes(model) && !(provider === 'gemini' && modelliVivi)) setModel(lista[0])
+  }, [effectiveProvider])
 
   // Su Gemini l'elenco dei modelli lo dà Google, non una lista scritta qui:
   // le liste fisse invecchiano e chi sceglie un modello ritirato riceve un
@@ -117,26 +139,45 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
       if (payload?.key !== 'ai.detectSubscription') return
       setSubscriptionDetected(!!payload.found)
       setClaudeCodePresente(!!payload.claudeCode)
+      if (payload.found) {
+        // Accesso completato nel browser: si smette di controllare.
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+        setCollegamento((c) => (c === 'corso' ? 'fatto' : c))
+      }
     })
     const unsubLink = whycremisi.on('config.response', (payload) => {
       if (payload?.key !== 'ai.linkClaude') return
-      if (payload.linked) {
-        setSubscriptionDetected(true)
-        setCollegamento('fatto')
+      if (payload.status === 'opened') {
+        // Il login lo fa il programma ufficiale in una finestra a parte:
+        // qui si resta a guardare quando risulta collegato.
+        setCollegamento('corso')
+        if (pollRef.current) clearInterval(pollRef.current)
+        const inizio = Date.now()
+        pollRef.current = setInterval(() => {
+          if (Date.now() - inizio > 5 * 60 * 1000) {
+            clearInterval(pollRef.current); pollRef.current = null
+            setCollegamento('Accesso non completato. Riprova.')
+            return
+          }
+          whycremisi.send({ type: 'config.set', payload: { key: 'ai.detectSubscription' } })
+        }, 2500)
       } else {
         // Il motivo va detto: un pulsante che torna com'era non spiega niente.
         setCollegamento(payload.message || 'Collegamento non riuscito.')
       }
     })
     whycremisi.send({ type: 'config.set', payload: { key: 'ai.detectSubscription' } })
-    return () => { unsub(); unsubLink() }
+    return () => {
+      unsub(); unsubLink()
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    }
   }, [isClaude])
 
   const providers = [
     { id: 'ollama',    icon: 'memory',       desc: 'In locale sulla tua macchina. Nessuna chiave.', keyRequired: false },
     { id: 'gemini',    icon: 'cloud_queue',  desc: 'Google Gemini.', keyRequired: true, keyPrefix: 'AIza' },
     { id: 'openai',    icon: 'auto_awesome', desc: 'OpenAI GPT-4o.', keyRequired: true, keyPrefix: 'sk-' },
-    { id: 'anthropic', icon: 'psychology',   desc: 'Claude Opus 5, Sonnet 5, Haiku.', keyRequired: true, keyPrefix: 'sk-ant-' },
+    { id: 'anthropic', icon: 'psychology',   desc: 'Il tuo account Claude, oppure una chiave API.', keyRequired: true, keyPrefix: 'sk-ant-' },
     { id: 'openrouter', icon: 'hub',         desc: 'Senza abbonamento: modelli gratuiti con una chiave gratis.', keyRequired: true, keyPrefix: 'sk-or-' },
   ]
 
@@ -145,22 +186,13 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     setErrorMsg('')
 
     if (whycremisi.isConnected()) {
-      whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: provider } })
+      whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: effectiveProvider } })
       whycremisi.send({ type: 'config.set', payload: { key: 'ai.model', value: model } })
       if (isClaude)
         whycremisi.send({ type: 'config.set', payload: { key: 'ai.effort', value: effort } })
-      // Chiave API e abbonamento sono alternativi: il plugin azzera l'uno
-      // quando riceve l'altro, quindi ne mandiamo esattamente uno.
-      //
-      // Il token si manda solo se è stato incollato a mano. Quando il plugin
-      // ne ha già trovato uno sulla macchina, questo campo è vuoto: mandarlo
-      // lo stesso cancellava il token buono e la verifica falliva subito
-      // dopo.
-      if (usingSubscription) {
-        if (subscriptionToken)
-          whycremisi.send({ type: 'config.set', payload: { key: 'ai.authToken', value: subscriptionToken } })
-      }
-      else if (apiKey)
+      // Con l'account Claude non c'è nessuna credenziale da passare: l'accesso
+      // sta nel programma ufficiale, il plugin non vede né conserva token.
+      if (!usingSubscription && apiKey)
         whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: apiKey, provider } })
     }
 
@@ -180,7 +212,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
         unsubRef.current = null
         if (payload.connected) {
           setStatus('success')
-          const t = setTimeout(() => onComplete({ provider, model, apiKey, effort, claudeAuthMode }), 1200)
+          const t = setTimeout(() => onComplete({ provider: effectiveProvider, model, apiKey: usingSubscription ? '' : apiKey, effort, claudeAuthMode }), 1200)
           timeoutsRef.current.push(t)
         } else {
           setStatus('error')
@@ -195,11 +227,11 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     } else {
       const t = setTimeout(() => {
         const hasCredential = provider === 'ollama'
-          || (usingSubscription && (subscriptionDetected || subscriptionToken.length > 10))
+          || (usingSubscription && subscriptionDetected)
           || apiKey.length > 10
         if (hasCredential) {
           setStatus('success')
-          const t2 = setTimeout(() => onComplete({ provider, model, apiKey, effort, claudeAuthMode }), 1200)
+          const t2 = setTimeout(() => onComplete({ provider: effectiveProvider, model, apiKey: usingSubscription ? '' : apiKey, effort, claudeAuthMode }), 1200)
           timeoutsRef.current.push(t2)
         } else {
           setStatus('error')
@@ -269,7 +301,10 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   style={isLastOdd ? { gridColumn: '1 / -1' } : undefined}
-                  onClick={() => { setProvider(p.id); setModel(modelsByProvider[p.id][0]) }}
+                  onClick={() => {
+                    setProvider(p.id)
+                    setModel(modelsByProvider[p.id === 'anthropic' && claudeAuthMode === 'subscription' ? 'claudecode' : p.id][0])
+                  }}
                   className={`px-2 py-1.5 border text-left transition-all flex items-center gap-2 min-h-[2.75rem] ${
                     isSelected
                       ? 'bg-[#1a1a1a] border-[#DC143C]'
@@ -301,7 +336,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                   </label>
                   <div className="grid grid-cols-2 gap-1.5">
                     {[
-                      { id: 'subscription', label: 'Abbonamento', note: 'Claude Pro, Max o Claude Code' },
+                      { id: 'subscription', label: 'Il mio account', note: 'Claude Pro o Max, nessuna chiave' },
                       { id: 'apikey',       label: 'Chiave API',  note: 'Consumo a token' },
                     ].map(mode => {
                       const active = claudeAuthMode === mode.id
@@ -326,11 +361,11 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                     <div className="mt-1.5">
                       {subscriptionDetected === true ? (
                         <p className="text-[8px] text-[#00E5FF] font-mono">
-                          Abbonamento rilevato sulla macchina — nessuna chiave da inserire.
+                          Account Claude collegato — nessuna chiave da inserire.
                         </p>
                       ) : claudeCodePresente ? (
-                        // Claude Code c'è: un clic e basta. Chiedere a qualcuno
-                        // di procurarsi un token da solo significa perderlo.
+                        // Il programma "claude" c'è: un clic apre il suo login
+                        // ufficiale. Il plugin non vede mai le credenziali.
                         <>
                           <button
                             type="button"
@@ -342,7 +377,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                             className="group w-full flex items-center justify-between gap-2 bg-white text-black px-3 py-2 rounded-full disabled:opacity-60 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]"
                           >
                             <span className="text-[10px] font-medium tracking-tight">
-                              {collegamento === 'corso' ? 'Approva nel browser…' : 'Collega il mio account Claude'}
+                              {collegamento === 'corso' ? 'In attesa dell’accesso…' : 'Collega il mio account Claude'}
                             </span>
                             <span className="w-5 h-5 rounded-full bg-black/5 flex items-center justify-center transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:-translate-y-[1px]">
                               <span className="text-[9px]">↗</span>
@@ -351,23 +386,24 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                           <p className="text-[7px] text-[#555] leading-tight mt-1">
                             {collegamento && collegamento !== 'corso' && collegamento !== 'fatto'
                               ? collegamento
-                              : 'Claude Code è installato: si apre il browser, approvi, e non devi incollare nulla.'}
+                              : collegamento === 'corso'
+                                ? 'Completa l’accesso nella finestra e nel browser, poi torna qui.'
+                                : 'Si apre il login ufficiale di Claude: accedi con Google o email, non devi incollare nulla.'}
                           </p>
                         </>
                       ) : (
                         <>
-                          <input
-                            type="password"
-                            placeholder="Incolla il token dell'abbonamento"
-                            value={subscriptionToken}
-                            onChange={(e) => setSubscriptionToken(e.target.value)}
-                            className="w-full bg-[#0d0d0d] border border-[#1a1a1a] px-2.5 py-1.5 text-xs text-white font-mono focus:border-[#DC143C] focus:outline-none transition-colors"
-                          />
-                          <p className="text-[7px] text-[#555] leading-tight mt-0.5">
-                            {subscriptionDetected === false
-                              ? 'Nessun abbonamento trovato. Installa Claude Code per collegarlo con un clic, oppure incolla il token qui.'
-                              : 'Ricerca di un abbonamento già presente…'}
+                          <p className="text-[8px] text-[#FFB000] font-mono">
+                            {claudeCodePresente === false
+                              ? 'Il programma Claude non è installato su questo computer.'
+                              : 'Controllo dell’account Claude…'}
                           </p>
+                          {claudeCodePresente === false && (
+                            <p className="text-[7px] text-[#555] leading-tight mt-0.5">
+                              Installa Claude Code da claude.com/claude-code, poi riapri questa schermata:
+                              l’accesso si fa con un clic. In alternativa usa una chiave API.
+                            </p>
+                          )}
                         </>
                       )}
                     </div>
@@ -452,7 +488,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                 {/* Su OpenRouter i nomi sono lunghi e disuguali: in griglia
                     restano incolonnati invece di spezzarsi a caso. */}
                 <div className={provider === 'openrouter' ? 'grid grid-cols-2 gap-1' : 'flex flex-wrap gap-1'}>
-                  {((provider === 'gemini' && modelliVivi) || modelsByProvider[provider] || []).map(m => {
+                  {modelList.map(m => {
                     const label = modelLabels[m]
                     const free = isFreeModel(m)
                     const text = label ? label.name
@@ -523,9 +559,8 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
               disabled={
                 status === 'testing' ||
                 (needsApiKey && !apiKey) ||
-                // Con l'abbonamento serve o un token già presente sulla
-                // macchina, o uno incollato a mano.
-                (usingSubscription && !subscriptionDetected && !subscriptionToken)
+                // Con l'account Claude serve l'accesso già fatto.
+                (usingSubscription && !subscriptionDetected)
               }
               className={`flex-1 py-2 font-black uppercase tracking-[0.15em] text-[9px] flex items-center justify-center gap-2 transition-all ${
                 status === 'success' ? 'bg-[#00FFaa] text-black' :
