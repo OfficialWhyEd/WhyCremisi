@@ -24,6 +24,12 @@ public:
     void selectTrack(int index) override;
     void setFxParam(int trackId, int fxId, int paramId, float value) override;
 
+    /** Crea una clip MIDI vuota nello slot (AbletonOSC /live/clip_slot/create_clip). Lunghezza in quarti. */
+    void createMidiClip (int trackId, int slotIndex, float lengthBeats);
+
+    /** Aggiunge una nota alla clip (AbletonOSC /live/clip/add/notes). Inviato, non confermato. */
+    void addMidiNote (int trackId, int slotIndex, int pitch, float startBeat, float lengthBeats, int velocity);
+
     /** Guadagno lineare (1.0 = 0 dB) -> valore normalizzato 0..1 del fader di Live.
         Ancoraggi certi: 0 -> 0, 0 dB -> 0.85, +6 dB -> 1.0. Fra i punti la curva
         e' un'APPROSSIMAZIONE non calibrata: chi la usa deve dirlo. */

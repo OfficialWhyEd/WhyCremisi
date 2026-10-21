@@ -45,6 +45,23 @@ float AbletonDawHandler::livePanFromPan (float pan)
     return juce::jlimit (-1.0f, 1.0f, pan);
 }
 
+void AbletonDawHandler::createMidiClip (int trackId, int slotIndex, float lengthBeats)
+{
+    sendMulti ("/live/clip_slot/create_clip",
+               { (float) trackId, (float) slotIndex, juce::jmax (0.25f, lengthBeats) },
+               { true, true, false });
+}
+
+void AbletonDawHandler::addMidiNote (int trackId, int slotIndex, int pitch, float startBeat,
+                                     float lengthBeats, int velocity)
+{
+    sendMulti ("/live/clip/add/notes",
+               { (float) trackId, (float) slotIndex, (float) juce::jlimit (0, 127, pitch),
+                 juce::jmax (0.0f, startBeat), juce::jmax (0.03125f, lengthBeats),
+                 (float) juce::jlimit (1, 127, velocity), 0.0f },
+               { true, true, true, false, false, true, true });
+}
+
 void AbletonDawHandler::sendMulti (const juce::String& address,
                                    const std::vector<float>& values,
                                    const std::vector<bool>& intMask)

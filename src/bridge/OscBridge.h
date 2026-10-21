@@ -42,6 +42,7 @@ class PluginChain;
 class WhyCremisiProcessor;
 class IDawHandler;
 class DSPEngine;
+class SampleLibrary;
 struct ToolCall;
 struct ToolResult;
 enum class DawType;
@@ -270,6 +271,9 @@ private:
     // dello strumento non e' un comando DAW gestito qui.
     bool tryExecuteDawTool(const ToolCall& call, ToolResult& result);
 
+    /** samples.scan, samples.search, beat.create: indice dei suoni e costruzione del beat. */
+    void eseguiToolSample(const ToolCall& call, ToolResult& result);
+
     // I test di regressione iniettano un IDawHandler che registra le
     // chiamate e invocano il percorso produttivo qui sopra.
     friend class OscBridgeTest;
@@ -282,6 +286,7 @@ private:
     SessionManager* sessionManager = nullptr;
     WhyCremisiProcessor* pluginProcessor = nullptr;
     std::unique_ptr<IDawHandler> dawHandler;
+    std::unique_ptr<SampleLibrary> sampleLibrary;   // creata al primo uso dei tool samples.* / beat.create
     DawType detectedDawType = static_cast<DawType>(0);
     std::atomic<bool> aiProcessing {false};
 

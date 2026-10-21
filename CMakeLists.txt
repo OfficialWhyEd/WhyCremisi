@@ -122,6 +122,8 @@ target_sources(WhyCremisiVSTPlugin
         src/ai/AiEngine.cpp
         src/ai/AIProvider.cpp
         src/ai/ToolRegistry.cpp
+        src/samples/SampleLibrary.cpp
+        src/samples/BeatBuilder.cpp
         src/ui/WebViewBridge.cpp
         src/bridge/WebSocketServer.cpp
         src/bridge/OscBridge.cpp
@@ -200,6 +202,7 @@ if(BUILD_UNIT_TESTS)
             src/core/tests/PluginProcessorTest.cpp
             src/bridge/tests/OscBridgeTest.cpp
             src/ai/tests/AiEngineTest.cpp
+            src/samples/tests/SamplesTest.cpp
             # I test istanziano il processore vero, quindi serve tutto cio'
             # da cui dipende: il plugin non e' una libreria separata.
             src/core/PluginProcessor.cpp
@@ -216,6 +219,8 @@ if(BUILD_UNIT_TESTS)
             src/ai/AiEngine.cpp
             src/ai/AIProvider.cpp
             src/ai/ToolRegistry.cpp
+            src/samples/SampleLibrary.cpp
+            src/samples/BeatBuilder.cpp
             src/ui/WebViewBridge.cpp
             src/bridge/WebSocketServer.cpp
             src/bridge/OscBridge.cpp

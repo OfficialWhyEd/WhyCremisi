@@ -24,6 +24,8 @@
 #include "ReaperDawHandler.h"
 #include "AbletonDawHandler.h"
 #include "DawDetector.h"
+#include "../samples/SampleLibrary.h"
+#include "../samples/BeatBuilder.h"
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -3017,6 +3019,152 @@ void OscBridge::setDawTarget(const juce::String& host, int sendPort)
 //    message    testo leggibile, warnings opzionali
 //  result.success e' vero solo con status "confirmed".
 //==============================================================================
+void OscBridge::eseguiToolSample(const ToolCall& call, ToolResult& result)
+{
+    const auto& a = call.arguments;
+    auto testo = [&](const char* k) -> juce::String {
+        if (a.is_object() && a.contains(k) && a[k].is_string()) return juce::String(a[k].get<std::string>()).trim();
+        return {};
+    };
+    auto numero = [&](const char* k, double def) -> double {
+        if (! a.is_object() || ! a.contains(k)) return def;
+        if (a[k].is_number()) return a[k].get<double>();
+        if (a[k].is_string()) {
+            const auto s = juce::String(a[k].get<std::string>()).trim();
+            if (s.containsOnly("0123456789.-") && s.isNotEmpty()) return s.getDoubleValue();
+        }
+        return def;
+    };
+
+    if (! sampleLibrary) {
+        sampleLibrary = std::make_unique<SampleLibrary>();
+        sampleLibrary->load();
+    }
+    auto& lib = *sampleLibrary;
+
+    auto scansiona = [&](const juce::String& cartella) -> juce::String {
+        juce::File dir(cartella);
+        if (! dir.isDirectory()) return "La cartella non esiste: " + cartella;
+        const auto rep = lib.scan(dir);
+        lib.save();
+        juce::String r = "Scansione di " + dir.getFullPathName() + ": " + juce::String(rep.found) + " file audio, "
+                       + juce::String(rep.analyzed) + " misurati, " + juce::String(rep.reused) + " gia' noti, "
+                       + juce::String(rep.failed) + " illeggibili";
+        if (rep.timedOut) r << ". Tempo finito: rilancia per continuare dal punto in cui si e' fermata";
+        r << ". Nell'indice ora: " << juce::String(lib.size()) << " suoni (";
+        bool primo = true;
+        for (const auto& kv : lib.countByRole()) {
+            if (! primo) r << ", ";
+            r << kv.first << " " << juce::String(kv.second);
+            primo = false;
+        }
+        r << ").";
+        return r;
+    };
+
+    if (call.name == "samples.scan") {
+        const auto cartella = testo("folder");
+        if (cartella.isEmpty()) { result.success = false; result.output = "Serve il percorso della cartella (folder)."; return; }
+        const auto esito = scansiona(cartella);
+        result.success = lib.size() > 0;
+        result.output = esito;
+        return;
+    }
+
+    if (call.name == "samples.search") {
+        SampleLibrary::Query q;
+        q.role = testo("role");
+        q.text = testo("query");
+        q.limit = (int) juce::jlimit(1.0, 30.0, numero("limit", 8));
+        if (lib.size() == 0) {
+            result.success = false;
+            result.output = "L'indice dei sample e' vuoto: prima samples.scan con la cartella dell'utente.";
+            return;
+        }
+        const auto trovati = lib.search(q);
+        nlohmann::json out = nlohmann::json::array();
+        for (const auto& s : trovati)
+            out.push_back({ { "name", s.name.toStdString() }, { "role", s.role.toStdString() },
+                            { "seconds", std::round(s.seconds * 100.0) / 100.0 }, { "centroidHz", std::round(s.centroidHz) },
+                            { "bpm", s.bpm }, { "key", s.key.toStdString() }, { "path", s.path.toStdString() } });
+        result.success = true;
+        result.output = juce::String(trovati.size()) + " risultati: " + juce::String(out.dump());
+        return;
+    }
+
+    // ── beat.create ────────────────────────────────────────────────
+    juce::String preambolo;
+    if (lib.size() == 0) {
+        const auto cartella = testo("folder");
+        if (cartella.isEmpty()) {
+            result.success = false;
+            result.output = "L'indice dei sample e' vuoto. Chiedi all'utente dove tiene i suoi suoni e passa la cartella in 'folder' (oppure usa samples.scan).";
+            return;
+        }
+        preambolo = scansiona(cartella) + "\n";
+        if (lib.size() == 0) { result.success = false; result.output = preambolo + "Nessun suono utilizzabile."; return; }
+    }
+
+    const auto query = testo("query");
+    juce::String stile = testo("style").toLowerCase();
+    if (stile.isEmpty() || ! BeatBuilder::styleNames().contains(stile)) {
+        auto dedotto = BeatBuilder::styleFromText(stile.isNotEmpty() ? stile : query);
+        stile = dedotto.isNotEmpty() ? dedotto : juce::String("trap");
+    }
+    const double bpm = numero("bpm", 0.0);
+    const int battute = (int) juce::jlimit(1.0, 32.0, numero("bars", 4.0));
+    const unsigned seme = (unsigned) numero("seed", (double) (juce::Time::currentTimeMillis() % 100000));
+
+    const auto piano = BeatBuilder::plan(stile, bpm, battute, seme);
+    const auto stamp = juce::Time::getCurrentTime().formatted("%Y%m%d-%H%M%S");
+    const auto cartellaOut = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+        .getChildFile("WhyCremisi").getChildFile("Beats")
+        .getChildFile(piano.style + "-" + juce::String((int) std::round(piano.bpm)) + "-" + stamp);
+
+    const auto rend = BeatBuilder::render(piano, lib, query + " " + stile, cartellaOut);
+    if (! rend.ok) { result.success = false; result.output = preambolo + rend.error; return; }
+
+    juce::String r = preambolo;
+    r << "Beat " << piano.style << " a " << juce::String(piano.bpm, 1) << " BPM, " << juce::String(piano.bars)
+      << " battute, seme " << juce::String((int) piano.seed) << ". Scritto in " << rend.folder.getFullPathName()
+      << ": mix.wav e " << juce::String((int) rend.stems.size()) << " stem (tutti lunghi " << juce::String(rend.seconds, 2)
+      << " s, allineati alla griglia, picco -1 dBFS). Suoni scelti: ";
+    bool primo = true;
+    for (const auto& kv : rend.used) {
+        if (! primo) r << ", ";
+        r << kv.first << " = " << kv.second.name;
+        primo = false;
+    }
+    r << ".";
+    if (! rend.missing.isEmpty())
+        r << " Senza suono nell'indice (corsia saltata): " << rend.missing.joinIntoString(", ") << ".";
+
+    // Clip MIDI in Live: solo le corsie che hanno un suono, e solo se l'utente ha indicato la traccia.
+    const double traccia = numero("track", -1.0);
+    if (traccia >= 0.0) {
+        if (dawHandler && dawHandler->isAbleton()) {
+            auto* live = static_cast<AbletonDawHandler*>(dawHandler.get());
+            const int t = (int) traccia;
+            const int slot = (int) numero("slot", 0.0);
+            int inviate = 0;
+            live->createMidiClip(t, slot, (float) piano.lengthBeats());
+            for (const auto& n : piano.notes) {
+                if (! rend.used.count(n.lane) || inviate >= 600) continue;
+                live->addMidiNote(t, slot, n.pitch + (n.lane == "bass808" ? 12 + n.semitones : 0),
+                                  (float) n.startBeat, (float) n.lengthBeats, n.velocity);
+                ++inviate;
+            }
+            r << " Clip MIDI inviata a Live (traccia " << juce::String(t) << ", slot " << juce::String(slot) << ", "
+              << juce::String(inviate) << " note): inviata, non confermata da Live.";
+        } else {
+            r << " Clip MIDI non scritta: serve Ableton Live con AbletonOSC.";
+        }
+    }
+    r << " Live non puo' caricare l'audio da solo via OSC: i file vanno trascinati dalla cartella nelle tracce.";
+    result.success = true;
+    result.output = r;
+}
+
 bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
 {
     const nlohmann::json& args = call.arguments;
@@ -3357,6 +3505,10 @@ void OscBridge::setAiEngine(AiEngine* engine)
                 if (! scartati.isEmpty())
                     result.output = result.output + std::string (" (ignorati: ") + scartati.joinIntoString (", ").toStdString() + ")";
             }
+        }
+        // ── Sample e beat dai suoni dell'utente ─────────────────────
+        else if (call.name == "samples.scan" || call.name == "samples.search" || call.name == "beat.create") {
+            eseguiToolSample (call, result);
         }
         // ── Catena DSP interna ──────────────────────────────────────
         else if (call.name == "dsp.compressor.set") {

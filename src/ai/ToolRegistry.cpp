@@ -123,6 +123,41 @@ void ToolRegistry::registerBuiltinTools()
         {"panels", "string", "Pannelli separati da virgola, fra: eq, spectral, loudness, clipping, stereo, vectorscope, compressor, transport, slider (volume), knob (pan), metrics", true}
     }});
 
+    registerTool({"samples.scan",
+        "Scansiona una cartella di sample (anche le sottocartelle): misura ogni "
+        "file (durata, picco, peso dello spettro, tempo dei loop) e lo classifica "
+        "(kick, snare, hat, 808, loop...). L'indice resta salvato: una seconda "
+        "scansione rilegge solo i file cambiati. Chiamalo la prima volta che "
+        "l'utente indica dove tiene i suoi suoni.", {
+        {"folder", "string", "Percorso completo della cartella dei sample", true}
+    }});
+
+    registerTool({"samples.search",
+        "Cerca nell'indice dei sample dell'utente per ruolo e gusto. Serve per "
+        "rispondere a 'che kick scuri ho?' o per scegliere un suono prima di "
+        "costruire qualcosa.", {
+        {"role", "string", "kick, snare, clap, hat, openhat, perc, bass808, bass, loop, melodic, vocal, fx (vuoto = qualsiasi)", false},
+        {"query", "string", "Parole libere: scuro, chiaro, corto, lungo, nomi", false},
+        {"limit", "number", "Quanti risultati, di norma 8", false, 1, 30}
+    }});
+
+    registerTool({"beat.create",
+        "Costruisce un beat vero dai sample dell'utente: sceglie i suoni "
+        "dall'indice, li mette sulla griglia dello stile e scrive mix.wav piu' "
+        "uno stem per ogni corsia in Documenti/WhyCremisi/Beats, tutti della "
+        "stessa lunghezza e allineati. Con Ableton Live e AbletonOSC scrive "
+        "anche la clip MIDI delle note (kick 36, snare 38, clap 39, hat 42, "
+        "open hat 46). Se l'indice e' vuoto, passa 'folder' per scansionare.", {
+        {"style", "string", "trap, drill, boombap, lofi, house, techno, dnb (vuoto = lo deduce da 'query')", false},
+        {"bpm", "number", "Tempo; vuoto = quello tipico dello stile", false, 40, 240},
+        {"bars", "number", "Battute, di norma 4 (massimo 32)", false, 1, 32},
+        {"seed", "number", "Stesso seme = stesso beat; cambialo per una variante", false, 0, 999999},
+        {"query", "string", "Gusto dei suoni, es. 'dark trap scuro'", false},
+        {"folder", "string", "Cartella sample da scansionare prima, se l'indice e' vuoto", false},
+        {"track", "number", "Traccia di Live (da 0) dove scrivere la clip MIDI; vuoto = nessuna clip", false, 0, 255},
+        {"slot", "number", "Slot della clip, di norma 0", false, 0, 127}
+    }});
+
     registerTool({"dsp.getState",
         "Riporta com'e' messa adesso la catena interna: quali moduli sono "
         "attivi e con quali valori. Chiamalo prima di modificare qualcosa, "
