@@ -39,7 +39,7 @@ export const BotBubble = memo(function BotBubble ({ msg, isLatest, box }) {
           <span className="text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>{msg.time}</span>
         </div>
         <p className="text-[12px] leading-5 whitespace-pre-wrap break-words" style={{ color: 'var(--text-primary)' }}>
-          {msg.text}
+          {streaming && /^\s*[{\[]/.test(msg.text || '') ? 'Sto lavorando sulla DAW…' : msg.text}
           {streaming && <span className="inline-block w-[5px] h-3 ml-1 align-middle" style={{ backgroundColor: 'var(--amber)', opacity: 0.8 }} />}
         </p>
         {!streaming && haBox(msg) && <BoxChat boxType={msg.boxType} {...box} />}
