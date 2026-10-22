@@ -529,6 +529,7 @@ juce::String AiEngine::buildSystemPrompt() const
         prompt += "\nTransport:\n" + lastTransportData + "\n";
     if (agentWorkspaceContext.isNotEmpty())
         prompt += "\n=== AGENT WORKSPACE ===\n" + agentWorkspaceContext + "\n";
+    prompt += "\nProject memory: it is kept in files between sessions. Before answering about something said in the past, call memory.search. When the user states a lasting fact (key, tempo, a choice, a preference), save it with memory.remember. Never invent a memory: if memory.search finds nothing, say so.\n";
     if (personalityContext.isNotEmpty())
         prompt += "\n=== PERSONALITY (session memory) ===\n" + personalityContext + "\n";
 
