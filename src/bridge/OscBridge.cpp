@@ -2076,6 +2076,11 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
                                     + juce::String (c.arguments.dump()) + "]", false);
 
                             structured.text = aiEngine->resolveToolCalls(capturedPrompt, structured.text, nativeCalls);
+                            // Se il modello ha risposto solo con la tool call, il
+                            // testo accumulato e' vuoto: senza questa riga il turno
+                            // veniva marcato come fallito pur avendo eseguito lo
+                            // strumento e prodotto la risposta finale.
+                            if (structured.text.isNotEmpty()) structured.success = true;
                         }
                         else if (! structured.calls.empty())
                         {
@@ -2096,6 +2101,7 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
                                     conv.push_back(t);
                                 }
                                 structured.text = aiEngine->resolveToolCalls(capturedPrompt, structured.text, conv);
+                                if (structured.text.isNotEmpty()) structured.success = true;
                             }
                         }
                         bool success = structured.success || !accumulated.isEmpty();
@@ -4399,7 +4405,22 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
         if (! avvisi.empty())
             out["warnings"] = avvisi;
 
-        result.success = confermato;
+        // "Inviato" e' un esito positivo; la conferma e' un'informazione in
+        // piu', non un requisito. Prima result.success = confermato, quindi
+        // su ogni DAW che non puo' rileggere (REAPER) ogni comando risultava
+        // un ERRORE e il turno moriva con "nessuna risposta dal fornitore".
+        // "inviato" e "confermato" sono successi; "mismatch" no: la DAW
+        // ha riletto un valore diverso, quindi il comando non ha fatto
+        // quello che doveva.
+        result.success = (st == "confirmed" || st == "submitted");
+        result.outcome = (st == "confirmed" || st == "submitted") ? ToolOutcome::Done
+                       : (st == "unsupported")                    ? ToolOutcome::Unsupported
+                       : (st == "rejected")                       ? ToolOutcome::Rejected
+                                                                  : ToolOutcome::Failed;
+        result.confirmation = confermato ? ToolConfirmation::Confirmed
+                            : inviato    ? ToolConfirmation::Unconfirmed
+                                         : ToolConfirmation::NotApplicable;
+
         result.output  = juce::String (out.dump (-1, ' ', false,
                                                  nlohmann::json::error_handler_t::replace));
     };

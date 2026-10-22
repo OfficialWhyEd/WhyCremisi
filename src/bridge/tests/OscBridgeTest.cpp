@@ -180,7 +180,12 @@ private:
         expect (o.handled, what + ": strumento DAW gestito");
         expect (o.out.is_object(), what + ": output JSON strutturato");
         expectEquals (juce::String (field (o.out, "status")), juce::String ("submitted"), what + ": status");
-        expect (! o.result.success, what + ": success deve essere false (nessuna conferma)");
+        // Semantica nuova: "inviato" e' un esito positivo (Done); la conferma
+        // e' un campo separato. Prima success richiedeva la conferma, e su una
+        // DAW che non puo' rileggere ogni comando diventava un errore.
+        expect (o.result.success, what + ": success deve essere true (inviato)");
+        expect (o.result.outcome == ToolOutcome::Done, what + ": outcome Done");
+        expect (o.result.confirmation == ToolConfirmation::Unconfirmed, what + ": conferma Unconfirmed");
         expect (o.out.is_object() && o.out.contains ("accepted")
                   && o.out["accepted"].is_boolean() && o.out["accepted"].get<bool>(),
                 what + ": accepted deve essere true");
@@ -904,7 +909,10 @@ for line in sys.stdin:
             Rig rig; FakeLive live; live.modo = FakeLive::Modo::Muto; collega (rig, live);
             auto o = runTool (rig, "daw.track.mute", { { "track", 1 }, { "mute", true } });
             expectEquals (juce::String (field (o.out, "status")), juce::String ("submitted"));
-            expect (! o.result.success);
+            // "inviato" e' un esito positivo anche senza rilettura; la conferma
+            // mancante e' dichiarata a parte.
+            expect (o.result.success);
+            expect (o.result.confirmation == ToolConfirmation::Unconfirmed);
             expectEquals (juce::String (field (o.out, "dawState")), juce::String ("unknown"));
         }
 
