@@ -1,5 +1,7 @@
 ﻿# WhyCremisi sviluppo, parte 5 (avvio)
 
+> LAVORO CONTINUO: segui LISTA-INFINITA.md. Prendi la prima voce, falla, provala, committa, segna, passa alla prossima. Non fermarti.
+
 LEGGI PRIMA: DIRETTIVE-PER-CHI-LAVORA.md (regole, provider, WhyMixy, cosa resta). Ramo di lavoro ora: fix/utf8-e-toolcall-22-10 (commit 5767a2c), 3508 test verdi.
 
 Prompt di una riga: "continua whycremisi parte 5 sviluppo" (leggi questo file e E:\Lavori\STATO.md).
