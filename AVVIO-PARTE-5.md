@@ -1,4 +1,6 @@
-# WhyCremisi sviluppo, parte 5 (avvio)
+﻿# WhyCremisi sviluppo, parte 5 (avvio)
+
+LEGGI PRIMA: DIRETTIVE-PER-CHI-LAVORA.md (regole, provider, WhyMixy, cosa resta). Ramo di lavoro ora: fix/utf8-e-toolcall-22-10 (commit 5767a2c), 3508 test verdi.
 
 Prompt di una riga: "continua whycremisi parte 5 sviluppo" (leggi questo file e E:\Lavori\STATO.md).
 
@@ -22,3 +24,4 @@ Primo avvio con box dinamici (col design), WhyLocalLM/WhyCode/WhyObliter, ragion
 
 ## Limiti di sicurezza
 Il sistema blocca a me: E:\Chiavi, permessi GitHub, scrittura chiavi. Li fa Whyed. Merge e invii solo con suo OK. AbletonOSC solo da casella spuntata.
+
