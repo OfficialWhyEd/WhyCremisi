@@ -198,11 +198,12 @@ juce::String AgentWorkspace::buildMemoryContext() const
     if (!longTermMemory.empty())
     {
         ctx += "Long-term memory:\n";
-        int count = 0;
-        for (const auto& m : longTermMemory)
+        // Gli ultimi 20: quelli nuovi (compresi quelli scritti dal sogno) devono arrivare al modello.
+        const int dal = juce::jmax(0, (int)longTermMemory.size() - 20);
+        for (int i = dal; i < (int)longTermMemory.size(); ++i)
         {
+            const auto& m = longTermMemory[(size_t)i];
             ctx += "- [" + m.date + "] (" + m.category + ") " + m.text + "\n";
-            if (++count >= 20) break;
         }
         ctx += "\n";
     }
