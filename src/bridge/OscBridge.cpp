@@ -27,6 +27,7 @@
 #include "../samples/SampleLibrary.h"
 #include "../samples/BeatBuilder.h"
 #include "../music/NoteComposer.h"
+#include "../daw/AbletonOscInstaller.h"
 #include "../daw/MixSnapshots.h"
 #include "../daw/LiveDevices.h"
 #include <chrono>
@@ -3858,6 +3859,39 @@ void OscBridge::eseguiToolMusica(const ToolCall& call, ToolResult& result)
     result.output = r;
 }
 
+void OscBridge::eseguiToolSetupAbleton(const ToolCall& call, ToolResult& result)
+{
+    const auto& a = call.arguments;
+    const bool conferma = a.is_object() && a.contains("confirm")
+        && ((a["confirm"].is_boolean() && a["confirm"].get<bool>())
+            || (a["confirm"].is_string() && juce::String(a["confirm"].get<std::string>()).trim().equalsIgnoreCase("true")));
+
+    const auto cartella = AbletonOscInstaller::remoteScriptsDir();
+    if (cartella == juce::File()) {
+        result.success = false;
+        result.output = "Non trovo la cartella Remote Scripts di Live (manca la cartella Documenti/Musica dell'utente).";
+        return;
+    }
+    const juce::String passoManuale = " Ultimo passo, solo in Live: Preferenze > Link, Tempo & MIDI > Control Surface = AbletonOSC. "
+                                      "Nessun file puo' attivarlo al posto dell'utente.";
+    if (AbletonOscInstaller::isInstalled(cartella)) {
+        result.success = true;
+        result.output = "AbletonOSC e' gia' nella cartella " + cartella.getFullPathName() + "." + passoManuale;
+        return;
+    }
+    if (! conferma) {
+        result.success = false;
+        result.output = "AbletonOSC non e' installato. Installarlo scarica codice di terzi (AbletonOSC, licenza MIT, "
+                        "github.com/ideoforms/AbletonOSC, versione fissata " + AbletonOscInstaller::pinnedCommit().substring(0, 8)
+                        + ") e lo copia in " + cartella.getFullPathName() + ", dove Live lo esegue. Dillo all'utente; "
+                        "solo se accetta, richiama questo tool con confirm=true. Niente e' stato scaricato.";
+        return;
+    }
+    const auto esito = AbletonOscInstaller::downloadAndInstall(cartella);
+    result.success = esito.ok;
+    result.output = esito.message;
+}
+
 bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
 {
     const nlohmann::json& args = call.arguments;
@@ -4214,6 +4248,9 @@ void OscBridge::setAiEngine(AiEngine* engine)
         // ── Sample e beat dai suoni dell'utente ─────────────────────
         else if (call.name == "samples.scan" || call.name == "samples.search" || call.name == "beat.create") {
             eseguiToolSample (call, result);
+        }
+        else if (call.name == "ableton.setup") {
+            eseguiToolSetupAbleton (call, result);
         }
         else if (call.name == "music.compose") {
             eseguiToolMusica (call, result);

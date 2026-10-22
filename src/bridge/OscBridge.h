@@ -274,6 +274,7 @@ private:
     /** samples.scan, samples.search, beat.create: indice dei suoni e costruzione del beat. */
     void eseguiToolSample(const ToolCall& call, ToolResult& result);
     void eseguiToolMusica(const ToolCall& call, ToolResult& result);
+    void eseguiToolSetupAbleton(const ToolCall& call, ToolResult& result);
 
     /** device.list, device.params, device.setParam: plugin di una traccia di Live, letti e impostati con conferma. */
     void eseguiToolDevice(const ToolCall& call, ToolResult& result);

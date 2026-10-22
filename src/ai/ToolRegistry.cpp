@@ -158,6 +158,15 @@ void ToolRegistry::registerBuiltinTools()
         {"slot", "number", "Slot della clip, di norma 0", false, 0, 127}
     }});
 
+    registerTool({"ableton.setup",
+        "Controlla se AbletonOSC (il ponte che lascia al plugin muovere le tracce di Live) "
+        "e' installato. Se manca, senza confirm non scarica nulla e spiega cosa farebbe. "
+        "Con confirm=true scarica e copia AbletonOSC (codice di terzi, MIT, versione fissata) "
+        "nei Remote Scripts di Live. Usa confirm=true SOLO dopo che l'utente ha detto si. "
+        "Resta un passo manuale in Live (Control Surface): dillo.", {
+        {"confirm", "string", "true solo dopo il si esplicito dell'utente; vuoto = solo controllo", false}
+    }});
+
     registerTool({"music.compose",
         "Scrive musica vera in una clip MIDI di Live: melodia, accordi, basso, "
         "arpeggio o un ritmo euclideo. Tre modi: 'notes' (le note le scrivi tu "
