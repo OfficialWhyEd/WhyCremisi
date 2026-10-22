@@ -8,8 +8,8 @@ const modelsByProvider = {
   gemini:    ['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite-preview', 'gemini-2.0-flash', 'gemini-1.5-pro'],
   openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
-  // Con l'account Claude i modelli sono gli alias del programma ufficiale.
-  claudecode: ['sonnet', 'opus', 'haiku'],
+  // Con l'account Claude il programma ufficiale accetta gli id pieni (provato).
+  claudecode: ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
   // Con l'account ChatGPT il modello predefinito è quello dell'abbonamento.
   codex: ['default', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-6-luna'],
   openrouter: [
@@ -34,6 +34,7 @@ const modelNames = {
   'claude-opus-5-5': 'Opus 5.5',
   'claude-sonnet-5-5': 'Sonnet 5.5',
   'claude-haiku-5-5': 'Haiku 5.5',
+  'claude-fable-5-1': 'Fable 5.1',
   sonnet: 'Sonnet',
   opus: 'Opus',
   haiku: 'Haiku',

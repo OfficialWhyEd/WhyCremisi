@@ -2455,15 +2455,15 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                         break;
 
                     case AiEngine::Provider::ClaudeCode:
-                        // Alias del programma ufficiale: sonnet, opus, haiku.
-                        if (! juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
+                        // Il programma ufficiale accetta gli id pieni (claude-sonnet-5-5…) e gli alias.
+                        if (! ClaudeCodeProvider::isKnownModel (cfg.model))
                             cfg.model = ClaudeCodeProvider::defaultModel();
                         break;
 
                     case AiEngine::Provider::Codex:
                         // Vuoto = modello predefinito dell'abbonamento; un alias
                         // di Claude rimasto da prima non vale qui.
-                        if (cfg.model.isEmpty() || cfg.model.startsWith ("gpt-4") || cfg.model.startsWith ("gpt-3") || juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
+                        if (cfg.model.isEmpty() || cfg.model.startsWith ("gpt-4") || cfg.model.startsWith ("gpt-3") || ClaudeCodeProvider::isKnownModel (cfg.model))
                             cfg.model = CodexProvider::defaultModel();
                         break;
                 }
@@ -2691,7 +2691,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                     cfg.provider = AiEngine::Provider::ClaudeCode;
                     cfg.apiKey = {};
                     cfg.authToken = {};
-                    if (! juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
+                    if (! ClaudeCodeProvider::isKnownModel (cfg.model))
                         cfg.model = ClaudeCodeProvider::defaultModel();
                 });
             }
@@ -2724,7 +2724,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                 cfg.provider = AiEngine::Provider::Codex;
                 cfg.apiKey = {};
                 cfg.authToken = {};
-                if (cfg.model.isEmpty() || cfg.model.startsWith ("gpt-4") || cfg.model.startsWith ("gpt-3") || juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
+                if (cfg.model.isEmpty() || cfg.model.startsWith ("gpt-4") || cfg.model.startsWith ("gpt-3") || ClaudeCodeProvider::isKnownModel (cfg.model))
                     cfg.model = CodexProvider::defaultModel();
             });
         }

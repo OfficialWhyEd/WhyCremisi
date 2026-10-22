@@ -190,7 +190,9 @@ public:
     juce::StringArray getAvailableModels() override;
     juce::String getName() const override { return "Claude (il tuo account)"; }
 
-    static juce::String defaultModel() { return "sonnet"; }
+    static juce::String defaultModel() { return "claude-sonnet-5-5"; }
+    static juce::StringArray knownModels();
+    static bool isKnownModel (const juce::String& m);
 
     // Percorso dell'eseguibile "claude", se installato. Vuoto altrimenti.
     static juce::File findExecutable();

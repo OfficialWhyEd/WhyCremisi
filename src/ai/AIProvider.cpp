@@ -819,9 +819,19 @@ bool ClaudeCodeProvider::testConnection()
     return true;
 }
 
+juce::StringArray ClaudeCodeProvider::knownModels()
+{
+    return { "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1" };
+}
+
 juce::StringArray ClaudeCodeProvider::getAvailableModels()
 {
-    return { "sonnet", "opus", "haiku" };
+    return knownModels();
+}
+
+bool ClaudeCodeProvider::isKnownModel (const juce::String& m)
+{
+    return knownModels().contains (m) || juce::StringArray { "sonnet", "opus", "haiku" }.contains (m);
 }
 
 
