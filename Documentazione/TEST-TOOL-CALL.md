@@ -221,6 +221,41 @@ modifica alla UI.
 
 ---
 
+## Appunti per lo sviluppatore
+
+### L'interfaccia deve scalare con il ridimensionamento della finestra
+
+**Stato attuale (verificato nel codice):**
+- `src/core/PluginEditor.cpp:129` → `setSize (1100, 820)`; nessuna chiamata a
+  `setResizable`/`setResizeLimits` nel file, quindi la finestra si apre a
+  misura fissa.
+- Il layout React è scritto in pixel/Tailwind per il desktop (la schermata di
+  setup usa `max-w-lg`, i pannelli usano griglie a 12 colonne): anche
+  abilitando il ridimensionamento, il contenuto non si adatterebbe da solo.
+
+**Richiesta:** l'interfaccia deve adattarsi alla dimensione della finestra,
+sia ingrandendo sia rimpicciolendo, senza tagliare controlli.
+
+**Due strade, con i loro costi:**
+
+| Strada | Come | Pro | Contro |
+|---|---|---|---|
+| A. Scala globale | `transform: scale()` sull'intero contenuto, calcolato dal rapporto fra dimensione finestra e 1100×820 | Pochissimo codice, identico a quello che si vede oggi | Testo sfocato a fattori non interi; aree di click che non corrispondono più ai pixel; accessibilità |
+| B. Layout fluido | `setResizable(true)` + `setResizeLimits(...)`, unità relative, griglie con frazioni, `clamp()` per i font | Nitido a ogni dimensione, niente pixel fuori posto | Più lavoro e più punti da rivedere: ogni pannello e ogni schermata |
+
+**Consiglio:** B, con limiti espliciti (es. minimo 900×620, massimo 1920×1200)
+e una sola scala tipografica condivisa, così i pannelli non vanno rifatti uno
+per uno.
+
+**Da verificare quando si farà:**
+- comportamento nei DAW che ripristinano la dimensione salvata del plugin
+  (lo stato dell'editor deve essere persistito);
+- che i limiti dichiarati all'host corrispondano a quelli della UI;
+- che la schermata di setup resti utilizzabile alla dimensione minima
+  (ha già `max-h-[96vh]` con scroll: va provata).
+
+---
+
 ## Se qualcosa non torna
 
 ```bash
