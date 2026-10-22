@@ -11,6 +11,7 @@
 */
 
 #include "AiEngine.h"
+#include "ChainProvider.h"
 #include "AIProvider.h"
 #include "ToolRegistry.h"
 #include <nlohmann/json.hpp>
@@ -257,10 +258,16 @@ AiEngine::Provider AiEngine::providerFromId (const juce::String& id, Provider fa
 
 std::unique_ptr<AIProvider> AiEngine::createProvider(Provider type)
 {
+    return createProvider(type, config.apiKey, config.model, config.baseUrl);
+}
+
+std::unique_ptr<AIProvider> AiEngine::createProvider(Provider type, const juce::String& apiKey,
+                                                     const juce::String& model, const juce::String& baseUrl)
+{
     AIProvider::Config pcfg;
-    pcfg.apiKey = config.apiKey;
-    pcfg.model = config.model;
-    pcfg.baseUrl = config.baseUrl;
+    pcfg.apiKey = apiKey;
+    pcfg.model = model;
+    pcfg.baseUrl = baseUrl;
     pcfg.timeoutMs = config.timeoutMs;
     pcfg.maxTokens = config.maxTokens;
     pcfg.temperature = config.temperature;
@@ -284,6 +291,14 @@ void AiEngine::ensureProvider()
 {
     if (!configured) return;
     currentProvider = createProvider(config.provider);
+    if (currentProvider && ! config.riserve.empty())
+    {
+        std::vector<std::shared_ptr<AIProvider>> strade { std::shared_ptr<AIProvider> (std::move (currentProvider)) };
+        for (const auto& r : config.riserve)
+            if (auto p = createProvider (r.provider, r.apiKey, r.model, r.baseUrl))
+                strade.push_back (std::shared_ptr<AIProvider> (std::move (p)));
+        currentProvider = std::make_shared<ChainProvider> (std::move (strade));
+    }
     if (currentProvider)
         syncProviderConfig();
 }

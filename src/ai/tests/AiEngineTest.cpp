@@ -263,6 +263,25 @@ public:
             expect (AnthropicProvider::defaultModel() == "claude-opus-5",
                     "Opus 5 e' il modello di riferimento del progetto");
         }
+
+        beginTest ("Con delle riserve il motore usa la catena, senza riserve il provider singolo");
+        {
+            AiEngine motore;
+            AiEngine::Config cfg;
+            cfg.provider = Provider::OpenRouter;
+            cfg.apiKey = "k";
+            cfg.model = "m";
+            motore.configure (cfg);
+            expect (! motore.getProviderName().startsWith ("Catena"), motore.getProviderName());
+
+            AiEngine::Config::Riserva r;
+            r.provider = Provider::Groq;
+            r.apiKey = "k2";
+            r.model = "m2";
+            cfg.riserve.push_back (r);
+            motore.configure (cfg);
+            expect (motore.getProviderName().startsWith ("Catena ("), motore.getProviderName());
+        }
     }
 };
 

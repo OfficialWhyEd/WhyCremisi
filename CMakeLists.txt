@@ -121,6 +121,7 @@ target_sources(WhyCremisiVSTPlugin
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
         src/ai/AIProvider.cpp
+        src/ai/ChainProvider.cpp
         src/ai/ToolRegistry.cpp
         src/samples/SampleLibrary.cpp
         src/samples/BeatBuilder.cpp
@@ -210,6 +211,7 @@ if(BUILD_UNIT_TESTS)
             src/core/tests/PluginProcessorTest.cpp
             src/bridge/tests/OscBridgeTest.cpp
             src/ai/tests/AiEngineTest.cpp
+            src/ai/tests/ChainProviderTest.cpp
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
             src/daw/tests/LiveDevicesTest.cpp
@@ -229,6 +231,7 @@ if(BUILD_UNIT_TESTS)
             src/osc/OscHandler.cpp
             src/ai/AiEngine.cpp
             src/ai/AIProvider.cpp
+            src/ai/ChainProvider.cpp
             src/ai/ToolRegistry.cpp
             src/samples/SampleLibrary.cpp
             src/samples/BeatBuilder.cpp

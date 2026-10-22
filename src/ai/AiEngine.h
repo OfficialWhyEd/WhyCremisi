@@ -65,6 +65,16 @@ public:
         juce::String authToken;
         // Profondita' di ragionamento su Claude: low | medium | high | xhigh | max.
         juce::String effort;
+
+        // Strade di riserva, provate nell'ordine se quella principale
+        // fallisce prima di rispondere (quota finita, servizio spento).
+        struct Riserva {
+            Provider provider = Provider::OpenRouter;
+            juce::String apiKey;
+            juce::String model;
+            juce::String baseUrl;
+        };
+        std::vector<Riserva> riserve;
     };
 
     struct AiAction {
@@ -222,6 +232,8 @@ private:
     // il lock, si rilascia, e la rete la si aspetta liberi.
     std::shared_ptr<AIProvider> currentProvider;
     std::unique_ptr<AIProvider> createProvider(Provider type);
+    std::unique_ptr<AIProvider> createProvider(Provider type, const juce::String& apiKey,
+                                               const juce::String& model, const juce::String& baseUrl);
     void ensureProvider();
     void syncProviderConfig();
 
