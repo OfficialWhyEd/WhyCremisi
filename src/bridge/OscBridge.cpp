@@ -158,6 +158,18 @@ bool OscBridge::start()
     // `daw.preset` resta la via per cambiarlo.
     setDawTarget ("127.0.0.1", 8000);
 
+    // Chi ci ospita lo sa JUCE: cosi' la DAW e' nota subito e i tool offerti
+    // al modello sono quelli giusti fin dal primo prompt, senza aspettare
+    // che arrivi un messaggio OSC.
+    {
+        const auto hostDaw = DawDetector::detectFromHost ({}, 0);
+        if (hostDaw != DawType::Unknown)
+        {
+            ensureDawHandler (hostDaw);
+            log (juce::String ("[DAW] riconosciuta dall'host: ") + DawDetector::getName (hostDaw));
+        }
+    }
+
     oscHandler->start();
     juce::Thread::sleep(50);
     if (!oscHandler->isRunning())
@@ -1436,6 +1448,20 @@ bool OscBridge::dispatchDawCommandValidated(const nlohmann::json& payload, const
         );
     }
     // Mixer. Campi del protocollo UI: trackId + valueDb / value / muted / soloed.
+    else if (command == "createTrack")
+    {
+        const bool midi = payload.contains ("midi") && payload["midi"].is_boolean()
+                        ? payload["midi"].get<bool>() : true;
+        sendViaHandler(
+            [&]() { dawHandler->createTrack (midi); },
+            [&]() {
+                // Nessun adattatore: si prova l'azione di REAPER e il comando
+                // di Live, ognuno sul proprio dialetto.
+                sendOscToDaw ("/action/40001", 1.0f);
+                sendOscToDaw ("/live/song/create_midi_track", 1.0f);
+            }
+        );
+    }
     else if (command == "setVolume")
     {
         int trackId = 0;
@@ -4614,6 +4640,18 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
     }
     // ── Mixer: track -> trackId, volume -> valueDb, pan -> value,
     //    mute -> muted, solo -> soloed (campi del dispatcher) ──────────
+    else if (call.name == "daw.track.create") {
+        const auto* tipo = argOf (args, "type");
+        const bool midi = ! (tipo && tipo->is_string()
+                             && juce::String (tipo->get<std::string>()).toLowerCase() == "audio");
+        auto c = dawCmd ("createTrack");
+        c["midi"] = midi;
+        auto avvisi = nessunAvviso();
+        if (dawHandler && dawHandler->isReaper())
+            avvisi.push_back ("REAPER crea la traccia col tipo predefinito del progetto "
+                              "(azione 40001): il tipo richiesto non e' selezionabile via OSC.");
+        invia (c, juce::String ("Creazione di una traccia ") + (midi ? "MIDI" : "audio"), std::move (avvisi));
+    }
     else if (call.name == "daw.track.setVolume") {
         int track = 0;
         double db = 0.0;

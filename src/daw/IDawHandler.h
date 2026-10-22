@@ -36,6 +36,10 @@ public:
 
     // Track / FX
     virtual void selectTrack(int index) = 0;
+
+    /** Crea una traccia nuova. Stesso verbo per tutte le DAW: cambia solo
+        come si traduce (Reaper: azione 40001; Live: create_midi_track). */
+    virtual void createTrack (bool midi) { juce::ignoreUnused (midi); }
     virtual void setFxParam(int trackId, int fxId, int paramId, float value) = 0;
 
     /** Bypass di un FX: indice 0-based nel contratto. Chi non ha un comando

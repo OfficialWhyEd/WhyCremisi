@@ -22,6 +22,7 @@ public:
     void nextMarker() override;
 
     void selectTrack(int index) override;
+    void createTrack (bool midi) override;
     void setFxParam(int trackId, int fxId, int paramId, float value) override;
     void setFxBypass(int trackId, int fxId, bool bypass) override;
 

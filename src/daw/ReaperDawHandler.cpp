@@ -122,6 +122,16 @@ void ReaperDawHandler::selectTrack(int index)
         sendCallback("/track/" + juce::String(reaperIndex(index)) + "/select", 1.0f);
 }
 
+void ReaperDawHandler::createTrack (bool midi)
+{
+    // REAPER non ha un comando OSC per creare una traccia: si usa l'azione
+    // "Track: Insert new track" (ID 40001), che la config espone come
+    // ACTION t/action/@. Il tipo (midi/audio) non e' selezionabile: la traccia
+    // nasce col default del progetto.
+    juce::ignoreUnused (midi);
+    if (sendCallback) sendCallback ("/action/40001", 1.0f);
+}
+
 void ReaperDawHandler::setFxParam(int trackId, int fxId, int paramId, float value)
 {
     if (sendCallback)

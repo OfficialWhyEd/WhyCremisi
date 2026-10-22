@@ -21,6 +21,11 @@ void ToolRegistry::registerBuiltinTools()
     }});
 
     // Track controls
+    registerTool({"daw.track.create",
+        "Crea una traccia nuova in fondo alla lista. Non serve un indice: la traccia nasce dopo le esistenti. "
+        "Su REAPER il tipo (MIDI/audio) e' quello predefinito del progetto.", {
+        {"type", "string", "midi oppure audio (predefinito: midi)", false}
+    }});
     registerTool({"daw.track.setVolume", "Set track volume", {
         {"track", "number", "Track index (0-based)", true, 0, 255},
         {"volume", "number", "Volume in dB, the number shown in the DAW (-96 to 12). Never the 0-1 fader value", true, -96.0f, 12.0f}

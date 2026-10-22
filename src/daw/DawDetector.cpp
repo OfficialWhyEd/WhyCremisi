@@ -1,4 +1,5 @@
 #include "DawDetector.h"
+#include <juce_audio_processors/juce_audio_processors.h>
 
 DawType DawDetector::detectFromOscAddress(const juce::String& address)
 {
@@ -17,10 +18,27 @@ DawType DawDetector::detectFromOscAddress(const juce::String& address)
     return DawType::Unknown;
 }
 
+// Riconoscimento dall'host: prima era uno stub che rispondeva sempre
+// "Unknown", e la DAW restava sconosciuta finche' non arrivava un messaggio
+// OSC. Conseguenza: in Ableton i tool esclusivi di Live non venivano offerti
+// (perche' la DAW risultava sconosciuta) e l'agente rispondeva "non posso".
+// JUCE sa chi sta ospitando il plugin: si usa quello.
 DawType DawDetector::detectFromHost(const juce::String& host, int port)
 {
     juce::ignoreUnused(host, port);
-    return DawType::Unknown;
+
+    const juce::PluginHostType h;
+
+    if (h.isReaper())        return DawType::Reaper;
+    if (h.isAbletonLive())   return DawType::Ableton;
+    if (h.isCubase())        return DawType::Cubase;
+    if (h.isLogic())         return DawType::Logic;
+    if (h.isStudioOne())     return DawType::StudioOne;
+    if (h.isBitwigStudio())   return DawType::Bitwig;
+    if (h.isProTools())      return DawType::ProTools;
+    if (h.isFruityLoops())    return DawType::FLStudio;
+
+    return DawType::Generic;
 }
 
 juce::String DawDetector::getName(DawType type)

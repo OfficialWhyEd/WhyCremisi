@@ -511,3 +511,42 @@ a −11 dB — ecco perché il comando "sembrava funzionare" ma al livello sbagl
 
 Test: la curva (0 dB→0.716, −11.059→0.5, +12→1.0, −96→0) e la scrittura
 sull'indirizzo normalizzato. Suite: **3430 controlli, 0 falliti**.
+
+---
+
+# Riconoscimento della DAW e creazione traccia
+
+## Perché l'agente diceva "non posso" anche in Ableton
+La DAW veniva riconosciuta **solo dai messaggi OSC in arrivo**. In Ableton,
+finché Live non mandava niente, risultava `Unknown`: e con DAW sconosciuta la
+matrice delle capacità non offriva i tool esclusivi di Live
+(`music.compose`, `beat.create`, `device.*`). L'agente rispondeva il vero —
+sulla lista che aveva ricevuto.
+
+**Corretto**: `DawDetector::detectFromHost()` usa `juce::PluginHostType`
+(`isReaper()`, `isAbletonLive()`, `isCubase()`, `isLogic()`, …) e il bridge
+la chiama all'avvio. La DAW è nota **prima** di qualsiasi feedback; nel log
+compare `[DAW] riconosciuta dall'host: REAPER`.
+
+## `daw.track.create` — stesso tool, due traduzioni
+| DAW | Cosa manda | Note |
+|---|---|---|
+| REAPER | `/action/40001` (Track: Insert new track) | il tipo MIDI/audio non è selezionabile via OSC; nasce col default del progetto |
+| Ableton | `/live/song/create_midi_track` / `create_audio_track` | nessun argomento: la traccia nasce in fondo |
+| altre | — | `Unsupported` |
+
+## Perché su REAPER non si possono creare clip o note MIDI
+Non è una scelta di WY: **la OSC di REAPER non ha un pattern per item o note**.
+Nel file `Default.ReaperOSC` esistono `ACTION`, `MIDIACTION`, `TRACK_*`,
+`FX_*`, ma nessun comando che aggiunga un item, una clip o una nota. Servirebbe
+uno script ReaScript installato una volta (feature separata, non correzione).
+
+## `mix.*` spostati nel gruppo Live
+`mix.levels`, `mix.snapshot.save`, `mix.snapshot.recall` leggono da
+AbletonOSC. Su REAPER **sarebbe possibile** (il feedback di volume/pan/mute
+arriva), ma non è implementato: finché non lo è, non vengono offerti su REAPER
+invece di essere promessi e poi fallire.
+
+Test: la creazione traccia su entrambi gli adattatori (`/action/40001`,
+`/live/song/create_midi_track`, `…audio_track`). Suite: **3435 controlli, 0
+falliti**.

@@ -28,6 +28,7 @@ public:
         testReaperIndirizzi();
         testReaperMarkerNonDisponibili();
         testAbletonIndirizzi();
+        testCreazioneTraccia();
         testCapacita();
         testResaEsiti();
     }
@@ -128,6 +129,22 @@ private:
 
         auto c = registraAbleton ([] (AbletonDawHandler& h) { h.gotoMarker (2); });
         expectEquals (c[0].addr, juce::String ("/live/song/cue_point/jump"));
+    }
+
+    void testCreazioneTraccia()
+    {
+        beginTest ("Creazione traccia: stesso verbo, due traduzioni");
+
+        auto r = registraReaper ([] (ReaperDawHandler& h) { h.createTrack (true); });
+        expectEquals ((int) r.size(), 1);
+        expectEquals (r[0].addr, juce::String ("/action/40001"), "REAPER: azione Insert new track");
+
+        auto a = registraAbleton ([] (AbletonDawHandler& h) { h.createTrack (true); });
+        expectEquals ((int) a.size(), 1);
+        expectEquals (a[0].addr, juce::String ("/live/song/create_midi_track"));
+
+        auto a2 = registraAbleton ([] (AbletonDawHandler& h) { h.createTrack (false); });
+        expectEquals (a2[0].addr, juce::String ("/live/song/create_audio_track"));
     }
 
     void testCapacita()

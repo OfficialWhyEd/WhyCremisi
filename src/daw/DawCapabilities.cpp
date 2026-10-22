@@ -19,16 +19,15 @@ namespace DawCaps
 
     // ── Gruppo B: stessa intenzione su ogni DAW, tradotta dall'adattatore ──
     //  UNITA' E INDICI DEL CONTRATTO: traccia 0-based, volume in dB.
-    //  La conversione (Reaper +1 e /volume/db, Live curva del fader) sta
+    //  La conversione (Reaper +1 e posizione del fader, Live curva del fader) sta
     //  nell'adattatore, non qui e non nel tool.
     static const juce::StringArray& comuni()
     {
         static const juce::StringArray a {
             "daw.transport.play", "daw.transport.stop", "daw.transport.record",
             "daw.transport.setTempo",
-            "daw.track.setVolume", "daw.track.setPan",
-            "daw.track.mute", "daw.track.solo",
-            "mix.levels", "mix.snapshot.save", "mix.snapshot.recall"
+            "daw.track.create", "daw.track.setVolume", "daw.track.setPan",
+            "daw.track.mute", "daw.track.solo"
         };
         return a;
     }
@@ -38,6 +37,10 @@ namespace DawCaps
     {
         static const juce::StringArray a {
             "ableton.setup", "music.compose", "beat.create",
+            // Fanno parte del gruppo Live perche' leggono da AbletonOSC.
+            // Su REAPER sarebbe possibile (il feedback volume/pan/mute arriva),
+            // ma non e' implementato: meglio non prometterlo.
+            "mix.levels", "mix.snapshot.save", "mix.snapshot.recall",
             "device.list", "device.params", "device.setParam", "device.dictionary"
         };
         return a;

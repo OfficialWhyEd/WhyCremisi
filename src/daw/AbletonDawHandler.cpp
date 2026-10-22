@@ -199,6 +199,13 @@ void AbletonDawHandler::selectTrack(int index)
     sendMulti ("/live/view/set/selected_track", { (float) index }, { true });
 }
 
+void AbletonDawHandler::createTrack (bool midi)
+{
+    // AbletonOSC: nessun argomento, la traccia nasce in fondo.
+    sendMulti (midi ? "/live/song/create_midi_track" : "/live/song/create_audio_track",
+               {}, {});
+}
+
 void AbletonDawHandler::setFxParam(int trackId, int fxId, int paramId, float value)
 {
     // In Live gli effetti sono "device" e i loro controlli "parameter":
