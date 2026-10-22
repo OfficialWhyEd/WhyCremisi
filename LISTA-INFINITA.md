@@ -2,7 +2,7 @@
 Scritta il 22/10/2026. Si lavora sempre dall'alto. Quando la lista finisce si aggiungono voci nuove (vedi in fondo). Non si finisce mai.
 
 ## IL CICLO (ripetilo senza fermarti)
-1. Leggi DIRETTIVE-PER-CHI-LAVORA.md (regole che non si rompono).
+1. Leggi DIRETTIVE-PER-CHI-LAVORA.md (regole) e MANUALE-OPERATIVO.md (come si fa, quali strumenti).
 2. Prendi la PRIMA voce non fatta qui sotto.
 3. Cerca cosa esiste già (repo, STATO.md, open source). Mai da zero.
 4. Fai la modifica. Solo file specifici, mai cartelle intere.
