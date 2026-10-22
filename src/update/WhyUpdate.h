@@ -34,6 +34,11 @@ struct WhyUpdate
     static bool sha256Corrisponde (const juce::File& f, const juce::String& atteso);
     static juce::String comandoAllaChiusura (const juce::File& installer, int pidDaw, const juce::String& piattaforma);
 
+    // Firma Ed25519 dell'elenco: l'installer parte solo se latest.json e' firmato con la chiave di WhyEd.
+    // La chiave privata non sta su GitHub, quindi chi prende l'account non puo' farsi eseguire un installer suo.
+    static juce::String chiavePubblica();     // esadecimale, 64 caratteri, compilata nel plugin
+    static bool verificaFirma (const void* dati, size_t n, const juce::String& firmaBase64, const juce::String& chiaveHex);
+
     // Impostazioni su disco
     static juce::File fileImpostazioni();
     static Impostazioni caricaImpostazioni();

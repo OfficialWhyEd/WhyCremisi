@@ -47,22 +47,5 @@ jobs:
       - run: sh Tools/installer/pacchetto-linux.sh build
       - uses: actions/upload-artifact@v4
         with: { name: linux, path: build-installer/out/* }
-  pubblica:
-    needs: [windows, linux]
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { path: out }
-      - name: latest.json e release beta
-        env: { GH_TOKEN: "${{ github.token }}" }
-        run: |
-          VER=$(cat VERSION | tr -d '[:space:]')
-          BASE="https://github.com/${{ github.repository }}/releases/download/beta"
-          W="out/windows/WhyCremisi-Setup-$VER.exe"; L="out/linux/WhyCremisi-linux-$VER.tar.gz"
-          cat > latest.json <<JSON
-          {"version":"$VER","notes":"","windows":{"url":"$BASE/WhyCremisi-Setup-$VER.exe","sha256":"$(sha256sum $W | cut -d' ' -f1)","size":$(stat -c%s $W)},
-           "linux":{"url":"$BASE/WhyCremisi-linux-$VER.tar.gz","sha256":"$(sha256sum $L | cut -d' ' -f1)","size":$(stat -c%s $L)}}
-          JSON
-          gh release view beta >/dev/null 2>&1 || gh release create beta --prerelease --title "WhyCremisi beta" --notes "Canale beta"
-          gh release upload beta $W $L latest.json --clobber
+  # La pubblicazione e la firma di latest.json si fanno in locale (Tools/pubblica-beta.ps1):
+  # la chiave privata non va mai su GitHub.

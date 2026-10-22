@@ -1,4 +1,6 @@
 #include "WhyUpdate.h"
+#include <cstring>
+#include <vector>
 
 #if JUCE_WINDOWS
  #include <windows.h>
@@ -8,6 +10,16 @@
 
 #ifndef WHYCREMISI_VERSION
  #define WHYCREMISI_VERSION "0.0.0"
+#endif
+
+extern "C" {
+#include "third_party/tweetnacl.h"
+// TweetNaCl chiede randombytes solo per generare chiavi: qui si verifica soltanto, ma il simbolo serve
+void randombytes (unsigned char* x, unsigned long long n) { juce::Random::getSystemRandom().fillBitsRandomly (x, (size_t) n); }
+}
+
+#ifndef WHYCREMISI_UPDATE_PUBKEY
+ #define WHYCREMISI_UPDATE_PUBKEY ""
 #endif
 
 static const char* kRepo = "OfficialWhyEd/WhyCremisi";
@@ -118,6 +130,42 @@ bool WhyUpdate::salvaImpostazioni (const Impostazioni& s)
     return f.replaceWithText (juce::JSON::toString (juce::var (o)));
 }
 
+juce::String WhyUpdate::chiavePubblica() { return juce::String (WHYCREMISI_UPDATE_PUBKEY).trim(); }
+
+bool WhyUpdate::verificaFirma (const void* dati, size_t n, const juce::String& firmaBase64, const juce::String& chiaveHex)
+{
+    if (chiaveHex.length() != 64 || ! chiaveHex.containsOnly ("0123456789abcdefABCDEF")) return false;
+    juce::MemoryBlock sig, pk;
+    {
+        // Base64 standard (juce::Base64 usa un alfabeto diverso)
+        const auto t = firmaBase64.trim();
+        int acc = 0, bit = 0;
+        for (auto c : t)
+        {
+            int v;
+            if (c >= 'A' && c <= 'Z') v = c - 'A';
+            else if (c >= 'a' && c <= 'z') v = c - 'a' + 26;
+            else if (c >= '0' && c <= '9') v = c - '0' + 52;
+            else if (c == '+') v = 62;
+            else if (c == '/') v = 63;
+            else if (c == '=') break;
+            else return false;
+            acc = (acc << 6) | v; bit += 6;
+            if (bit >= 8) { bit -= 8; const unsigned char by = (unsigned char) ((acc >> bit) & 0xff); sig.append (&by, 1); }
+        }
+        if (sig.getSize() != 64) return false;
+    }
+    pk.setSize (32);
+    for (int i = 0; i < 32; ++i) static_cast<unsigned char*> (pk.getData())[i] = (unsigned char) chiaveHex.substring (i * 2, i * 2 + 2).getHexValue32();
+
+    std::vector<unsigned char> sm (64 + n), m (64 + n);
+    std::memcpy (sm.data(), sig.getData(), 64);
+    if (n > 0) std::memcpy (sm.data() + 64, dati, n);
+    unsigned long long mlen = 0;
+    return crypto_sign_open (m.data(), &mlen, sm.data(), (unsigned long long) sm.size(),
+                             static_cast<const unsigned char*> (pk.getData())) == 0;
+}
+
 WhyUpdate::Controllo WhyUpdate::controlla (const juce::String& lingua)
 {
     Controllo c;
@@ -138,7 +186,26 @@ WhyUpdate::Controllo WhyUpdate::controlla (const juce::String& lingua)
                       : "No update published (code " + juce::String (stato) + ").";
         return c;
     }
-    c.rilascio = interpretaManifest (in->readEntireStreamAsString(), piattaforma());
+    juce::MemoryBlock corpo;
+    in->readIntoMemoryBlock (corpo);
+    if (chiavePubblica().isEmpty())
+    {
+        c.errore = it ? "Questa versione non ha la chiave di firma: aggiornamenti disattivati per sicurezza."
+                      : "This build has no signing key: updates are disabled for safety.";
+        return c;
+    }
+    int statoFirma = 0;
+    auto inFirma = juce::URL (url + ".sig").createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                                                                   .withConnectionTimeoutMs (8000).withStatusCode (&statoFirma)
+                                                                   .withNumRedirectsToFollow (5));
+    const auto firma = (inFirma != nullptr && statoFirma == 200) ? inFirma->readEntireStreamAsString() : juce::String();
+    if (! verificaFirma (corpo.getData(), corpo.getSize(), firma, chiavePubblica()))
+    {
+        c.errore = it ? "Elenco aggiornamenti NON firmato correttamente: non lo uso."
+                      : "Update list is NOT correctly signed: ignoring it.";
+        return c;
+    }
+    c.rilascio = interpretaManifest (corpo.toString(), piattaforma());
     if (! c.rilascio.valido())
     {
         c.errore = it ? "L'elenco aggiornamenti non è leggibile per questa piattaforma." : "The update list is not readable for this platform.";

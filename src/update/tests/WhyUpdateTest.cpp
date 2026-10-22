@@ -16,6 +16,21 @@ public:
         expect (WhyUpdate::confronta ("0.2.0-beta", "0.2.0") == 0);
         expect (WhyUpdate::versioneCorrente().isNotEmpty());
 
+        beginTest ("firma dell'elenco (chiave di prova, solo test)");
+        {
+            const juce::String chiave ("0164ac847ce15716035c4be7f70ab457cf4ed7bed87d4dab95018405a179ef49");
+            const juce::String firma ("9VZ3c4aPtBQer8Ac/jfOo8BkLvGLXrYcQxKlsrfdon+fJhAeietCIPd/j6gPybo3HvDjlSehw/gpDt7df+p6Cg==");
+            const juce::String msg (R"({"version":"9.9.9"})");
+            const auto u = msg.toRawUTF8();
+            expect (WhyUpdate::verificaFirma (u, msg.getNumBytesAsUTF8(), firma, chiave), "firma 1");
+            const juce::String manomesso (R"({"version":"9.9.8"})");
+            expect (! WhyUpdate::verificaFirma (manomesso.toRawUTF8(), manomesso.getNumBytesAsUTF8(), firma, chiave), "firma 2");
+            expect (! WhyUpdate::verificaFirma (u, msg.getNumBytesAsUTF8(), firma, juce::String::repeatedString ("0", 64)), "firma 3");
+            expect (! WhyUpdate::verificaFirma (u, msg.getNumBytesAsUTF8(), "non-base64!", chiave), "firma 4");
+            expect (! WhyUpdate::verificaFirma (u, msg.getNumBytesAsUTF8(), {}, chiave), "firma 5");
+            expect (! WhyUpdate::verificaFirma (u, msg.getNumBytesAsUTF8(), firma, "corta"), "firma 6");
+        }
+
         beginTest ("elenco aggiornamenti");
         const juce::String hash = juce::String::repeatedString ("a", 64);
         const juce::String ok = R"({"version":"0.3.0","notes":"n","windows":{"url":"https://x.it/a.exe","sha256":")" + hash

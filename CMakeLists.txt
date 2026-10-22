@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" WHYCREMISI_VERSION_TEXT LIMIT_COUNT 1)
+# Chiave pubblica che firma gli aggiornamenti (la privata sta fuori da GitHub, nel portachiavi di Whyed)
+set(WHYCREMISI_UPDATE_PUBKEY "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Tools/installer/chiave-pubblica-aggiornamenti.hex")
+    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/Tools/installer/chiave-pubblica-aggiornamenti.hex" WHYCREMISI_UPDATE_PUBKEY LIMIT_COUNT 1)
+endif()
 project(WhyCremisi-VST-Plugin VERSION ${WHYCREMISI_VERSION_TEXT} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -88,6 +93,7 @@ juce_add_plugin(WhyCremisiVSTPlugin
 target_compile_definitions(WhyCremisiVSTPlugin PRIVATE
     JUCE_VST3_CAN_REPLACE_VST2=0
     WHYCREMISI_VERSION="${WHYCREMISI_VERSION_TEXT}"
+    WHYCREMISI_UPDATE_PUBKEY="${WHYCREMISI_UPDATE_PUBKEY}"
 )
 
 # Windows: attiva il backend WebView2 (linkato staticamente dal pacchetto NuGet).
@@ -129,6 +135,7 @@ target_sources(WhyCremisiVSTPlugin
         src/ai/AIProvider.cpp
         src/account/WhyAccount.cpp
         src/update/WhyUpdate.cpp
+        src/update/third_party/tweetnacl.c
         src/daw/ReaperSetup.cpp
         src/ai/ChainProvider.cpp
         src/ai/ToolRegistry.cpp
@@ -269,6 +276,7 @@ if(BUILD_UNIT_TESTS)
             src/ai/AIProvider.cpp
             src/account/WhyAccount.cpp
             src/update/WhyUpdate.cpp
+            src/update/third_party/tweetnacl.c
             src/daw/ReaperSetup.cpp
             src/ai/ChainProvider.cpp
             src/ai/ToolRegistry.cpp
@@ -313,6 +321,7 @@ if(BUILD_UNIT_TESTS)
 
     target_compile_definitions(WhyCremisiTests PRIVATE
         WHYCREMISI_VERSION="${WHYCREMISI_VERSION_TEXT}"
+    WHYCREMISI_UPDATE_PUBKEY="${WHYCREMISI_UPDATE_PUBKEY}"
         JUCE_UNIT_TESTS=1
         JUCE_VST3_CAN_REPLACE_VST2=0
         # Il processore vuole i simboli JucePlugin_*: senza, non compila

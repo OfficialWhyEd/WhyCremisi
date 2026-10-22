@@ -28,6 +28,12 @@ if (Test-Path $tgz) {
 }
 $json = Join-Path $out "latest.json"
 [IO.File]::WriteAllText($json, ($man | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding $false))
+# Firma Ed25519 del manifest: la chiave privata resta sul PC di Whyed, mai su GitHub
+$sig = "$json.sig"
+if (Test-Path $sig) { Remove-Item $sig -Force }
+& node (Join-Path $root "Toolsirmairma.mjs") $json
+$firmato = Test-Path $sig
+if (-not $firmato) { Write-Host "ATTENZIONE: latest.json NON firmato (manca la chiave: node Toolsirmagenera-chiave.mjs)." }
 Write-Host "Pronto in $out : $(Split-Path $exe -Leaf), latest.json (windows sha256 $hash)"
 if (Test-Path $tgz) { Write-Host "Linux incluso." } else { Write-Host "Linux NON incluso: i Linux non vedranno questo aggiornamento." }
 
@@ -35,7 +41,8 @@ if (-not $Pubblica) { Write-Host "Non ho caricato nulla (manca -Pubblica)."; exi
 $repo = "OfficialWhyEd/WhyCremisi"
 & gh release view beta --repo $repo *> $null
 if ($LASTEXITCODE) { & gh release create beta --repo $repo --prerelease --title "WhyCremisi beta" --notes "Canale beta: gli aggiornamenti automatici leggono latest.json da qui." }
-$files = @($exe, $json); if (Test-Path $tgz) { $files += $tgz }
+if (-not $firmato) { throw "Senza firma non pubblico: gli aggiornamenti verrebbero rifiutati. Crea la chiave con genera-chiave.mjs e ricompila il plugin." }
+$files = @($exe, $json, $sig); if (Test-Path $tgz) { $files += $tgz }
 & gh release upload beta @files --repo $repo --clobber
 if ($LASTEXITCODE) { throw "caricamento fallito" }
 Write-Host "Pubblicato su https://github.com/$repo/releases/tag/beta"
