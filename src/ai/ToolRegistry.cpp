@@ -474,36 +474,53 @@ void ContextManager::trimToBudget()
 {
     if (messages.size() <= 1) return;
 
-    int targetCount = juce::jmin(maxMessages, (int)messages.size());
-    int overByTokens = totalTokens - maxTokens;
-    int overByCount = (int)messages.size() - targetCount;
-
+    const int overByTokens = totalTokens - maxTokens;
+    const int overByCount  = (int) messages.size() - maxMessages;
     if (overByTokens <= 0 && overByCount <= 0) return;
 
-    // Determine how many messages to remove — remove oldest non-system pairs
-    int removeCount = juce::jmax(overByCount, 1);
-    int removed = 0;
+    // Si taglia per BLOCCHI, non per singoli messaggi.
+    //
+    // Un blocco comincia con un messaggio utente e contiene tutto il turno:
+    // assistant, eventuali tool_calls e i messaggi "tool" con i risultati.
+    // Tagliare a meta' blocco produce uno storico invalido (un messaggio
+    // "tool" senza la tool_call che lo precede, o viceversa): i server
+    // OpenAI-compatibili rispondono 400, e siccome il taglio avviene solo
+    // quando il contesto cresce il guasto sembra casuale.
+    std::vector<size_t> inizioBlocchi;
+    for (size_t i = 0; i < messages.size(); ++i)
+        if (messages[i].role == Message::User || i == 0)
+            inizioBlocchi.push_back (i);
 
-    // Scan from index 1 onward (skip index 0 = system prompt)
-    for (size_t i = 1; i < messages.size() && removed < removeCount; )
+    if (inizioBlocchi.size() <= 1) return;   // un solo blocco: non si taglia
+
+    // Si tolgono i blocchi piu' vecchi, mai l'ultimo (il turno corrente).
+    size_t blocchiDaTogliere = 0;
+    int tokenDopo = totalTokens;
+    int messaggiDopo = (int) messages.size();
+
+    while (blocchiDaTogliere + 1 < inizioBlocchi.size()
+           && (tokenDopo > maxTokens || messaggiDopo > maxMessages))
     {
-        // Prefer removing user+assistant pairs together
-        if (i + 1 < messages.size()
-            && messages[i].role == Message::User
-            && messages[i + 1].role == Message::Assistant)
-        {
-            totalTokens -= messages[i].estimatedTokens + messages[i + 1].estimatedTokens;
-            messages.erase(messages.begin() + i, messages.begin() + i + 2);
-            removed += 2;
-        }
-        else
-        {
-            totalTokens -= messages[i].estimatedTokens;
-            messages.erase(messages.begin() + i);
-            removed += 1;
-        }
+        const size_t da = inizioBlocchi[blocchiDaTogliere];
+        const size_t a  = (blocchiDaTogliere + 1 < inizioBlocchi.size())
+                        ? inizioBlocchi[blocchiDaTogliere + 1]
+                        : messages.size();
+        for (size_t i = da; i < a; ++i)
+            tokenDopo -= messages[i].estimatedTokens;
+        messaggiDopo -= (int) (a - da);
+        ++blocchiDaTogliere;
     }
+
+    if (blocchiDaTogliere == 0) return;
+
+    const size_t tagliaFinoA = inizioBlocchi[blocchiDaTogliere];
+    messages.erase (messages.begin(), messages.begin() + (long) tagliaFinoA);
+
+    totalTokens = 0;
+    for (const auto& m : messages)
+        totalTokens += m.estimatedTokens > 0 ? m.estimatedTokens : estimateTokens (m.content);
 }
+
 
 void ContextManager::recalculateTokens()
 {

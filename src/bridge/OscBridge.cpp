@@ -2621,6 +2621,17 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                             cfg.model = CodexProvider::defaultModel();
                         break;
                 }
+
+                // Un modello locale da 27B a 11 tok/s impiega decine di secondi:
+                // 30s di timeout facevano fallire risposte lunghe proprio dopo
+                // un giro di tool. Per i fornitori locali si sale a 120s.
+                if (cfg.provider == AiEngine::Provider::LlamaCpp
+                    || cfg.provider == AiEngine::Provider::Ollama)
+                    cfg.timeoutMs = 120000;
+
+                switch (cfg.provider)
+                {
+                }
             });
         }
         

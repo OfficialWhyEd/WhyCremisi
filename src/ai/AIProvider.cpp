@@ -394,8 +394,20 @@ AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, 
     if (config.apiKey.isNotEmpty())
         authHeader << "Authorization: Bearer " << config.apiKey << "\r\n";
     authHeader << getExtraHeaders();
+    const auto inizioChiamata = juce::Time::getMillisecondCounterHiRes();
     juce::String raw = makeHttpRequest(getApiUrl(), "POST", juce::String(body.dump()), config.timeoutMs, authHeader);
-    if (raw.isEmpty()) { result.error = "Empty response"; return result; }
+    if (raw.isEmpty())
+    {
+        // Un vuoto dopo ~tutto il timeout e' un timeout, non una risposta
+        // vuota: senza distinguerli il messaggio all'utente era "nessun
+        // motivo riportato", che non aiuta nessuno.
+        const double trascorsoMs = juce::Time::getMillisecondCounterHiRes() - inizioChiamata;
+        result.error = (trascorsoMs >= config.timeoutMs * 0.9)
+                     ? ("Timeout dopo " + juce::String (config.timeoutMs / 1000) + "s: il modello non ha risposto in tempo.")
+                     : juce::String ("Empty response");
+        lastError = result.error;
+        return result;
+    }
 
     auto j = parseJsonSafe(raw);
 
@@ -1568,9 +1580,18 @@ AIProvider::Result AnthropicProvider::sendPrompt(const juce::String& systemPromp
 
     auto body = buildRequestBody (systemPrompt, userMessage);
 
+    const auto inizioChiamata = juce::Time::getMillisecondCounterHiRes();
     juce::String raw = makeHttpRequest("https://api.anthropic.com/v1/messages", "POST",
                                         juce::String(body.dump()), config.timeoutMs, buildHeaders());
-    if (raw.isEmpty()) { result.error = "Empty response"; return result; }
+    if (raw.isEmpty())
+    {
+        const double trascorsoMs = juce::Time::getMillisecondCounterHiRes() - inizioChiamata;
+        result.error = (trascorsoMs >= config.timeoutMs * 0.9)
+                     ? ("Timeout dopo " + juce::String (config.timeoutMs / 1000) + "s: Claude non ha risposto in tempo.")
+                     : juce::String ("Empty response");
+        lastError = result.error;
+        return result;
+    }
 
     auto j = parseJsonSafe(raw);
 

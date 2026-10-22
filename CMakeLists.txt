@@ -248,6 +248,7 @@ if(BUILD_UNIT_TESTS)
             src/update/tests/WhyUpdateTest.cpp
             src/ai/tests/ChainProviderTest.cpp
             src/ai/tests/ToolCallParsingTest.cpp
+            src/ai/tests/ContextTrimTest.cpp
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
             src/daw/tests/DawAdapterWireTest.cpp
