@@ -141,6 +141,16 @@ bool OscBridge::start()
     // Start OSC listener (receives from DAW).
     // start() launches a thread; give it a moment to bind the socket before
     // checking isRunning(), which reads the 'connected' atomic set by that thread.
+    // Destinazione di default dei comandi in USCITA.
+    //
+    // Senza questo, OscHandler manda a 127.0.0.1:9001 — una porta dove non
+    // ascolta nessuno. Il preset "reaper"/"ableton" lo impostava solo se la
+    // UI lo mandava, e la UI non lo manda mai: risultato, tutti i comandi
+    // uscivano nel vuoto mentre il log diceva "SENT". REAPER ascolta su 8000
+    // (Local listen port), quindi questo e' il default giusto;
+    // `daw.preset` resta la via per cambiarlo.
+    setDawTarget ("127.0.0.1", 8000);
+
     oscHandler->start();
     juce::Thread::sleep(50);
     if (!oscHandler->isRunning())
