@@ -277,6 +277,11 @@ private:
     std::unique_ptr<ContextManager> contextManager;
 
     juce::String buildPersonalityPrefix() const;
+
+    /** Nomi dei tool offerti ORA al modello: quelli del registro che questa
+        DAW sa fare. Unica fonte per lo schema e per il system prompt, cosi'
+        le due cose non possono divergere. */
+    juce::StringArray offeredToolNames() const;
     void syncWidgetTools();
 
     // DAW attiva: 0 = Unknown. Atomico perche' la scrive il bridge e la

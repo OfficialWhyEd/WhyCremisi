@@ -170,7 +170,20 @@ private:
 
         const auto blocco = DawCaps::promptBlock (DawType::Reaper);
         expect (blocco.contains ("REAPER"));
-        expect (blocco.contains ("music.compose"), "il prompt deve dire cosa NON esiste");
+        expect (blocco.contains ("music.compose"), "il prompt deve dire cosa esiste altrove");
+        // Il catalogo completo e i non disponibili qui.
+        expect (DawCaps::allTools().contains ("music.compose"));
+        expect (DawCaps::allTools().contains ("device.list"));
+        expect (DawCaps::unavailableFor (DawType::Reaper).contains ("music.compose"));
+        expect (! DawCaps::unavailableFor (DawType::Ableton).contains ("music.compose"));
+        expect (DawCaps::unavailableFor (DawType::Ableton).contains ("daw.plugin.setParam"),
+                "i sospesi non sono disponibili da nessuna parte");
+
+        // Il blocco con la lista esplicita di cosa si puo' chiamare ora.
+        juce::StringArray ora { "daw.transport.play", "daw.track.setVolume" };
+        const auto blocco2 = DawCaps::promptBlock (DawType::Reaper, ora);
+        expect (blocco2.contains ("daw.transport.play"));
+        expect (blocco2.contains ("music.compose"), "deve restare la parte 'altrove'");
     }
 
     void testResaEsiti()

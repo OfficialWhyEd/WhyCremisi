@@ -109,29 +109,68 @@ namespace DawCaps
         return out;
     }
 
+    juce::StringArray allTools()
+    {
+        juce::StringArray out;
+        out.addArray (universali());
+        out.addArray (comuni());
+        out.addArray (soloAbleton());
+        out.addArray (markerSoloAbleton());
+        out.addArray (sospesi());
+        return out;
+    }
+
+    juce::StringArray unavailableFor (DawType daw)
+    {
+        juce::StringArray out;
+        for (const auto& t : allTools())
+            if (! supports (t, daw)) out.addIfNotAlreadyThere (t);
+        return out;
+    }
+
     juce::String promptBlock (DawType daw)
     {
+        return promptBlock (daw, toolsFor (daw));
+    }
+
+    // Il blocco che il modello legge. Deve dire TRE cose, e tutte e tre
+    // servono: cosa puo' chiamare ORA, cosa esiste altrove (altrimenti
+    // risponde "non posso" anche a una domanda su un'altra DAW), cosa e'
+    // sospeso. La lista dei tool universali non si ripete: e' gia' nello
+    // schema che il provider gli manda.
+    juce::String promptBlock (DawType daw, const juce::StringArray& chiamabili)
+    {
+        juce::String testo;
+
         if (daw == DawType::Unknown || daw == DawType::Generic)
-            return "DAW collegata: non ancora identificata (nessun feedback OSC ricevuto). "
-                   "Puoi usare i tool daw.* generici; se un comando non produce effetto, "
-                   "dillo invece di ripeterlo.";
+            testo = "DAW collegata: non ancora identificata. Puoi usare i tool daw.* generici; "
+                    "se un comando non produce effetto, dillo invece di ripeterlo.";
+        else
+            testo = "DAW aperta: " + name (daw) + ". Traccia 0-based, volumi in dB; "
+                    "gli indirizzi sono gia' tradotti dall'adattatore.";
 
-        const auto nomeDaw = name (daw);
+        if (! chiamabili.isEmpty())
+            testo << " Strumenti che puoi chiamare ORA: " << chiamabili.joinIntoString (", ") << ".";
 
-        juce::StringArray mancanti;
-        for (const auto& t : soloAbleton())
-            if (! supports (t, daw)) mancanti.addIfNotAlreadyThere (t);
-        for (const auto& t : markerSoloAbleton())
-            if (! supports (t, daw)) mancanti.addIfNotAlreadyThere (t);
+        // Cosa esiste ma non qui: raggruppato per non fare un muro di nomi.
+        juce::StringArray soloLive, sospesiQui;
+        for (const auto& t : unavailableFor (daw))
+        {
+            if (sospesi().contains (t))            sospesiQui.add (t);
+            else                                   soloLive.add (t);
+        }
 
-        juce::String testo = "DAW aperta: " + nomeDaw + ". Usa i tool della DAW che le "
-                             "appartengono; gli indirizzi sono gia' tradotti dall'adattatore. "
-                             "Traccia 0-based, volumi in dB.";
+        if (! soloLive.isEmpty())
+            testo << " Esistono in WhyCremisi ma NON su questa DAW (altrove si': per esempio su "
+                  << "Ableton Live): " << soloLive.joinIntoString (", ")
+                  << ". Qui non puoi chiamarli ne' dire di averli usati; se ti chiedono se "
+                     "sapresti farlo altrove, rispondi secondo questo elenco.";
 
-        if (! mancanti.isEmpty())
-            testo << " Su questa DAW NON esistono: " << mancanti.joinIntoString (", ")
-                  << ". Non chiamarli e non dire di averli usati.";
+        if (! sospesiQui.isEmpty())
+            testo << " Sospesi (in manutenzione, non usarli): "
+                  << sospesiQui.joinIntoString (", ") << ".";
 
+        testo << " Non inventare altri strumenti: se non e' in questo elenco, non esiste.";
         return testo;
     }
 }

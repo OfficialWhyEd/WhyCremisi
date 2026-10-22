@@ -23,9 +23,17 @@ namespace DawCaps
     // Perche' no, in una riga utile al modello.
     juce::String reasonFor (const juce::String& toolName, DawType daw);
 
+    /** Tutti i tool che WY conosce, su qualunque DAW (sospesi inclusi).
+        Serve per dire al modello cosa esiste in generale, non solo qui. */
+    juce::StringArray allTools();
+
+    /** I tool che esistono ma NON sono disponibili su questa DAW. */
+    juce::StringArray unavailableFor (DawType daw);
+
     // Blocco di testo da mettere nel system prompt: quale DAW e' aperta,
-    // cosa puo' usare, cosa non esiste li'.
+    // cosa puo' usare ORA, cosa esiste altrove e cosa e' sospeso.
     juce::String promptBlock (DawType daw);
+    juce::String promptBlock (DawType daw, const juce::StringArray& chiamabili);
 
     // Nome leggibile della DAW (riusa DawDetector).
     juce::String name (DawType daw);

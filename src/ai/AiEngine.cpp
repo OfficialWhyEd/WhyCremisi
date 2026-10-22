@@ -321,6 +321,19 @@ static bool nativeToolsSupported (AiEngine::Provider p)
         && p != AiEngine::Provider::Codex;
 }
 
+juce::StringArray AiEngine::offeredToolNames() const
+{
+    juce::StringArray out;
+    if (! toolRegistry) return out;
+
+    const auto daw = getActiveDaw();
+    for (const auto& t : toolRegistry->getAllTools())
+        if (DawCaps::supports (t.name, daw))
+            out.add (t.name);
+
+    return out;
+}
+
 void AiEngine::syncProviderConfig()
 {
     if (!currentProvider) return;
@@ -621,7 +634,7 @@ juce::String AiEngine::buildSystemPrompt() const
 
     // Il contratto dice le unita': niente piu' "0..1" globale, che era una
     // convenzione di Live e contraddiceva i dB chiesti dai tool.
-    prompt += "\n" + DawCaps::promptBlock (getActiveDaw()) + "\n";
+    prompt += "\n" + DawCaps::promptBlock (getActiveDaw(), offeredToolNames()) + "\n";
     prompt += "\nIMPORTANT: use the ranges declared by each tool: track indices are 0-based, "
               "volumes are in dB (-96..12), pan is -1..1.\n";
     prompt += "Only output valid JSON, no other text outside the JSON block.\n";

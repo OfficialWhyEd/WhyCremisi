@@ -550,3 +550,24 @@ invece di essere promessi e poi fallire.
 Test: la creazione traccia su entrambi gli adattatori (`/action/40001`,
 `/live/song/create_midi_track`, `…audio_track`). Suite: **3435 controlli, 0
 falliti**.
+
+---
+
+# L'agente conosce il catalogo e cosa vale qui
+
+Il system prompt ora contiene un blocco generato (non scritto a mano, cosi'
+non va fuori sincrono col registro):
+
+- **cosa puo' chiamare ORA**, calcolato dal registro filtrato per la DAW attiva;
+- **cosa esiste ma non qui** (es. su Ableton: `music.compose`, `beat.create`,
+  `device.*`, `mix.*`, marker), con l'istruzione di rispondere secondo
+  quell'elenco se gli si chiede di un'altra DAW;
+- **cosa e' sospeso** (`daw.plugin.setParam`, `daw.plugin.bypass`);
+- **"non inventare altri strumenti"**.
+
+Lo schema mandato al provider resta solo quello chiamabile: il modello non
+puo' invocare cio' che non esiste qui. Se ci prova comunque, l'esecuzione
+risponde `Unsupported` con il motivo.
+
+Test: `allTools`/`unavailableFor` per REAPER e Ableton, e il blocco che
+distingue "ora" da "altrove". Suite: **3442 controlli, 0 falliti**.
