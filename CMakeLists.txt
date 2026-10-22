@@ -396,7 +396,7 @@ endif()
 # Contents/Resources/webview-ui come su macOS. Lo Standalone è un exe nudo:
 # lì la dist finisce accanto all'eseguibile. findUIDirectory() cerca entrambe.
 
-if(WIN32)
+if(NOT APPLE)  # Windows e Linux: stessa struttura Contents/Resources/webview-ui
     set(REACT_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/webview-ui/dist")
     set(WIN_ARTEFACTS  "${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/$<CONFIG>")
 
