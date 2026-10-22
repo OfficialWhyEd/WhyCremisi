@@ -246,6 +246,7 @@ if(BUILD_UNIT_TESTS)
             src/account/tests/WhyAccountTest.cpp
             src/update/tests/WhyUpdateTest.cpp
             src/ai/tests/ChainProviderTest.cpp
+            src/ai/tests/ToolCallParsingTest.cpp
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
             src/daw/tests/MackieDawHandlerTest.cpp
@@ -326,6 +327,9 @@ if(BUILD_UNIT_TESTS)
         WHYCREMISI_VERSION="${WHYCREMISI_VERSION_TEXT}"
     WHYCREMISI_UPDATE_PUBKEY="${WHYCREMISI_UPDATE_PUBKEY}"
         JUCE_UNIT_TESTS=1
+        # Il target del plugin riceve NEEDS_WEB_BROWSER; qui va detto a mano,
+        # altrimenti la WebView non esiste e PluginEditor non compila.
+        JUCE_WEB_BROWSER=1
         JUCE_VST3_CAN_REPLACE_VST2=0
         # Il processore vuole i simboli JucePlugin_*: senza, non compila
         # fuori dal target del plugin.
@@ -466,6 +470,13 @@ if(NOT WIN32 AND NOT APPLE)
     
     target_link_libraries(WhyCremisiVSTPlugin PRIVATE ${GTK_LIBRARIES})
     target_link_libraries(WhyCremisiVSTPlugin PRIVATE ${WEBKIT_LIBRARIES})
+
+    # Anche i test istanziano il processore e quindi la WebView: senza gli
+    # stessi header non compilano (gtk/gtk.h non si trova da solo).
+    if(TARGET WhyCremisiTests)
+        target_include_directories(WhyCremisiTests PRIVATE ${GTK_INCLUDE_DIRS} ${WEBKIT_INCLUDE_DIRS})
+        target_link_libraries(WhyCremisiTests PRIVATE ${GTK_LIBRARIES} ${WEBKIT_LIBRARIES})
+    endif()
     
     install(DIRECTORY ${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/Release/VST3/
             DESTINATION ~/.vst3
