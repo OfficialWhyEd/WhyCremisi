@@ -58,7 +58,7 @@ namespace
         void record() override                        { add ("record"); }
         void pause() override                         { add ("pause"); }
         void setTempo (float bpm) override            { add ("setTempo", -1, bpm); }
-        void setVolume (int t, float v) override      { add ("setVolume", t, v); }
+        void setVolumeDb (int t, float v) override    { add ("setVolumeDb", t, v); }
         void setPan (int t, float v) override         { add ("setPan", t, v); }
         void muteTrack (int t, bool m) override       { add ("muteTrack", t, 0.0f, m); }
         void soloTrack (int t, bool s) override       { add ("soloTrack", t, 0.0f, s); }
@@ -68,6 +68,7 @@ namespace
         void nextMarker() override                    { add ("nextMarker"); }
         void selectTrack (int i) override             { add ("selectTrack", i); }
         void setFxParam (int t, int, int, float v) override { add ("setFxParam", t, v); }
+        void setFxBypass (int, int, bool) override {}
         juce::String getName() const override         { return "Recording"; }
     };
 }
@@ -217,18 +218,18 @@ private:
     //==========================================================================
     void testMixerMapping()
     {
-        beginTest ("AI setVolume arriva al gestore con traccia e guadagno del percorso UI");
+        beginTest ("AI setVolume arriva al gestore in dB, traccia 0-based");
         {
             Rig rig; install (rig);
             auto o = runTool (rig, "daw.track.setVolume", { { "track", 3 }, { "volume", -6.0 } });
-            expectSentUnconfirmed (o, "setVolume");
-            expectSingleCall (rig, "setVolume", "setVolume");
+            expectSentUnconfirmed (o, "setVolumeDb");
+            expectSingleCall (rig, "setVolumeDb", "setVolumeDb");
             if (! rig.daw->calls.empty())
             {
                 expectEquals (rig.daw->calls[0].track, 3);
-                // Stessa scala del comando UI {trackId, valueDb}: dB -> guadagno lineare.
-                expectWithinAbsoluteError (rig.daw->calls[0].value,
-                                           juce::Decibels::decibelsToGain (-6.0f), 1.0e-5f);
+                // Contratto: dB, non guadagno lineare. La conversione (Reaper
+                // /volume/db, Live curva del fader) sta nell'adattatore.
+                expectWithinAbsoluteError (rig.daw->calls[0].value, -6.0f, 1.0e-5f);
             }
         }
 
@@ -242,8 +243,7 @@ private:
             {
                 expectEquals (rig.daw->calls[0].track, 0);
                 expectEquals (rig.daw->calls[1].track, 255);
-                expectWithinAbsoluteError (rig.daw->calls[1].value,
-                                           juce::Decibels::decibelsToGain (12.0f), 1.0e-4f);
+                expectWithinAbsoluteError (rig.daw->calls[1].value, 12.0f, 1.0e-4f);
             }
         }
 
@@ -1018,7 +1018,8 @@ for line in sys.stdin:
             expectEquals ((int) rig.daw->calls.size(), 5);
             if (rig.daw->calls.size() == 5)
             {
-                expectWithinAbsoluteError (rig.daw->calls[0].value, 1.0f, 1.0e-6f);
+                // 0 dB arriva all'adattatore come 0 dB (prima diventava 1.0 lineare).
+                expectWithinAbsoluteError (rig.daw->calls[0].value, 0.0f, 1.0e-6f);
                 expectWithinAbsoluteError (rig.daw->calls[1].value, 0.25f, 1.0e-6f);
                 expect (rig.daw->calls[2].flag);
                 expect (! rig.daw->calls[3].flag);

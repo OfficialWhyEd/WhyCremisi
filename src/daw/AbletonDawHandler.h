@@ -11,7 +11,7 @@ public:
     void pause() override;
     void setTempo(float bpm) override;
 
-    void setVolume(int trackId, float value) override;
+    void setVolumeDb(int trackId, float db) override;
     void setPan(int trackId, float value) override;
     void muteTrack(int trackId, bool muted) override;
     void soloTrack(int trackId, bool soloed) override;
@@ -23,6 +23,7 @@ public:
 
     void selectTrack(int index) override;
     void setFxParam(int trackId, int fxId, int paramId, float value) override;
+    void setFxBypass(int trackId, int fxId, bool bypass) override;
 
     /** Crea una clip MIDI vuota nello slot (AbletonOSC /live/clip_slot/create_clip). Lunghezza in quarti. */
     void createMidiClip (int trackId, int slotIndex, float lengthBeats);

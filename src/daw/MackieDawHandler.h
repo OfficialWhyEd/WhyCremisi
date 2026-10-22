@@ -31,7 +31,7 @@ public:
     void pause() override;
     void setTempo (float) override {}   // non esiste in MCU
 
-    void setVolume (int trackId, float value) override;
+    void setVolumeDb (int trackId, float db) override;
     void setPan (int, float) override {}   // il pan assoluto non esiste in MCU
     void muteTrack (int trackId, bool muted) override;
     void soloTrack (int trackId, bool soloed) override;

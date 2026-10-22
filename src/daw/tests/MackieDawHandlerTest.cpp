@@ -41,11 +41,11 @@ public:
             expectEquals ((int) sent.size(), 2);
             expectEquals (sent[0].getNoteNumber(), McuProtocol::notePlay);
             sent.clear();
-            h.setVolume (3, 0.5f);
+            h.setVolumeDb (3, -6.0f);
             expectEquals ((int) sent.size(), 1);
             expectEquals (sent[0].getChannel(), 4);
             sent.clear();
-            h.setVolume (12, 0.5f);   // fuori dal banco: niente, non si finge
+            h.setVolumeDb (12, -6.0f);   // fuori dal banco: niente, non si finge
             h.setPan (0, 0.5f);
             h.setTempo (120.0f);
             expect (sent.empty());

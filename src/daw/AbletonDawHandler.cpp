@@ -137,10 +137,10 @@ void AbletonDawHandler::setTempo(float bpm)
 
 // ── Mixer ──────────────────────────────────────────────────────────
 
-void AbletonDawHandler::setVolume(int trackId, float value)
+void AbletonDawHandler::setVolumeDb(int trackId, float db)
 {
-    // `value` e' il guadagno lineare deciso dal dispatcher.
-    sendMulti ("/live/track/set/volume", { (float) trackId, liveVolumeFromGain (value) }, { true, false });
+    // Il contratto passa i dB: la curva del fader di Live si applica qui.
+    sendMulti ("/live/track/set/volume", { (float) trackId, liveVolumeFromDb (db) }, { true, false });
 }
 
 void AbletonDawHandler::setPan(int trackId, float value)
@@ -183,6 +183,16 @@ void AbletonDawHandler::nextMarker()
 }
 
 // ── Tracce e device ────────────────────────────────────────────────
+
+void AbletonDawHandler::setFxBypass(int trackId, int fxId, bool bypass)
+{
+    // AbletonOSC non ha un comando di bypass: si passa dal parametro 0 del
+    // device, che in Live e' "Device On". Non verificato sul campo: per
+    // questo l'esito di questo comando resta "non confermato".
+    sendMulti ("/live/device/set/parameter/value",
+               { (float) trackId, (float) fxId, 0.0f, bypass ? 0.0f : 1.0f },
+               { true, true, true, false });
+}
 
 void AbletonDawHandler::selectTrack(int index)
 {

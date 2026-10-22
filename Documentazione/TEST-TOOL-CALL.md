@@ -153,8 +153,11 @@ non li espone). Restano sul protocollo testuale JSON.
 
 Questa e' la parte da decidere **prima** di aggiungere altro codice.
 
-Oggi `ToolRegistry::executeTool` (`src/ai/ToolRegistry.cpp:395`) inoltra la
-call all'executor senza controllare niente. L'executor e' una catena di
+Oggi `ToolRegistry::executeTool` (`src/ai/ToolRegistry.cpp`) inoltra la call
+all'executor senza controllare niente. **Attenzione**: i tool `daw.*` validano
+già nel loro ramo (`readInt`/`readNumber` con range, vedi `OscBridge.cpp`); la
+mancanza riguarda gli altri rami (gruppo "sospesi" sotto) e il livello del
+registro. L'executor e' una catena di
 `if/else` sul nome (`src/bridge/OscBridge.cpp:4659`) che legge gli argomenti
 con `value()` o `get<>()`. Le conseguenze, per classe di errore:
 
@@ -302,7 +305,7 @@ Nessuna dipendenza dalla DAW: non c'è niente da astrarre.
 | `daw.plugin.bypass` | `b/track/@/fx/@/bypass` | non esiste un bypass: si passa dal parametro "Device On" | Reaper pieno, Ableton **parziale** |
 | `mix.levels` | feedback su `track/@/volume`, `…/mute` | `/live/track/get/volume` … | Ableton pieno; Reaper **parziale** (solo ciò che la config rimanda) |
 | `mix.snapshot.save` / `recall` | possibile: scrive su `…/volume/db` + mute; **rileggere** è il problema | pieno (get + set) | **parziale**: su Reaper manca la lettura affidabile |
-| `daw.marker.goto` / `daw.marker.set` | la config espone i marker solo in **lettura** (`s/marker/@/name`, `f/marker/@/time`) | AbletonOSC non ha marker | **non disponibile** su entrambi via OSC |
+| `daw.marker.goto` / `daw.marker.set` | solo **lettura** in questa config (`s/marker/@/name`, `f/marker/@/time`): non si creano né si saltano | **sì**, come cue point: `/live/song/cue_point/jump`, `/live/song/set_or_delete_cue` | su Live sì, su REAPER **no** |
 
 ## C — Solo Ableton (7)
 
@@ -315,6 +318,31 @@ Nessuna dipendenza dalla DAW: non c'è niente da astrarre.
 | `device.params` | parametri con nome/valore di Live | parziale: solo se Reaper li manda (`s/fx/@/name`) |
 | `device.setParam` | impostazione + rilettura su Live | coperto da `daw.plugin.setParam` |
 | `device.dictionary` | dizionario dei parametri di Live | solo da feedback, non enumerabile |
+
+## Contratto del risultato (implementato)
+
+`ToolResult` ora porta, oltre a `output`:
+`outcome` (`Done | Unsupported | Rejected | Failed | Unconfirmed`),
+`confirmation` (`NotApplicable | Unconfirmed | Confirmed`), `data`, `warnings`.
+Il testo che il modello legge nasce da **un solo** punto, `renderToolResult`:
+la forma è identica per ogni DAW, cambia solo l'evidenza (confermato o no).
+
+- un comando `daw.*`/`mix.*` che non è stato riletto è **Unconfirmed** per
+  default: mai un "OK" finto;
+- un tool che la DAW non ha → **Unsupported** con il motivo, e non viene
+  eseguito;
+- argomenti non interpretabili → **Rejected**.
+
+## Capacità per DAW (implementato)
+
+`src/daw/DawCapabilities.cpp` tiene tre elenchi: universali (15), comuni (11),
+solo Ableton (7) + marker (2), più i **sospesi** (`daw.plugin.setParam`,
+`daw.plugin.bypass`: l'executor li rifiuta sempre, quindi non si offrono più).
+
+`AiEngine` filtra i tool offerti in base alla DAW attiva e aggiunge al system
+prompt una riga che dice quale DAW è aperta e **cosa non esiste lì**. Così
+l'agente sa, per esempio, che su REAPER `device.*` e `music.compose` non ci
+sono, invece di chiamarli e ricevere "AbletonOSC non risponde".
 
 ## Le tre convenzioni da fissare nel contratto
 

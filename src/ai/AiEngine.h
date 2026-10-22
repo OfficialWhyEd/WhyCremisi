@@ -17,10 +17,12 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "AIProvider.h"
 #include "ToolRegistry.h"
+#include "../daw/DawDetector.h"
 #include <memory>
 #include <vector>
 #include <map>
 #include <mutex>
+#include <atomic>
 
 class AIProvider;
 class ToolRegistry;
@@ -118,6 +120,11 @@ public:
     void addAssistantToolCalls (const juce::String& text,
                                 const std::vector<ToolCall>& calls);
     void addToolResult (const ToolResult& r);
+
+    /** DAW attualmente collegata: decide quali tool vengono offerti al
+        modello e cosa dice il system prompt. */
+    void setActiveDaw (DawType daw) { activeDaw.store ((int) daw); }
+    DawType getActiveDaw() const { return (DawType) activeDaw.load(); }
 
     /** Tool call complete dell'ultimo streaming (vuote se il modello non ne ha chieste). */
     std::vector<AIProvider::ToolCallResult> getStreamToolCalls() const;
@@ -271,6 +278,10 @@ private:
 
     juce::String buildPersonalityPrefix() const;
     void syncWidgetTools();
+
+    // DAW attiva: 0 = Unknown. Atomico perche' la scrive il bridge e la
+    // legge il thread della richiesta AI.
+    std::atomic<int> activeDaw{ (int) DawType::Unknown };
 
     mutable std::mutex engineMutex;
 

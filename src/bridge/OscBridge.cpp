@@ -904,6 +904,10 @@ void OscBridge::ensureDawHandler(DawType type)
     detectedDawType = type;
     dawHandler = nullptr; // reset
 
+    // Il motore AI filtra i tool in base a cosa questa DAW sa fare, e lo
+    // dice nel system prompt.
+    if (aiEngine) aiEngine->setActiveDaw (type);
+
     switch (type)
     {
         case DawType::Reaper:
@@ -1407,10 +1411,14 @@ bool OscBridge::dispatchDawCommandValidated(const nlohmann::json& payload, const
             return false;
         }
         sendViaHandler(
-            [&]() { dawHandler->setVolume(trackId, linear); },
+            // Il contratto passa i dB: l'adattatore sa se mandare dB (Reaper)
+            // o convertirli nella curva del fader (Live).
+            [&]() { dawHandler->setVolumeDb(trackId, db); },
             [&]() {
+                // Nessun adattatore (DAW non ancora identificata): si mandano
+                // entrambi i dialetti, ognuno nella SUA unita'.
                 sendOscToDaw("/live/track/" + juce::String(trackId) + "/set/volume", linear);
-                sendOscToDaw("/track/" + juce::String(trackId) + "/volume", db);
+                sendOscToDaw("/track/" + juce::String(trackId + 1) + "/volume/db", db);
             }
         );
     }
@@ -3700,7 +3708,7 @@ void OscBridge::eseguiToolMix(const ToolCall& call, ToolResult& result)
         return;
     }
     for (const auto& t : volute) {
-        dawHandler->setVolume(t.index, juce::Decibels::decibelsToGain((float) t.volumeDb, -99.0f));
+        dawHandler->setVolumeDb(t.index, (float) t.volumeDb);
         dawHandler->setPan(t.index, (float) t.pan);
         dawHandler->muteTrack(t.index, t.mute);
     }

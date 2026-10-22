@@ -392,6 +392,39 @@ nlohmann::json ToolRegistry::getAnthropicTools() const
     return toolsArray;
 }
 
+// ── Resa dell'esito ─────────────────────────────────────────────
+//
+//  Il testo che il modello legge nasce qui e solo qui. Prima ogni ramo
+//  dell'executor scriveva il suo, e cosi' capitava di leggere "Live non ha
+//  risposto" mentre la DAW aperta era REAPER.
+juce::String renderToolResult (const ToolResult& r)
+{
+    juce::String testo;
+
+    switch (r.outcome)
+    {
+        case ToolOutcome::Done:        testo << "OK: "; break;
+        case ToolOutcome::Unsupported: testo << "NON SUPPORTATO: "; break;
+        case ToolOutcome::Rejected:    testo << "RIFIUTATO: "; break;
+        case ToolOutcome::Failed:      testo << "ERRORE: "; break;
+        case ToolOutcome::Unconfirmed: testo << "INVIATO (non confermato): "; break;
+    }
+
+    testo << r.name << " — " << r.output;
+
+    switch (r.confirmation)
+    {
+        case ToolConfirmation::Confirmed:   testo << " [confermato dalla DAW]"; break;
+        case ToolConfirmation::Unconfirmed: testo << " [la DAW non ha confermato]"; break;
+        case ToolConfirmation::NotApplicable: break;
+    }
+
+    for (const auto& w : r.warnings)
+        testo << " [avviso: " << w << "]";
+
+    return testo;
+}
+
 ToolResult ToolRegistry::executeTool(const ToolCall& call)
 {
     if (executor)

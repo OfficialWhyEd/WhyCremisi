@@ -11,6 +11,7 @@
 */
 
 #include "AiEngine.h"
+#include "../daw/DawCapabilities.h"
 #include "ChainProvider.h"
 #include "AIProvider.h"
 #include "ToolRegistry.h"
@@ -360,7 +361,24 @@ juce::String AiEngine::buildToolsJson() const
     else
         tools = toolRegistry->getOpenAITools();
 
-    return tools.is_null() ? juce::String() : juce::String(tools.dump());
+    if (tools.is_null()) return {};
+
+    // Si offrono solo i tool che questa DAW sa fare. Un tool che risponde
+    // sempre "non disponibile" e' un turno sprecato e un messaggio
+    // fuorviante ("AbletonOSC non risponde" a chi usa REAPER).
+    const auto daw = getActiveDaw();
+    nlohmann::json filtrati = nlohmann::json::array();
+    for (auto& t : tools)
+    {
+        if (! t.is_object() || ! t.contains ("function")) { filtrati.push_back (t); continue; }
+        const auto& f = t["function"];
+        const juce::String nome = (f.contains ("name") && f["name"].is_string())
+                                ? juce::String (f["name"].get<std::string>()) : juce::String();
+        if (nome.isEmpty() || DawCaps::supports (nome, daw))
+            filtrati.push_back (t);
+    }
+
+    return filtrati.empty() ? juce::String() : juce::String (filtrati.dump());
 }
 
 // ── Context Management ─────────────────────────────────────
@@ -601,7 +619,11 @@ juce::String AiEngine::buildSystemPrompt() const
     if (personalityContext.isNotEmpty())
         prompt += "\n=== PERSONALITY (session memory) ===\n" + personalityContext + "\n";
 
-    prompt += "\nIMPORTANT: values must be in 0.0-1.0 normalized range.\n";
+    // Il contratto dice le unita': niente piu' "0..1" globale, che era una
+    // convenzione di Live e contraddiceva i dB chiesti dai tool.
+    prompt += "\n" + DawCaps::promptBlock (getActiveDaw()) + "\n";
+    prompt += "\nIMPORTANT: use the ranges declared by each tool: track indices are 0-based, "
+              "volumes are in dB (-96..12), pan is -1..1.\n";
     prompt += "Only output valid JSON, no other text outside the JSON block.\n";
 
     if (toolsEnabled && nativeToolsSupported (config.provider)) {
@@ -795,6 +817,27 @@ juce::String AiEngine::resolveToolCalls (const juce::String& userPrompt,
 
         for (const auto& call : daEseguire)
         {
+            const auto daw = getActiveDaw();
+
+            // Tool che questa DAW non ha: non si esegue e si dice il perche'.
+            // Prima veniva eseguito comunque e l'errore parlava di un'altra DAW.
+            if (! DawCaps::supports (call.name, daw))
+            {
+                ToolResult r;
+                r.toolCallId = call.id;
+                r.name = call.name;
+                r.success = false;
+                r.outcome = ToolOutcome::Unsupported;
+                r.output = DawCaps::reasonFor (call.name, daw);
+                esiti.push_back (r);
+
+                const juce::String riga = renderToolResult (r);
+                risultati += riga + "\n";
+                log += riga + "\n";
+                whycremisi::log ("ai", "strumento " + call.name + " non disponibile su " + DawCaps::name (daw));
+                continue;
+            }
+
             // Argomenti non interpretabili: non si esegue alla cieca.
             if (call.arguments.is_object() && call.arguments.contains ("__raw_arguments"))
             {
@@ -802,21 +845,33 @@ juce::String AiEngine::resolveToolCalls (const juce::String& userPrompt,
                 r.toolCallId = call.id;
                 r.name = call.name;
                 r.success = false;
+                r.outcome = ToolOutcome::Rejected;
                 r.output = "argomenti non validi: "
                          + juce::String (call.arguments["__raw_arguments"].get<std::string>());
                 esiti.push_back (r);
-                risultati += call.name + " -> ERRORE: " + r.output + "\n";
-                log += call.name + " -> ERRORE: " + r.output + "\n";
+
+                const juce::String riga = renderToolResult (r);
+                risultati += riga + "\n";
+                log += riga + "\n";
                 whycremisi::log ("ai", "strumento " + call.name + " argomenti non validi");
                 continue;
             }
 
             auto res = toolRegistry->executeTool (call);
             res.toolCallId = call.id;
+            if (res.outcome == ToolOutcome::Done && ! res.success)
+                res.outcome = ToolOutcome::Failed;
+
+            // Default onesto: un comando che tocca la DAW e non e' stato
+            // riletto NON e' confermato. L'executor puo' alzarlo a Confirmed
+            // quando ha davvero riletto il valore.
+            if (res.confirmation == ToolConfirmation::NotApplicable
+                && (call.name.startsWith ("daw.") || call.name.startsWith ("mix.")))
+                res.confirmation = ToolConfirmation::Unconfirmed;
+
             esiti.push_back (res);
 
-            const juce::String riga = call.name + " -> " + (res.success ? "OK: " : "ERRORE: ")
-                                    + res.output.substring (0, 600);
+            const juce::String riga = renderToolResult (res);
             whycremisi::log ("ai", "strumento " + call.name + " "
                                   + juce::String (call.arguments.dump()) + " -> " + riga.substring (0, 240));
             risultati += riga + "\n";

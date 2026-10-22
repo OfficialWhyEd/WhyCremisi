@@ -38,10 +38,12 @@ void MackieDawHandler::pause()
     if (playLed != 0) press (McuProtocol::noteStop);
 }
 
-void MackieDawHandler::setVolume (int trackId, float value)
+void MackieDawHandler::setVolumeDb (int trackId, float db)
 {
     if (! inRange (trackId) || ! send) return;
-    send (McuProtocol::fader (trackId, value));
+    // MCU lavora in guadagno lineare: la conversione sta qui, il contratto
+    // resta in dB come per tutti gli altri adattatori.
+    send (McuProtocol::fader (trackId, juce::Decibels::decibelsToGain (db, -99.0f)));
 }
 
 void MackieDawHandler::toggleTo (int strip, bool wanted, std::array<int, 8>& stato, int (*nota) (int))

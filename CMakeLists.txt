@@ -169,6 +169,7 @@ target_sources(WhyCremisiVSTPlugin
         src/daw/MackieDawHandler.cpp
         src/daw/AbletonDawHandler.cpp
         src/daw/DawDetector.cpp
+        src/daw/DawCapabilities.cpp
 )
 
 # ==============================================================================
@@ -249,6 +250,7 @@ if(BUILD_UNIT_TESTS)
             src/ai/tests/ToolCallParsingTest.cpp
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
+            src/daw/tests/DawAdapterWireTest.cpp
             src/daw/tests/MackieDawHandlerTest.cpp
             src/daw/tests/LiveDevicesTest.cpp
             src/daw/tests/AbletonOscInstallerTest.cpp
@@ -308,6 +310,7 @@ if(BUILD_UNIT_TESTS)
             src/daw/MackieDawHandler.cpp
             src/daw/AbletonDawHandler.cpp
             src/daw/DawDetector.cpp
+            src/daw/DawCapabilities.cpp
     )
 
     target_include_directories(WhyCremisiTests PRIVATE

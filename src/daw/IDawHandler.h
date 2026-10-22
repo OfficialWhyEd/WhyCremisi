@@ -17,7 +17,13 @@ public:
     virtual void setTempo(float bpm) = 0;
 
     // Mixer
-    virtual void setVolume(int trackId, float value) = 0;
+    //
+    //  Unità e indici sono FISSI nel contratto: trackId 0-based, volume in
+    //  dB. Ogni adattatore converte (Reaper: +1 sull'indice e /volume/db;
+    //  Live: la sua curva del fader). Prima il valore era "lineare" e la
+    //  scala cambiava a seconda del percorso: due semantica per lo stesso
+    //  comando.
+    virtual void setVolumeDb(int trackId, float db) = 0;
     virtual void setPan(int trackId, float value) = 0;
     virtual void muteTrack(int trackId, bool muted) = 0;
     virtual void soloTrack(int trackId, bool soloed) = 0;
@@ -31,6 +37,10 @@ public:
     // Track / FX
     virtual void selectTrack(int index) = 0;
     virtual void setFxParam(int trackId, int fxId, int paramId, float value) = 0;
+
+    /** Bypass di un FX: indice 0-based nel contratto. Chi non ha un comando
+        diretto lo implementa come puo' (Live: parametro "Device On"). */
+    virtual void setFxBypass(int trackId, int fxId, bool bypass) { juce::ignoreUnused(trackId, fxId, bypass); }
 
     // Query
     virtual juce::String getName() const = 0;
