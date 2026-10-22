@@ -300,15 +300,37 @@ std::unique_ptr<AIProvider> AiEngine::createProvider(Provider type, const juce::
 void AiEngine::ensureProvider()
 {
     if (!configured) return;
-    currentProvider = createProvider(config.provider);
-    if (currentProvider && ! config.riserve.empty())
-    {
-        std::vector<std::shared_ptr<AIProvider>> strade { std::shared_ptr<AIProvider> (std::move (currentProvider)) };
-        for (const auto& r : config.riserve)
-            if (auto p = createProvider (r.provider, r.apiKey, r.model, r.baseUrl))
+    auto principale = createProvider(config.provider);
+
+    std::vector<std::shared_ptr<AIProvider>> strade;
+    if (principale)
+        strade.push_back (std::shared_ptr<AIProvider> (std::move (principale)));
+
+    // Gemini: la quota e' per modello. Se uno la esaurisce (429) gli altri
+    // dello stesso account possono ancora rispondere, con la stessa chiave.
+    // Si aggiungono i modelli di riserva dichiarati da GeminiProvider, senza
+    // doppioni, spenti o non chat.
+    if (config.provider == Provider::Gemini && config.apiKey.isNotEmpty())
+        for (const auto& modello : GeminiProvider::fallbackModels())
+        {
+            if (modello == config.model) continue;
+            if (GeminiProvider::isRetiredModel (modello)
+                || GeminiProvider::isNonChatModel (modello)) continue;
+            if (auto p = createProvider (Provider::Gemini, config.apiKey, modello, config.baseUrl))
                 strade.push_back (std::shared_ptr<AIProvider> (std::move (p)));
+        }
+
+    for (const auto& r : config.riserve)
+        if (auto p = createProvider (r.provider, r.apiKey, r.model, r.baseUrl))
+            strade.push_back (std::shared_ptr<AIProvider> (std::move (p)));
+
+    if (strade.size() > 1)
         currentProvider = std::make_shared<ChainProvider> (std::move (strade));
-    }
+    else if (! strade.empty())
+        currentProvider = strade.front();
+    else
+        currentProvider = nullptr;
+
     if (currentProvider)
         syncProviderConfig();
 }
@@ -322,6 +344,18 @@ static bool nativeToolsSupported (AiEngine::Provider p)
     // Ollama e Gemini ora usano le tool call native.
     return p != AiEngine::Provider::ClaudeCode
         && p != AiEngine::Provider::Codex;
+}
+
+// Su Chat Completions GPT-6.1 Sol non accetta gli strumenti (pagina del
+// modello OpenAI, 22/10/2026): riceve il protocollo testuale come Claude Code.
+static bool modelUsesTextTools (AiEngine::Provider p, const juce::String& model)
+{
+    return p == AiEngine::Provider::OpenAI && model.startsWith ("gpt-6.1-sol");
+}
+
+static bool usesNativeTools (AiEngine::Provider p, const juce::String& model)
+{
+    return nativeToolsSupported (p) && ! modelUsesTextTools (p, model);
 }
 
 juce::StringArray AiEngine::offeredToolNames() const
@@ -340,7 +374,7 @@ juce::StringArray AiEngine::offeredToolNames() const
 void AiEngine::syncProviderConfig()
 {
     if (!currentProvider) return;
-    if (toolsEnabled && nativeToolsSupported (config.provider))
+    if (toolsEnabled && usesNativeTools (config.provider, config.model))
         currentProvider->setToolsJson(buildToolsJson());
     else
         currentProvider->setToolsJson({});
@@ -606,7 +640,7 @@ juce::String AiEngine::buildSystemPrompt() const
         prompt += "\nTransport:\n" + lastTransportData + "\n";
     if (agentWorkspaceContext.isNotEmpty())
         prompt += "\n=== AGENT WORKSPACE ===\n" + agentWorkspaceContext + "\n";
-    if (toolsEnabled && toolRegistry && ! nativeToolsSupported (config.provider))
+    if (toolsEnabled && toolRegistry && ! usesNativeTools (config.provider, config.model))
     {
         // Chi non ha le funzioni native le chiede dentro il JSON, nel campo "calls".
         prompt += "\n=== TOOLS ===\n";

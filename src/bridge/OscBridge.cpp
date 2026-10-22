@@ -2611,13 +2611,18 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                         break;
 
                     case AiEngine::Provider::OpenAI:
-                        if (cfg.model.isEmpty() || ! cfg.model.startsWith ("gpt"))
-                            cfg.model = "gpt-4o";
+                        // La famiglia GPT-4 viene spenta il 14/01/2027: chi
+                        // l'aveva salvata riparte da GPT-6 Astra.
+                        if (cfg.model.isEmpty()
+                            || cfg.model.startsWith ("gpt-4")
+                            || cfg.model.startsWith ("gpt-3"))
+                            cfg.model = "gpt-6-astra";
                         break;
 
                     case AiEngine::Provider::Groq:
-                        if (cfg.model.isEmpty())
-                            cfg.model = "llama-3.3-70b-versatile";
+                        // L'id vero di GPT-OSS 120B ha il prefisso "openai/".
+                        if (cfg.model.isEmpty() || cfg.model == "gpt-oss-120b")
+                            cfg.model = "openai/gpt-oss-120b";
                         break;
 
                     case AiEngine::Provider::ClaudeCode:

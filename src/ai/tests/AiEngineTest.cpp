@@ -1,4 +1,4 @@
-/*
+﻿/*
   ==============================================================================
     AiEngineTest.cpp
 
@@ -7,7 +7,7 @@
     Il piu' grave riguardava il nome del provider. Il salvataggio scriveva
     "Ollama" con la maiuscola, il ripristino confrontava con "ollama"
     minuscolo, nessun confronto andava a segno e a ogni riavvio il provider
-    tornava a quello predefinito — con addosso la chiave di un fornitore
+    tornava a quello predefinito â€” con addosso la chiave di un fornitore
     diverso. Le richieste partivano verso un servizio spento, lo streaming
     non riportava alcun errore, e chi usava il plugin vedeva soltanto una
     risposta che non arrivava mai.
@@ -221,6 +221,44 @@ public:
             expect (! GeminiProvider::isNonChatModel (GeminiProvider::defaultModel()));
         }
 
+        beginTest ("OpenAI e Groq: elenchi aggiornati, senza modelli morti");
+        {
+            AIProvider::Config cfg;
+            cfg.apiKey = "prova";
+
+            OpenAIProvider openai (cfg);
+            const auto modelli = openai.getAvailableModels();
+            expect (modelli.size() == 3, modelli.joinIntoString (", "));
+            expect (modelli.contains ("gpt-6-astra")
+                    && modelli.contains ("gpt-6.1-sol")
+                    && modelli.contains ("gpt-6-luna"), modelli.joinIntoString (", "));
+            expect (! modelli.contains ("gpt-4o"), "GPT-4o esce il 14/01/2027");
+
+            GroqProvider groq (cfg);
+            const auto groqModelli = groq.getAvailableModels();
+            expect (groqModelli.contains ("openai/gpt-oss-120b"), groqModelli.joinIntoString (", "));
+            expect (groqModelli.contains ("llama-3.3-70b-versatile"), groqModelli.joinIntoString (", "));
+            expect (! groqModelli.contains ("gpt-6-astra"), "Groq non deve mostrare i modelli OpenAI");
+        }
+
+        beginTest ("GPT-6.1 Sol riceve il protocollo testuale, Astra le tool call native");
+        {
+            AiEngine motore;
+            AiEngine::Config cfg;
+            cfg.provider = Provider::OpenAI;
+            cfg.apiKey = "prova";
+            cfg.model = "gpt-6.1-sol";
+            motore.configure (cfg);
+            motore.setToolsEnabled (true);
+            expect (motore.buildSystemPrompt().contains ("=== TOOLS ==="),
+                    "Sol non ha tool call su Chat Completions");
+
+            cfg.model = "gpt-6-astra";
+            motore.configure (cfg);
+            expect (! motore.buildSystemPrompt().contains ("=== TOOLS ==="),
+                    "Astra usa le tool call native");
+        }
+
         beginTest ("OpenCode: DeepSeek gratuito per primo, solo id chat");
         {
             const auto modelli = OpenCodeProvider::freeModels();
@@ -332,7 +370,48 @@ public:
             motore.configure (cfg);
             expect (motore.getProviderName().startsWith ("Catena ("), motore.getProviderName());
         }
+
+        beginTest ("Gemini: i modelli di riserva entrano nella catena, senza doppioni");
+        {
+            AiEngine motore;
+            AiEngine::Config cfg;
+            cfg.provider = Provider::Gemini;
+            cfg.apiKey = "chiave-finta";
+            cfg.model = GeminiProvider::defaultModel();
+            motore.configure (cfg);
+
+            const auto nome = motore.getProviderName();
+            expect (nome.startsWith ("Catena ("), nome);
+            expect (nome.contains ("Google Gemini > Google Gemini"), nome);
+            expect (juce::StringArray::fromTokens (nome, ">", "").size() == GeminiProvider::fallbackModels().size(),
+                    "una strada per modello, senza doppioni: " + nome);
+        }
+
+        beginTest ("Gemini senza chiave: nessuna catena di modelli inutile");
+        {
+            AiEngine motore;
+            AiEngine::Config cfg;
+            cfg.provider = Provider::Gemini;
+            cfg.model = GeminiProvider::defaultModel();
+            motore.configure (cfg);
+            expect (motore.getProviderName() == "Google Gemini", motore.getProviderName());
+        }
+
+        beginTest ("Gemini con un modello fuori elenco: il suo resta il primo");
+        {
+            AiEngine motore;
+            AiEngine::Config cfg;
+            cfg.provider = Provider::Gemini;
+            cfg.apiKey = "chiave-finta";
+            cfg.model = "gemini-mio-modello";
+            motore.configure (cfg);
+
+            const auto nome = motore.getProviderName();
+            expect (juce::StringArray::fromTokens (nome, ">", "").size() == GeminiProvider::fallbackModels().size() + 1,
+                    "il modello scelto piu' tutte le riserve: " + nome);
+        }
     }
 };
 
 static AiEngineTest aiEngineTest;
+

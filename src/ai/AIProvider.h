@@ -525,6 +525,7 @@ class GroqProvider : public OpenAIProvider
 public:
     using OpenAIProvider::OpenAIProvider;
     juce::String getName() const override { return "Groq"; }
+    juce::StringArray getAvailableModels() override;
 private:
     juce::String getApiUrl() const override { return "https://api.groq.com/openai/v1/chat/completions"; }
 };

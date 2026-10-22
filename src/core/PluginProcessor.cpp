@@ -919,13 +919,15 @@ juce::String WhyCremisiProcessor::getAiModel() const
     int idx = static_cast<int>(aiModelIndex->load());
     
     juce::StringArray ollamaModels{"llama3.2", "llama3.1:8b", "mistral", "codellama"};
-    juce::StringArray openaiModels{"gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"};
+    juce::StringArray openaiModels{"gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"};
     juce::StringArray geminiModels{"gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash-lite"};
+    juce::StringArray groqModels{"openai/gpt-oss-120b", "llama-3.3-70b-versatile"};
     
     auto provider = getAiProvider();
     if (provider == "Ollama")    return ollamaModels[idx % ollamaModels.size()];
     if (provider == "OpenAI")   return openaiModels[idx % openaiModels.size()];
     if (provider == "Gemini")   return geminiModels[idx % geminiModels.size()];
+    if (provider == "Groq")     return groqModels[idx % groqModels.size()];
     
     return "llama3.2";
 }

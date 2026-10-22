@@ -390,7 +390,13 @@ AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, 
     if (config.toolsJson.isNotEmpty()) {
         auto tools = parseJsonSafe(config.toolsJson);
         if (tools.is_array() && !tools.empty())
+        {
             body["tools"] = tools;
+            // Luna accetta le funzioni su Chat Completions solo con
+            // ragionamento spento (pagina del modello, 22/10/2026).
+            if (config.model.startsWith ("gpt-6-luna"))
+                body["reasoning_effort"] = "none";
+        }
     }
 
     juce::String authHeader;
@@ -476,7 +482,12 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
     if (config.toolsJson.isNotEmpty()) {
         auto tools = parseJsonSafe(config.toolsJson);
         if (tools.is_array() && !tools.empty())
+        {
             body["tools"] = tools;
+            // Vedi sendPrompt: Luna vuole reasoning_effort none con le funzioni.
+            if (config.model.startsWith ("gpt-6-luna"))
+                body["reasoning_effort"] = "none";
+        }
     }
 
     juce::String authHeader = "Content-Type: application/json\r\n";
@@ -598,7 +609,19 @@ bool OpenAIProvider::testConnection()
 
 juce::StringArray OpenAIProvider::getAvailableModels()
 {
-    return {"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"};
+    // Famiglia GPT-6 (pagina dei modelli OpenAI, 22/10/2026). La vecchia
+    // famiglia GPT-4 viene spenta il 14/01/2027: non si offre piu'.
+    // Chat Completions: Astra e Luna accettano gli strumenti, Sol no (per
+    // quello il motore passa al protocollo testuale).
+    return {"gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"};
+}
+
+juce::StringArray GroqProvider::getAvailableModels()
+{
+    // Elenco della pagina dei modelli Groq, 22/10/2026. Il primo e' quello
+    // in evidenza e con le funzioni; l'id vero ha il prefisso "openai/".
+    // Llama 3.3 70B resta per chi ha accesso Enterprise.
+    return {"openai/gpt-oss-120b", "llama-3.3-70b-versatile"};
 }
 
 // ═══════════════════════════════════════════════════════════════════
