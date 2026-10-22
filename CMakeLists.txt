@@ -150,6 +150,8 @@ target_sources(WhyCremisiVSTPlugin
         third_party/libebur128/ebur128.c
         src/dsp/DSPEngine.cpp
         src/daw/ReaperDawHandler.cpp
+        src/daw/McuProtocol.cpp
+        src/daw/MackieDawHandler.cpp
         src/daw/AbletonDawHandler.cpp
         src/daw/DawDetector.cpp
 )
@@ -222,6 +224,7 @@ if(BUILD_UNIT_TESTS)
             src/ai/tests/ChainProviderTest.cpp
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
+            src/daw/tests/MackieDawHandlerTest.cpp
             src/daw/tests/LiveDevicesTest.cpp
             src/daw/tests/AbletonOscInstallerTest.cpp
             src/music/tests/NoteComposerTest.cpp
@@ -272,6 +275,8 @@ if(BUILD_UNIT_TESTS)
             third_party/libebur128/ebur128.c
             src/dsp/DSPEngine.cpp
             src/daw/ReaperDawHandler.cpp
+            src/daw/McuProtocol.cpp
+            src/daw/MackieDawHandler.cpp
             src/daw/AbletonDawHandler.cpp
             src/daw/DawDetector.cpp
     )
