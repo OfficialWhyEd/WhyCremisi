@@ -463,7 +463,7 @@ bool OpenRouterProvider::testConnection()
 // ═══════════════════════════════════════════════════════════════════
 
 // Indirizzo normalizzato: toglie lo slash finale, e accetta sia la radice
-// (http://127.0.0.1:9931) sia un indirizzo gia' completo incollato per sbaglio.
+// (http://127.0.0.1:8080) sia un indirizzo gia' completo incollato per sbaglio.
 static juce::String llamaBase (const juce::String& configurato)
 {
     auto base = configurato.isNotEmpty() ? configurato.trim() : LlamaCppProvider::defaultBaseUrl();

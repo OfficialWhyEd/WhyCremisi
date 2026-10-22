@@ -74,7 +74,7 @@ WhyCremisiProcessor::WhyCremisiProcessor()
         
         // WebSocket Port (for communication with React UI)
         params.push_back(std::make_unique<juce::AudioParameterInt>(
-            "wsPort", "WebSocket Port", 1024, 65535, 8080));
+            "wsPort", "WebSocket Port", 1024, 65535, 17373));
         
         return { params.begin(), params.end() };
     }())
@@ -873,7 +873,7 @@ void WhyCremisiProcessor::updateAiEngineConfig()
         default: config.provider = AiEngine::Provider::Ollama; break;
     }
     
-    // llama-server ha una porta sua (9931) e un modello che si chiama come il
+    // llama-server ha una porta sua (8080) e un modello che si chiama come il
     // file .gguf caricato: i default di Ollama qui non valgono.
     if (config.provider == AiEngine::Provider::LlamaCpp)
     {

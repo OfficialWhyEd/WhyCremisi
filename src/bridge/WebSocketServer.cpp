@@ -76,7 +76,8 @@ bool WebSocketServer::start()
             continue;
 
         serverSocket = std::make_unique<juce::StreamingSocket>();
-        if (serverSocket->createListener (candidate))
+        // Solo loopback: il bridge e' locale alla DAW e non ha autenticazione.
+        if (serverSocket->createListener (candidate, "127.0.0.1"))
         {
             port = candidate;
             if (candidate != preferredPort)

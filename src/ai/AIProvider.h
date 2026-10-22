@@ -156,8 +156,8 @@ public:
     bool testConnection() override;
     juce::StringArray getAvailableModels() override;
 
-    // llama-server parte sulla 9931, non sulla 11434 di Ollama.
-    static juce::String defaultBaseUrl() { return "http://127.0.0.1:9931"; }
+    // llama-server parte sulla 8080, non sulla 11434 di Ollama.
+    static juce::String defaultBaseUrl() { return "http://127.0.0.1:8080"; }
 
     bool requiresApiKey() const override { return false; }
 

@@ -2460,7 +2460,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                     case AiEngine::Provider::LlamaCpp:
                         // Nessuna chiave: llama-server risponde a chiunque sia
                         // su localhost. L'indirizzo si puo' cambiare dalla UI
-                        // (ai.llamaUrl); la 9931 e' la porta di default di
+                        // (ai.llamaUrl); la 8080 e' la porta di default di
                         // llama-server, non quella di Ollama.
                         if (cfg.baseUrl.isEmpty() || cfg.baseUrl.contains (":11434"))
                             cfg.baseUrl = LlamaCppProvider::defaultBaseUrl();
@@ -3065,7 +3065,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
     {
         // Indirizzo del server llama.cpp. Non cambia il fornitore: quello lo
         // sceglie gia' ai.provider. La porta di default di llama-server e' la
-        // 9931, non la 11434 di Ollama.
+        // 8080, non la 11434 di Ollama.
         if (!payload.contains("value") || !payload["value"].is_string()) return;
         std::string url = payload["value"].get<std::string>();
         log("[CONFIG] llama.cpp URL set to: " + juce::String(url.data()));

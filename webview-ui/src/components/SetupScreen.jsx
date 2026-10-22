@@ -115,9 +115,9 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const [orInCorso, setOrInCorso] = useState(false)
   const needsApiKey = provider !== 'ollama' && provider !== 'llamacpp' && !usingSubscription && !(provider === 'openrouter' && orCollegato)
 
-  // Indirizzo del server llama.cpp. La 9931 e' la porta di default di
+  // Indirizzo del server llama.cpp. La 8080 e' la porta di default di
   // llama-server; 11434 sarebbe quella di Ollama, che parla un'altra API.
-  const [llamaUrl, setLlamaUrl] = useState('http://127.0.0.1:9931')
+  const [llamaUrl, setLlamaUrl] = useState('http://127.0.0.1:8080')
 
   useEffect(() => {
     return () => {
@@ -614,7 +614,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                     <input
                       value={llamaUrl}
                       onChange={(e) => setLlamaUrl(e.target.value)}
-                      placeholder="http://127.0.0.1:9931"
+                      placeholder="http://127.0.0.1:8080"
                       title={t.llamaUrlHint}
                       className="w-full px-2 py-1.5 text-[11px] font-mono bg-[#0d0d0d] text-white border border-[#1a1a1a] focus:border-[#DC143C] focus:outline-none transition-colors"
                     />

@@ -2,7 +2,7 @@
 """
 WhyCremisi VST — Mock WebSocket Server (protocol-json-v1)
 
-Simulates the C++ OscBridge server on ws://localhost:8080
+Simulates the C++ OscBridge server on ws://localhost:17373
 Use for testing the React UI without building the plugin.
 
 Protocol: JSON text frames per protocol-json-v1.md
@@ -94,7 +94,7 @@ async def handle_message(ws, raw: str):
         await ws.send(make_msg("plugin.init", {
             "version": "1.0.0-mock",
             "oscPort": 9000,
-            "wsPort": 8080,
+            "wsPort": 17373,
             "capabilities": ["widgets", "ai", "osc", "daw"]
         }))
         # Send current transport state
@@ -304,12 +304,12 @@ async def main():
     print("=" * 62)
     print("  WhyCremisi VST — Mock WebSocket Server (protocol-json-v1)")
     print("=" * 62)
-    print(f"  WebSocket : ws://localhost:8080")
+    print(f"  WebSocket : ws://localhost:17373")
     print(f"  Protocol  : protocol-json-v1")
     print(f"  Press Ctrl+C to stop")
     print("=" * 62)
 
-    async with websockets.serve(handle_client, "localhost", 8080):
+    async with websockets.serve(handle_client, "localhost", 17373):
         await asyncio.gather(
             simulate_transport(),
             simulate_meters(),

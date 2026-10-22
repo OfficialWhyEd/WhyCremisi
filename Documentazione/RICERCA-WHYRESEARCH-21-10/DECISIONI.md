@@ -23,7 +23,7 @@ L'utente sceglie solo account/abbonamento e modello.
 - ChatGPT col programma Codex: fatto, ma la ricerca dice che e' pensato per Codex CLI e partner. Non salviamo token. Zona grigia da tenere d'occhio.
 - LOGIN CLAUDE con `claude -p`: i termini Anthropic limitano l'abbonamento a Claude Code e app native. ZONA GRIGIA. Decisione tecnica: resta come opzione esplicita, spenta di default, con avviso chiaro; la via piena e' la API key dell'utente. DECISIONE FINALE A WHYED + parere legale.
 - Race Groq+Gemini: codice nuovo (~40 righe), non esiste in nessun repo. Riuso decisore.mjs di System One come router.
-- Locale: llama.cpp server (porta 9931) / Ollama, 4-8B quantizzati. RAM da misurare, stop sotto 3 GB liberi.
+- Locale: llama.cpp server (porta 8080) / Ollama, 4-8B quantizzati. RAM da misurare, stop sotto 3 GB liberi.
 - Senza censura (heretic): AGPL non verificata, derivato eredita licenza del base. Non distribuire, solo uso locale suo.
 
 ## 3. Audio e analisi

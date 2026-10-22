@@ -193,7 +193,7 @@ WhyCremisi/
   │   React UI        │
   │   (WebView)       │
   └────────┬──────────┘
-           │ WebSocket JSON (ws://localhost:8080)
+           │ WebSocket JSON (ws://localhost:17373)
            ▼
   ┌───────────────────┐      OSC/UDP      ┌──────────────────┐
   │  C++ Bridge       │◄────────────────►│   DAW Host        │
@@ -252,7 +252,7 @@ WhyCremisi/
 | Components | PascalCase | `function EqBox()` |
 | Functions | camelCase | `const handleStream = ()` |
 | Variables | camelCase | `const wsClient` |
-| Constants | UPPER_SNAKE | `const WS_PORT = 8080` |
+| Constants | UPPER_SNAKE | `const WS_PORT = 17373` |
 | Component files | PascalCase | `BotFace.jsx` |
 | Utility files | camelCase | `whycremisi-bridge.js` |
 | Indentation | 2 spaces (no tab) | — |

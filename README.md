@@ -299,7 +299,7 @@ WhyCremisi doesn't need to know what a plugin is. VST3 exposes every parameter a
                       │
         ┌─────────────┴──────────────┐
         │                            │
-   OSC UDP :9000               WebSocket :8080
+   OSC UDP :9000               WebSocket :17373
    (DAW → plugin)         (plugin ↔ React UI)
         │                            │
    OSC UDP :9001            WhyCremisiBridge.js
@@ -535,7 +535,7 @@ Full instructions and troubleshooting: [`Documentazione/BUILD-GUIDE.md`](Documen
 
 The AI provider and its API key are set from the plugin's own UI — there is no config file to edit by hand.
 
-Load WhyCremisi on the **master channel** in your DAW. Open the plugin UI. The bridge starts automatically — OSC on `:9000`, WebSocket on `:8080`, React connects and sends `plugin.init`.
+Load WhyCremisi on the **master channel** in your DAW. Open the plugin UI. The bridge starts automatically — OSC on `:9000`, WebSocket on `:17373`, React connects and sends `plugin.init`.
 
 For **offline use**: install [Ollama](https://ollama.ai), run `ollama pull llama3.2`. No API key needed.
 
@@ -559,7 +559,7 @@ WhyCremisi/
 │   └── bridge/
 │       ├── OscBridge.cpp          # 33ms timer, widget broadcasts, message dispatch
 │       ├── OscHandler.cpp         # UDP OSC receiver (:9000 in, :9001 out)
-│       └── WebSocketServer.cpp    # TCP WebSocket server (:8080)
+│       └── WebSocketServer.cpp    # TCP WebSocket server (:17373)
 ├── webview-ui/                    # React app (UI, BotFace, panels)
 │   └── src/
 │       ├── whycremisi-bridge.js   # WebSocket singleton + useWhyCremisi() hook

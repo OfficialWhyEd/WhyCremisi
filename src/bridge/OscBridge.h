@@ -52,7 +52,7 @@ class OscBridge : private juce::Timer
 {
 public:
     //==============================================================================
-    OscBridge(int oscReceivePort = 9000, int wsPort = 8080);
+    OscBridge(int oscReceivePort = 9000, int wsPort = 17373);
     ~OscBridge();
 
     //==============================================================================

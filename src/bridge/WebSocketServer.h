@@ -6,7 +6,7 @@
   WebSocket Server for React UI Communication
 
   Minimal WebSocket server that runs inside the VST plugin process.
-  Listens on a configurable port (default 8080) and accepts connections
+  Listens on a configurable port (default 17373) and accepts connections
   from the React UI running in a browser.
 
   Protocol: RFC 6455 (WebSocket) with JSON text frames.
@@ -35,7 +35,7 @@ public:
     using ConnectionCallback = std::function<void(int clientId, bool connected)>;
 
     //==============================================================================
-    WebSocketServer(int port = 8080);
+    WebSocketServer(int port = 17373);
     ~WebSocketServer();
 
     //==============================================================================

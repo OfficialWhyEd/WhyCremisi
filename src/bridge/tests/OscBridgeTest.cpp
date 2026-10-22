@@ -82,7 +82,7 @@ public:
     {
         beginTest ("Construction and destruction");
         {
-            OscBridge bridge (9000, 8080);
+            OscBridge bridge (9000, 17373);
         }
 
         beginTest ("Port getters");
@@ -94,7 +94,7 @@ public:
 
         beginTest ("Initial state");
         {
-            OscBridge bridge (9000, 8080);
+            OscBridge bridge (9000, 17373);
             expect (! bridge.isRunning(), "Bridge should not be running initially");
         }
 
@@ -118,7 +118,7 @@ private:
     //==========================================================================
     struct Rig
     {
-        OscBridge bridge { 9000, 8080 };
+        OscBridge bridge { 9000, 17373 };
         RecordingDawHandler* daw = nullptr;
     };
 
@@ -936,7 +936,7 @@ for line in sys.stdin:
 
         beginTest ("Risposte registrate: chiave per traccia, seq crescente, solo /get/");
         {
-            OscBridge bridge (9000, 8080);
+            OscBridge bridge (9000, 17373);
             bridge.registraRispostaDaw ("/live/track/get/volume", { 3.0f, 0.5f });
             bridge.registraRispostaDaw ("/live/track/get/volume", { 4.0f, 0.7f });
             bridge.registraRispostaDaw ("/live/song/get/tempo", { 120.0f });

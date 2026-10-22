@@ -8,15 +8,15 @@
  * connecting to the WebSocketServer inside the plugin.
  * 
  * Il bridge può connettersi a:
- * - localhost:8080 (plugin in production/standalone)
- * - ws://localhost:8080 (stesso)
+ * - localhost:17373 (plugin in production/standalone)
+ * - ws://localhost:17373 (stesso)
  * 
  * Usage:
  *   import { whycremisi } from './whycremisi-bridge.js';
  *   whycremisi.connect();
  */
 
-const WS_DEFAULT_URL = 'ws://localhost:8080';
+const WS_DEFAULT_URL = 'ws://localhost:17373';
 const MAX_RECONNECT_ATTEMPTS = 20;
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 30000;
@@ -140,7 +140,7 @@ class WhyCremisiBridge {
 
   /**
    * Connetti al WebSocket server del plugin
-   * @param {string} url - URL del WebSocket server (default: ws://localhost:8080)
+   * @param {string} url - URL del WebSocket server (default: ws://localhost:17373)
    * @returns {Promise} - Resolves quando connesso
    */
   connect(url = WS_DEFAULT_URL) {

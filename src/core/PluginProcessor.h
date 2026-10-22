@@ -164,7 +164,7 @@ private:
     int oscPort = 9000;
     juce::String dawIp = "127.0.0.1";
     int dawOscPort = 9001;
-    int wsPort = 8080;
+    int wsPort = 17373;
 
     // MIDI + Parameter Mapping
     std::unique_ptr<MidiHandler> midiHandler;

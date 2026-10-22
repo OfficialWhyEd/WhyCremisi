@@ -27,7 +27,7 @@ WebView (WebKit/GTK) nel plugin VST **crasha** su Linux.
 │                                                                         │
 │   ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐  │
 │   │   OscHandler    │───►│   OscBridge     │───►│  WebSocketServer   │  │
-│   │   (UDP :9000)   │    │   (Dispatcher)  │    │    (TCP :8080)     │  │
+│   │   (UDP :9000)   │    │   (Dispatcher)  │    │    (TCP :17373)     │  │
 │   │   RX/TX OSC     │◄───│   JSON↔OSC      │    │   RFC 6455         │  │
 │   └─────────────────┘    └─────────────────┘    └──────────┬──────────┘  │
 │            ▲                                                │            │
@@ -40,10 +40,10 @@ WebView (WebKit/GTK) nel plugin VST **crasha** su Linux.
 │   Ports:                                                                     │
 │   - OSC RX (from DAW): 9000                                                  │
 │   - OSC TX (to DAW):  9001                                                  │
-│   - WebSocket (UI):   8080                                                   │
+│   - WebSocket (UI):   17373                                                   │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
-                                    │ WebSocket (ws://localhost:8080)
+                                    │ WebSocket (ws://localhost:17373)
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         REACT UI (Browser)                               │
@@ -69,7 +69,7 @@ Server WebSocket RFC 6455 integrato nel plugin.
 | Proprietà | Valore |
 |-----------|--------|
 | Protocollo | RFC 6455 (WebSocket) |
-| Porta default | 8080 |
+| Porta default | 17373 |
 | Connessioni | Multiple (broadcast a tutti i client) |
 | Frame supportati | Text, Close, Ping, Pong |
 
@@ -191,7 +191,7 @@ Il plugin sarà in:
 ### Test Rapido
 
 1. Avvia Reaper con plugin caricato
-2. Apri browser e connettiti a `ws://localhost:8080` (o usa `whycremisi-bridge.js`)
+2. Apri browser e connettiti a `ws://localhost:17373` (o usa `whycremisi-bridge.js`)
 3. Invia `{"type": "plugin.init", ...}` — il plugin risponderà con `plugin.init`
 
 ---

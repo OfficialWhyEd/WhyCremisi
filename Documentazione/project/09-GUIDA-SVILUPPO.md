@@ -52,7 +52,7 @@ webview-ui/                           # ★ FRONTEND PRODUZIONE ★
 | | Prototipo (Edo) | Produzione (webview-ui) |
 |---|---|---|
 | **File** | `Prototipi/.../whycremisi-bridge.js` | `webview-ui/src/whycremisi-bridge.js` |
-| **Protocollo** | `app://message/` URL interception | WebSocket RFC 6455 (`ws://localhost:8080`) |
+| **Protocollo** | `app://message/` URL interception | WebSocket RFC 6455 (`ws://localhost:17373`) |
 | **Uso** | Sviluppo in isolamento, Google AI Studio | VST3 in Reaper, Standalone |
 | **API** | `bridge.send(type, payload)` | `whycremisi.sendDAWCommand()`, `whycremisi.sendAIPrompt()`, ecc. |
 
@@ -153,7 +153,7 @@ cp -r build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisiVSTBridgeAI.vst
 1. Apri Reaper
 2. Inserisci FX → WhyCremisiVSTBridgeAI
 3. Il plugin si apre con la GUI WebView
-4. La GUI si connette via WebSocket a `ws://localhost:8080`
+4. La GUI si connette via WebSocket a `ws://localhost:17373`
 5. I controlli nella GUI inviano messaggi JSON al plugin C++
 6. Il plugin C++ li traduce in OSC verso Reaper (`/play`, `/stop`, `/record`)
 7. Reaper risponde e il plugin riceve feedback via OSC (porta 8000)

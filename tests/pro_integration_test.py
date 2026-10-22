@@ -6,7 +6,7 @@ import websockets
 import sys
 from statistics import mean
 
-WS_URL = "ws://localhost:8080"
+WS_URL = "ws://localhost:17373"
 
 class ProTester:
     def __init__(self):

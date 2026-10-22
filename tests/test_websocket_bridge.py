@@ -7,7 +7,7 @@ Runs against either:
   - The mock server: python3 tests/mock_websocket_server.py
 
 Usage:
-  python3 tests/test_websocket_bridge.py [ws://localhost:8080]
+  python3 tests/test_websocket_bridge.py [ws://localhost:17373]
 """
 
 import asyncio
@@ -17,7 +17,7 @@ import time
 import uuid
 import websockets
 
-WS_URL = sys.argv[1] if len(sys.argv) > 1 else "ws://localhost:8080"
+WS_URL = sys.argv[1] if len(sys.argv) > 1 else "ws://localhost:17373"
 TIMEOUT = 5.0
 PASS = "[PASS]"
 FAIL = "[FAIL]"
