@@ -19,6 +19,7 @@
 #include "../agent/PersonalityCore.h"
 #include "../agent/AgentWorkspace.h"
 #include "../agent/Dreamer.h"
+#include "../agent/WorkspaceFiles.h"
 #include "../debug/DebugLog.h"
 #include <nlohmann/json.hpp>
 
@@ -741,7 +742,10 @@ void WhyCremisiProcessor::getStateInformation(juce::MemoryBlock& destData)
     if (personalityCore)
         state.appendChild(personalityCore->save(), nullptr);
     if (agentWorkspace)
+    {
         state.appendChild(agentWorkspace->save(), nullptr);
+        WorkspaceFiles::write(*agentWorkspace, whycremisi::appDataDirectory().getChildFile("anima"));
+    }
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -798,6 +802,8 @@ void WhyCremisiProcessor::setStateInformation(const void* data, int sizeInBytes)
             auto wsTree = restored.getChildWithName("agentWorkspace");
             if (wsTree.isValid())
                 agentWorkspace->load(wsTree);
+            // Se la persona ha corretto SOUL, IDENTITY o USER a mano, vale quello che ha scritto.
+            WorkspaceFiles::importEdits(*agentWorkspace, whycremisi::appDataDirectory().getChildFile("anima"));
         }
         if (oscBridge)
             oscBridge->setDawTarget(dawIp, dawOscPort);
@@ -926,6 +932,7 @@ void WhyCremisiProcessor::timerCallback()
                                     lastDreamMs, now, s);
     if (! rep.slept) return;
     lastDreamMs = rep.dreamedAtMs;
+    WorkspaceFiles::write(*agentWorkspace, whycremisi::appDataDirectory().getChildFile("anima"));
     whycremisi::log("plugin", "sogno: " + juce::String(rep.habitsWritten) + " abitudini, "
                     + juce::String(rep.repeatsPromoted) + " ripetuti, " + juce::String(rep.archived) + " archiviati");
     refreshAiContext();

@@ -119,6 +119,7 @@ target_sources(WhyCremisiVSTPlugin
         src/agent/AgentUser.cpp
         src/agent/AgentWorkspace.cpp
         src/agent/Dreamer.cpp
+        src/agent/WorkspaceFiles.cpp
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
         src/ai/AIProvider.cpp
@@ -225,6 +226,7 @@ if(BUILD_UNIT_TESTS)
             src/memory/tests/ProjectMemoryTest.cpp
             src/skills/tests/SkillLibraryTest.cpp
             src/agent/tests/DreamerTest.cpp
+            src/agent/tests/WorkspaceFilesTest.cpp
             src/dsp/tests/AnalyzerLoudnessTest.cpp
             # I test istanziano il processore vero, quindi serve tutto cio'
             # da cui dipende: il plugin non e' una libreria separata.
@@ -238,6 +240,7 @@ if(BUILD_UNIT_TESTS)
             src/agent/AgentUser.cpp
             src/agent/AgentWorkspace.cpp
             src/agent/Dreamer.cpp
+            src/agent/WorkspaceFiles.cpp
             src/agent/PersonalityCore.cpp
             src/osc/OscHandler.cpp
             src/ai/AiEngine.cpp
