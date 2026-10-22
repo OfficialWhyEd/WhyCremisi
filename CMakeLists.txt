@@ -126,6 +126,7 @@ target_sources(WhyCremisiVSTPlugin
         src/samples/SampleLibrary.cpp
         src/samples/BeatBuilder.cpp
         src/music/NoteComposer.cpp
+        src/memory/ProjectMemory.cpp
         src/daw/MixSnapshots.cpp
         src/daw/LiveDevices.cpp
         src/daw/AbletonOscInstaller.cpp
@@ -219,6 +220,7 @@ if(BUILD_UNIT_TESTS)
             src/daw/tests/LiveDevicesTest.cpp
             src/daw/tests/AbletonOscInstallerTest.cpp
             src/music/tests/NoteComposerTest.cpp
+            src/memory/tests/ProjectMemoryTest.cpp
             src/dsp/tests/AnalyzerLoudnessTest.cpp
             # I test istanziano il processore vero, quindi serve tutto cio'
             # da cui dipende: il plugin non e' una libreria separata.
@@ -240,6 +242,7 @@ if(BUILD_UNIT_TESTS)
             src/samples/SampleLibrary.cpp
             src/samples/BeatBuilder.cpp
             src/music/NoteComposer.cpp
+            src/memory/ProjectMemory.cpp
             src/daw/MixSnapshots.cpp
             src/daw/LiveDevices.cpp
             src/daw/AbletonOscInstaller.cpp

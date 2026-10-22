@@ -604,6 +604,14 @@ private:
         return r;
     }
 
+    ToolResult runMemoria (Rig& rig, const juce::String& name, const nlohmann::json& args)
+    {
+        ToolCall call; call.id = "m1"; call.name = name; call.arguments = args;
+        ToolResult r; r.toolCallId = call.id; r.name = call.name;
+        rig.bridge.eseguiToolMemoria (call, r);
+        return r;
+    }
+
     void testDevicePlugin()
     {
         beginTest ("device.list: nomi e numeri letti da Live");
@@ -636,6 +644,30 @@ private:
             expectEquals (json["parameters"].size(), (int) fd.nomi.size());
             expect (json["parameters"][1]["name"].toString().containsIgnoreCase ("cutoff"), "secondo parametro = cutoff");
             expectEquals (fd.inviati, 0);   // sola lettura: nessun comando a Live
+            cartella.deleteRecursively();
+        }
+
+        beginTest ("memory.*: ricordo salvato, ritrovato, annullato e poi non piu' trovato");
+        {
+            Rig rig;
+            auto cartella = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("wc-memoria-test");
+            cartella.deleteRecursively();
+            rig.bridge.cartellaMemoria = cartella;
+            auto r = runMemoria (rig, "memory.remember", { { "text", "Il pezzo e' a 140 BPM in La minore" }, { "project", "demo" } });
+            expect (r.success, r.output);
+            expect (cartella.getChildFile ("demo.md").existsAsFile(), "file del progetto creato");
+            r = runMemoria (rig, "memory.search", { { "query", "tempo BPM" }, { "project", "demo" } });
+            expect (r.success && r.output.contains ("140 BPM"), r.output);
+            r = runMemoria (rig, "memory.forget", { { "id", 1 }, { "project", "demo" } });
+            expect (r.success, r.output);
+            r = runMemoria (rig, "memory.search", { { "query", "BPM" }, { "project", "demo" } });
+            expect (r.output.contains ("Nessun ricordo"), r.output);
+            r = runMemoria (rig, "memory.forget", { { "id", 99 }, { "project", "demo" } });
+            expect (! r.success, "id che non esiste non e' un successo");
+            r = runMemoria (rig, "memory.remember", { { "text", "   " } });
+            expect (! r.success, "ricordo vuoto rifiutato");
+            r = runMemoria (rig, "memory.remember", { { "text", "x" }, { "project", "../fuori" } });
+            expect (r.success && ! cartella.getParentDirectory().getChildFile ("fuori.md").existsAsFile(), "il nome progetto non esce dalla cartella");
             cartella.deleteRecursively();
         }
 

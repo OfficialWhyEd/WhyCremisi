@@ -188,6 +188,29 @@ void ToolRegistry::registerBuiltinTools()
         {"slot", "number", "Slot della clip, di norma 0", false, 0, 127}
     }});
 
+    registerTool({"memory.remember",
+        "Salva un ricordo del progetto su file (una riga: scelte, tonalita', "
+        "tempo, cosa ha detto l'utente). Resta tra una sessione e l'altra. "
+        "Salva solo fatti utili dopo, non le chiacchiere.", {
+        {"text", "string", "Il ricordo, una frase", true},
+        {"project", "string", "Nome del progetto, di norma 'generale'", false}
+    }});
+
+    registerTool({"memory.search",
+        "Cerca nei ricordi del progetto (solo quelli attivi), dal piu' pertinente. "
+        "Usalo prima di rispondere su cose dette in sessioni passate.", {
+        {"query", "string", "Cosa cerchi, a parole", true},
+        {"project", "string", "Nome del progetto, di norma 'generale'", false}
+    }});
+
+    registerTool({"memory.forget",
+        "Annulla un ricordo (non lo cancella: resta nel file come annullato, "
+        "o sostituito con replaced=true). Serve l'id che dice memory.search.", {
+        {"id", "number", "Id del ricordo", true, 1, 100000},
+        {"replaced", "string", "true se e' stato sostituito da un ricordo nuovo", false},
+        {"project", "string", "Nome del progetto, di norma 'generale'", false}
+    }});
+
     registerTool({"mix.levels",
         "Legge da Ableton Live lo stato REALE del mixer, traccia per traccia: "
         "volume in dB, pan e mute. Usalo prima di toccare il mix e dopo, per "

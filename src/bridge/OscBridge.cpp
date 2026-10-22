@@ -32,6 +32,7 @@
 #include "../daw/LiveDevices.h"
 #include <chrono>
 #include <cmath>
+#include "../memory/ProjectMemory.h"
 #include <cstdint>
 #include <limits>
 #include <random>
@@ -3772,6 +3773,65 @@ void OscBridge::eseguiToolSample(const ToolCall& call, ToolResult& result)
     result.output = r;
 }
 
+void OscBridge::eseguiToolMemoria(const ToolCall& call, ToolResult& result)
+{
+    const auto& a = call.arguments;
+    auto testo = [&](const char* k) -> juce::String {
+        if (a.is_object() && a.contains(k) && a[k].is_string()) return juce::String(a[k].get<std::string>()).trim();
+        return {};
+    };
+    auto fallisci = [&](const juce::String& perche) { result.success = false; result.output = perche.toStdString(); };
+
+    // Il nome del progetto diventa il nome del file: solo un nome legale, mai un percorso.
+    auto progetto = juce::File::createLegalFileName(testo("project")).replaceCharacter('.', '_').trim();
+    if (progetto.isEmpty()) progetto = "generale";
+    const auto cartella = cartellaMemoria != juce::File()
+        ? cartellaMemoria
+        : juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+              .getChildFile("WhyCremisi").getChildFile("memory");
+    ProjectMemory memoria(cartella.getChildFile(progetto + ".md"));
+
+    if (call.name == "memory.remember") {
+        const auto ricordo = testo("text");
+        if (ricordo.isEmpty()) { fallisci("Manca il testo del ricordo. Nulla salvato."); return; }
+        const int id = memoria.add(ricordo, "chat");
+        if (id == 0) { fallisci("Non riesco a scrivere il file di memoria. Nulla salvato."); return; }
+        result.success = true;
+        result.output = ("Salvato nel progetto '" + progetto + "' con id " + juce::String(id) + ".").toStdString();
+        return;
+    }
+
+    if (call.name == "memory.search") {
+        const auto hits = memoria.search(testo("query"), 5);
+        result.success = true;
+        if (hits.empty()) {
+            result.output = ("Nessun ricordo attivo trovato nel progetto '" + progetto + "' ("
+                             + juce::String(memoria.activeCount()) + " attivi in tutto).").toStdString();
+            return;
+        }
+        juce::String out;
+        for (const auto& h : hits)
+            out << "#" << h.entry.id << " [" << h.entry.date << ", " << h.entry.source << "] " << h.entry.text << "\n";
+        result.output = out.toStdString();
+        return;
+    }
+
+    // memory.forget
+    int id = 0;
+    if (a.is_object() && a.contains("id")) {
+        if (a["id"].is_number()) id = (int) a["id"].get<double>();
+        else if (a["id"].is_string()) id = juce::String(a["id"].get<std::string>()).getIntValue();
+    }
+    const bool sostituito = testo("replaced").equalsIgnoreCase("true");
+    if (! memoria.setStatus(id, sostituito ? ProjectMemory::Status::Replaced : ProjectMemory::Status::Cancelled)) {
+        fallisci("Ricordo " + juce::String(id) + " non trovato nel progetto '" + progetto + "' o file non scrivibile. Nulla cambiato.");
+        return;
+    }
+    result.success = true;
+    result.output = ("Ricordo " + juce::String(id) + (sostituito ? " segnato come sostituito" : " annullato")
+                     + ". Resta nel file, non esce piu' nelle ricerche.").toStdString();
+}
+
 void OscBridge::eseguiToolMusica(const ToolCall& call, ToolResult& result)
 {
     const auto& a = call.arguments;
@@ -4254,6 +4314,9 @@ void OscBridge::setAiEngine(AiEngine* engine)
         }
         else if (call.name == "music.compose") {
             eseguiToolMusica (call, result);
+        }
+        else if (call.name == "memory.remember" || call.name == "memory.search" || call.name == "memory.forget") {
+            eseguiToolMemoria (call, result);
         }
         else if (call.name == "mix.levels" || call.name == "mix.snapshot.save" || call.name == "mix.snapshot.recall") {
             eseguiToolMix (call, result);

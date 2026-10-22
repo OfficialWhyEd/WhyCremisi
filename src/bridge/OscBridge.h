@@ -274,6 +274,12 @@ private:
     /** samples.scan, samples.search, beat.create: indice dei suoni e costruzione del beat. */
     void eseguiToolSample(const ToolCall& call, ToolResult& result);
     void eseguiToolMusica(const ToolCall& call, ToolResult& result);
+
+    /** memory.remember, memory.search, memory.forget: memoria dei progetti su file markdown. */
+    void eseguiToolMemoria(const ToolCall& call, ToolResult& result);
+
+    /** Dove stanno i file di memoria dei progetti. Vuota = cartella dati dell'utente. */
+    juce::File cartellaMemoria;
     void eseguiToolSetupAbleton(const ToolCall& call, ToolResult& result);
 
     /** device.list, device.params, device.setParam: plugin di una traccia di Live, letti e impostati con conferma. */
