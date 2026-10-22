@@ -158,7 +158,11 @@ private:
     //==============================================================================
     // OSC Packet Parsing
     //==============================================================================
+public:
+    /** Alimenta il parser con un datagramma gia' ricevuto. Pubblico per i
+        test: permette di provare bundle e messaggi senza aprire una porta. */
     void handleOscPacket(const char* data, int size);
+private:
     void handleOscMessage(const juce::String& address, const juce::String& typeTag,
                           const char* arguments, int argSize);
 

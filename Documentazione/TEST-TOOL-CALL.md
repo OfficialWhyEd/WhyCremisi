@@ -432,3 +432,37 @@ Da fare (piccolo, ma importante):
 - se la DAW non è identificata dopo N secondi dal caricamento, dirlo
   esplicitamente ("nessun feedback dalla DAW: controlla le porte OSC");
 - non presentare come `Confirmed` niente finché il feedback non è reale.
+
+---
+
+# Seconda causa: i bundle OSC venivano buttati via
+
+Con le porte sistemate il plugin **riceveva** — ma nel log comparivano solo
+righe così:
+
+```
+19:19:07  [osc] [OSC] Bundle received (not parsed)
+```
+
+REAPER manda il feedback dentro un **bundle** OSC:
+
+```
+"#bundle\0" + 8 byte di timetag + [int32 lunghezza][messaggio] ...
+```
+
+Il parser conosceva solo i messaggi singoli e scartava i bundle. Conseguenza
+identica a quella delle porte: nessuno stato in arrivo → `DawType` resta
+`Unknown` → percorso di ripiego → nessuna conferma possibile.
+
+**Corretto**: `OscHandler::handleOscPacket` ora scende nei bundle (anche
+annidati) e tratta ogni elemento come un messaggio normale; un bundle
+troncato si ferma senza leggere fuori dal buffer.
+
+Test: `src/osc/tests/OscBundleTest.cpp` — due messaggi in un bundle, bundle
+annidato, bundle troncato, messaggio singolo. In totale la suite è a
+**3402 controlli, 0 falliti**.
+
+Dopo questa correzione, al primo feedback la DAW viene riconosciuta
+(`DawType::Reaper`), si attiva l'adattatore giusto, i tool offerti al modello
+si restringono a quelli validi per REAPER e l'esito dei comandi può finally
+essere `Confirmed` invece di `Unconfirmed`.

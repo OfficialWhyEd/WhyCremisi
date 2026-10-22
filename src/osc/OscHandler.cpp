@@ -20,6 +20,7 @@
 
 #include "OscHandler.h"
 #include <cstring>
+#include <arpa/inet.h>   // ntohl
 
 //==============================================================================
 // Lifecycle
@@ -415,9 +416,30 @@ void OscHandler::handleOscPacket(const char* data, int size)
 
         handleOscMessage(addressPattern, typeTag, args, argsSize);
     }
-    else if (data[0] == '#' && size >= 16)
+    // ── Bundle ────────────────────────────────────────────────────
+    //
+    //  REAPER manda il feedback dentro un bundle OSC:
+    //      "#bundle\0" + 8 byte di timetag + [int32 lunghezza][messaggio]...
+    //
+    //  Prima questo ramo scriveva "Bundle received (not parsed)" e buttava
+    //  via tutto: nessuno stato arrivava dalla DAW, la DAW non veniva mai
+    //  riconosciuta, e nessun comando poteva essere confermato. Le porte
+    //  erano solo meta' del problema.
+    else if (size >= 16 && std::memcmp(data, "#bundle", 7) == 0)
     {
-        addToLog("[OSC] Bundle received (not parsed)");
+        int ptr = 16;   // 8 byte "#bundle\0" (arrotondati) + 8 di timetag
+        while (ptr + 4 <= size)
+        {
+            uint32_t len = 0;
+            std::memcpy(&len, data + ptr, 4);
+            len = ntohl(len);
+            ptr += 4;
+
+            if (len == 0 || len > (uint32_t)(size - ptr)) break;
+
+            handleOscPacket(data + ptr, (int)len);
+            ptr += (int)len;
+        }
     }
 }
 

@@ -251,6 +251,7 @@ if(BUILD_UNIT_TESTS)
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
             src/daw/tests/DawAdapterWireTest.cpp
+            src/osc/tests/OscBundleTest.cpp
             src/daw/tests/MackieDawHandlerTest.cpp
             src/daw/tests/LiveDevicesTest.cpp
             src/daw/tests/AbletonOscInstallerTest.cpp
