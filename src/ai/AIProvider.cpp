@@ -680,7 +680,7 @@ bool OpenRouterProvider::testConnection()
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  OpenCode Zen (modelli gratuiti, API di OpenAI)
+//  OpenCode (modelli gratuiti, tramite il programma ufficiale)
 // ═══════════════════════════════════════════════════════════════════
 
 juce::StringArray OpenCodeProvider::freeModels()
@@ -706,11 +706,6 @@ juce::StringArray OpenCodeProvider::freeModels()
 bool OpenCodeProvider::isKnownModel (const juce::String& modelId)
 {
     return freeModels().contains (modelId);
-}
-
-juce::StringArray OpenCodeProvider::getAvailableModels()
-{
-    return freeModels();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1455,6 +1450,207 @@ juce::StringArray CodexProvider::getAvailableModels()
     return out;
 }
 
+juce::File OpenCodeProvider::findExecutable()
+{
+   #if JUCE_WINDOWS
+    const char* nomi[] = { "opencode.exe", "opencode.cmd" };
+   #else
+    const char* nomi[] = { "opencode" };
+   #endif
+
+    const auto home = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
+    juce::Array<juce::File> cartelle {
+        home.getChildFile ("AppData").getChildFile ("Roaming").getChildFile ("npm"),
+        home.getChildFile (".opencode").getChildFile ("bin"),
+        home.getChildFile (".local").getChildFile ("bin")
+    };
+    for (const auto& dir : cartelle)
+        for (auto* n : nomi)
+            if (auto f = dir.getChildFile (n); f.existsAsFile())
+                return f;
+
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PATH", {});
+   #if JUCE_WINDOWS
+    auto voci = juce::StringArray::fromTokens (path, ";", "\"");
+   #else
+    auto voci = juce::StringArray::fromTokens (path, ":", "\"");
+   #endif
+    for (const auto& voce : voci)
+    {
+        if (voce.trim().isEmpty()) continue;
+        for (auto* n : nomi)
+            if (auto f = juce::File (voce.trim()).getChildFile (n); f.existsAsFile())
+                return f;
+    }
+    return {};
+}
+
+juce::StringArray OpenCodeProvider::buildArguments (const juce::String& model)
+{
+    auto m = soloSicuri (model);
+    if (! isKnownModel (m)) m = defaultModel();
+    juce::StringArray a;
+    a.add ("run");
+    a.add ("--format"); a.add ("json");
+    a.add ("--pure");
+    a.add ("-m"); a.add ("opencode/" + m);
+    return a;   // il prompt arriva da stdin
+}
+
+AIProvider::Result OpenCodeProvider::parseCliOutput (const juce::String& raw)
+{
+    Result r;
+    juce::String testo, errore;
+
+    for (const auto& riga : juce::StringArray::fromLines (raw))
+    {
+        const auto t = riga.trim();
+        if (! t.startsWithChar ('{')) continue;
+        const auto j = nlohmann::json::parse (t.toStdString(), nullptr, false);
+        if (! j.is_object()) continue;
+        const auto tipo = j.value ("type", std::string());
+
+        if (tipo == "text" && j.contains ("part") && j["part"].is_object())
+            testo += juce::String (j["part"].value ("text", std::string()));
+        else if (tipo == "step_finish" && j.contains ("part") && j["part"].is_object()
+                 && j["part"].contains ("tokens") && j["part"]["tokens"].is_object())
+        {
+            const auto& k = j["part"]["tokens"];
+            r.usage.inputTokens  += k.value ("input", 0);
+            r.usage.outputTokens += k.value ("output", 0);
+            if (k.contains ("cache") && k["cache"].is_object())
+            {
+                r.usage.cacheReadTokens  += k["cache"].value ("read", 0);
+                r.usage.cacheWriteTokens += k["cache"].value ("write", 0);
+            }
+        }
+        else if (tipo == "error" && j.contains ("error") && j["error"].is_object())
+        {
+            const auto& e = j["error"];
+            auto m = juce::String (e.value ("message", std::string()));
+            if (m.isEmpty() && e.contains ("data") && e["data"].is_object())
+                m = juce::String (e["data"].value ("message", std::string()));
+            if (m.isEmpty()) m = juce::String (e.value ("name", std::string()));
+            if (m.isNotEmpty()) errore = m;
+        }
+    }
+
+    if (testo.trim().isNotEmpty())
+    {
+        r.success = true;
+        r.text = testo.trim();
+        return r;
+    }
+    r.error = errore.isNotEmpty() ? errore : "Risposta di OpenCode non leggibile.";
+    return r;
+}
+
+void OpenCodeProvider::abort()
+{
+    abortRequested = true;
+    std::lock_guard<std::mutex> lock (procMutex);
+    if (running != nullptr)
+        running->kill();
+}
+
+AIProvider::Result OpenCodeProvider::sendPrompt (const juce::String& systemPrompt, const juce::String& userMessage)
+{
+    beginRequest();
+    Result r;
+
+    const auto exe = findExecutable();
+    if (! exe.existsAsFile())
+    {
+        r.error = "OpenCode non risulta installato su questa macchina. Installalo da opencode.ai e riprova.";
+        lastError = r.error;
+        return r;
+    }
+
+    const auto base = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("WhyCremisi-opencode");
+    base.createDirectory();
+    const auto promptFile = base.getChildFile ("prompt-" + juce::Uuid().toString() + ".txt");
+    promptFile.replaceWithText ("ISTRUZIONI DI SISTEMA (seguile alla lettera, rispondi solo a testo, "
+                                "non usare strumenti ne' comandi):\n" + systemPrompt
+                                + "\n\n--- CONVERSAZIONE ---\n"
+                                + ClaudeCodeProvider::composePrompt (config.contextMessages, userMessage));
+
+    const auto cmd = ClaudeCodeProvider::buildShellCommand (exe, buildArguments (config.model), promptFile, base);
+
+    juce::ChildProcess proc;
+    if (! proc.start (cmd, juce::ChildProcess::wantStdOut))
+    {
+        r.error = "Non sono riuscito ad avviare OpenCode.";
+        lastError = r.error;
+        promptFile.deleteFile();
+        return r;
+    }
+    {
+        std::lock_guard<std::mutex> lock (procMutex);
+        running = &proc;
+    }
+
+    const int limite = juce::jmax (config.timeoutMs, 180000);
+    std::atomic<bool> finito { false };
+    std::thread guardiano ([&]
+    {
+        for (int ms = 0; ms < limite && ! finito; ms += 100)
+            juce::Thread::sleep (100);
+        if (! finito)
+        {
+            std::lock_guard<std::mutex> lock (procMutex);
+            if (running != nullptr) running->kill();
+        }
+    });
+
+    const auto out = proc.readAllProcessOutput();
+    proc.waitForProcessToFinish (5000);
+    finito = true;
+    guardiano.join();
+    {
+        std::lock_guard<std::mutex> lock (procMutex);
+        running = nullptr;
+    }
+    promptFile.deleteFile();
+
+    if (abortRequested)
+    {
+        lastAborted = true;
+        r.error = "Interrotto.";
+        return r;
+    }
+
+    r = parseCliOutput (out);
+    if (! r.success)
+    {
+        if (out.trim().isEmpty())
+            r.error = "OpenCode non ha risposto.";
+        lastError = r.error;
+    }
+    return r;
+}
+
+void OpenCodeProvider::sendPromptStreaming (const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk)
+{
+    const auto r = sendPrompt (systemPrompt, userMessage);
+    if (onChunk)
+    {
+        if (r.success && r.text.isNotEmpty())
+            onChunk (r.text, false);
+        onChunk ({}, true);
+    }
+}
+
+bool OpenCodeProvider::testConnection()
+{
+    beginRequest();
+    if (! findExecutable().existsAsFile())
+    {
+        lastError = "OpenCode non risulta installato su questa macchina.";
+        return false;
+    }
+    return true;
+}
+
 juce::String AnthropicProvider::displayNameFor (const juce::String& modelId)
 {
     if (modelId == "claude-opus-5-5")    return "Opus 5.5";
@@ -2188,7 +2384,7 @@ juce::StringArray GeminiProvider::getAvailableModels()
 
     // Senza chiave non si puo' chiedere niente: si mostra un punto di
     // partenza ragionevole, che verra' sostituito appena la chiave c'e'.
-    return { defaultModel(), "gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash" };
+    return fallbackModels();
 }
 
 bool GeminiProvider::isRetiredModel (const juce::String& modelId)

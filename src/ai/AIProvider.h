@@ -422,7 +422,18 @@ public:
 
     // Modello leggero consigliato da Google per i progetti nuovi (pagina
     // dei modelli, 22/10/2026). gemini-2.0-flash e' spento.
-    static juce::String defaultModel() { return "gemini-3.5-flash-lite"; }
+    // "gemini-flash-latest" e' l'alias di Google che punta sempre al Flash
+    // piu' recente: si aggiorna da solo quando esce un modello nuovo.
+    static juce::String defaultModel() { return "gemini-flash-latest"; }
+
+    // Riserve in ordine: i piu' recenti e capienti per primi, poi i leggeri
+    // (piu' chiamate al minuto). Quando uno esaurisce la quota si passa al
+    // successivo. Elenco della pagina dei modelli, 22/10/2026.
+    static juce::StringArray fallbackModels()
+    {
+        return { "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.6-flash",
+                 "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash" };
+    }
 
     // true per i modelli spenti da Google (serie 1.x e 2.0): chi li aveva
     // salvati riceverebbe un errore senza capirne il motivo.
@@ -470,28 +481,43 @@ private:
     void addRouting (nlohmann::json& body) const override;
 };
 
-// OpenCode Zen: stesso formato di OpenAI, con alcuni modelli gratuiti (tra
-// cui DeepSeek V4.1 Flash). Serve un account OpenCode e la sua chiave; i
-// modelli ":free" non si pagano. Pagina: opencode.ai/docs/zen
-class OpenCodeProvider : public OpenAIProvider
+// OpenCode (modelli gratuiti, tra cui DeepSeek V4.1 Flash). Il server di
+// OpenCode accetta i modelli gratuiti solo da dentro il suo programma
+// (risposta 403 "FreeTierError" a chiunque altro), quindi WhyCremisi lancia
+// il programma ufficiale "opencode run", come fa con Codex. Nessun account,
+// nessuna chiave: basta avere OpenCode installato. Pagina: opencode.ai/docs/zen
+class OpenCodeProvider : public AIProvider
 {
 public:
-    using OpenAIProvider::OpenAIProvider;
+    OpenCodeProvider(const Config& cfg) { configure(cfg); }
+    Result sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage) override;
+    void sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk) override;
+    void abort() override;
+    bool testConnection() override;
+    juce::StringArray getAvailableModels() override { return freeModels(); }
     juce::String getName() const override { return "OpenCode"; }
-    juce::StringArray getAvailableModels() override;
 
     static juce::String defaultModel() { return "deepseek-v4.1-flash-free"; }
 
-    // Modelli gratuiti con chat/completions (elenco della pagina Zen del
-    // 22/10/2026). Quelli "per uso di prova" non vanno usati con dati privati.
+    // Modelli gratuiti (elenco della pagina Zen del 22/10/2026). Quelli
+    // "per uso di prova" non vanno usati con dati privati.
     static juce::StringArray freeModels();
 
     // true se l'id e' uno dei modelli di OpenCode (per correggere un id
     // rimasto da un altro fornitore).
     static bool isKnownModel (const juce::String& modelId);
 
+    static juce::File findExecutable();
+
+    // Legge l'output --format json (una riga JSON per evento).
+    static Result parseCliOutput (const juce::String& raw);
+
+    // Solo testo, nessuna sessione da riprendere.
+    static juce::StringArray buildArguments (const juce::String& model);
+
 private:
-    juce::String getApiUrl() const override { return "https://opencode.ai/inference/openai/v1/chat/completions"; }
+    std::mutex procMutex;
+    juce::ChildProcess* running = nullptr;
 };
 
 class GroqProvider : public OpenAIProvider

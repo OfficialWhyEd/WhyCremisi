@@ -27,21 +27,22 @@ Whyed è dislessico e ADHD: frasi corte, poche righe, niente trattini lunghi, ri
 
 ## Come si lavora
 - Prima cerca cosa esiste (repo, STATO.md, memorie). Mai da zero, si implementa sopra.
-- Build e test Windows: `verifica.cmd` (cmake + ninja + vcvars64, target `WhyCremisiTests`, cartella `build-v`). Ultimo risultato: 3508 controlli, 0 falliti.
+- Build e test Windows: `verifica.cmd` (cmake + ninja + vcvars64, target `WhyCremisiTests`, cartella `build-v`). Ultimo risultato: 3513 controlli, 0 falliti.
 - Commit con "Co-Authored-By" e link sessione. Solo file specifici.
 - Fine lavoro: aggiorna E:\Lavori\STATO.md. Cose nuove dette da lui: `node E:\Lavori\segna.js nuovo "titolo" "nota" dopo`.
 
 ## Per DeepSeek e OpenCode (importante)
-- Provider `OpenCode` nel plugin: endpoint `https://opencode.ai/inference/openai/v1/chat/completions`, modelli gratuiti in `OpenCodeProvider::freeModels()` (src/ai/AIProvider.cpp). Il primo è `deepseek-v4.1-flash-free`.
-- Elenco preso da opencode.ai/docs/zen il 22/10/2026. È "per tempo limitato": ricontrolla la pagina prima di fidarti.
-- Non provato: se serve la chiave anche per i modelli gratuiti e se esiste l'indirizzo `/models` usato da testConnection. Provalo e correggi.
+- Provider `OpenCode`: il server rifiuta i modelli gratuiti (403 FreeTierError) a chi non è il programma ufficiale. Quindi il plugin lancia `opencode run --format json --pure -m opencode/<modello>` con il prompt da stdin, come fa con Codex. Serve OpenCode installato. Primo modello: `deepseek-v4.1-flash-free`; elenco in `OpenCodeProvider::freeModels()`.
+- Non provato dal vivo dentro il plugin (solo il CLI da shell). Il CLI aggiunge un suo prompt grosso (~30k token): è lento.
+- Elenco preso da opencode.ai/docs/zen il 22/10/2026, "per tempo limitato": ricontrolla.
 - Per aggiungere un provider: enum in AiEngine.h, providerToId/providerFromId/createProvider/getProviderName in AiEngine.cpp, lista parametro e switch in PluginProcessor.cpp (aggiungi in FONDO, mai in mezzo), normalizzazione modello e URL chiavi in OscBridge.cpp, test in AiEngineTest.cpp.
 - Modelli locali piccoli: contesto 8-12K, thinking spento per i comandi, una tool call per volta, argomenti validati. Vedi SINTESI-MODELLI-LOCALI-22-10.md.
-- Gemini: i modelli 1.x e 2.0 sono spenti. Default `gemini-3.5-flash-lite`. Controlla ai.google.dev/gemini-api/docs/models.
+- Gemini: default `gemini-flash-latest` (alias Google, sempre il Flash più recente). Riserve in `GeminiProvider::fallbackModels()`: gemini-3.8-flash, 3.6-flash, 3.5-flash-lite, 3.1-flash-lite, 2.5-flash. Serie 1.x e 2.0 spente. Più recente su pagina: gemini-4-argon. NON fatto: il passaggio automatico alla riserva quando la quota finisce (la lista c'è, il collegamento a ChainProvider no). Alias pro/lite-latest non confermati. Non provato con chiave vera. Controlla ai.google.dev/gemini-api/docs/models.
+- OpenAI (gpt-6-astra, gpt-6.1-sol, gpt-6-luna) e Groq (gpt-oss-120b, llama-3.3-70b-versatile): visti sulle pagine ufficiali, NON ancora messi nelle liste né provati. Con la chiave il plugin chiede l'elenco al servizio.
 
 ## WhyMixy (E:\Dev\WhyMixy)
 Server MCP con 64 tool why_*: analisi, mastering, voce, campioni, web, shell, file. Si aggiunge un tool mettendo un file in `moduli\` con un dizionario `TOOLS`. Collegato da `%APPDATA%\WhyCremisi\mcp.json` (collegamento NON provato dal vivo).
 Limiti: BPM e tonalità sono stime; why_stems, why_master, why_trascrivi, why_copyright, why_separa_beat non provati; pedalboard e matchering (GPL) vanno rifatti nostri (WhyCatena, WhyMatch) prima dell'installer; Python e librosa vanno impacchettati nell'installer.
 
 ## Cosa resta (in ordine)
-1. Provare Gemini e OpenCode con chiave vera. 2. Provare tutto in Ableton e Reaper veri. 3. Collegare WhyMixy dal vivo. 4. Impacchettare Python nell'installer. 5. Rifare i due tool GPL. 6. Reel Instagram di @smylzmusic rimasti (Dee3FJwhIwe, DeeCUU9NVaP, DeXDwviovWM, DeUi_IzI9Q2). 7. Punti UTF-8 residui (WhyAccount.cpp:233, AIProvider.cpp ~2196, log, file sessione). 8. Chiave di firma aggiornamenti (la genera lui).
+0. Collegare le riserve Gemini a ChainProvider; aggiornare liste OpenAI/Groq. 1. Provare Gemini e OpenCode dal vivo. 2. Provare tutto in Ableton e Reaper veri. 3. Collegare WhyMixy dal vivo. 4. Impacchettare Python nell'installer. 5. Rifare i due tool GPL. 6. Reel Instagram di @smylzmusic rimasti (Dee3FJwhIwe, DeeCUU9NVaP, DeXDwviovWM, DeUi_IzI9Q2). 7. Punti UTF-8 residui (WhyAccount.cpp:233, AIProvider.cpp ~2196, log, file sessione). 8. Chiave di firma aggiornamenti (la genera lui).

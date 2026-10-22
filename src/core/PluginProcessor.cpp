@@ -920,7 +920,7 @@ juce::String WhyCremisiProcessor::getAiModel() const
     
     juce::StringArray ollamaModels{"llama3.2", "llama3.1:8b", "mistral", "codellama"};
     juce::StringArray openaiModels{"gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"};
-    juce::StringArray geminiModels{"gemini-3.5-flash-lite", "gemini-3.8-flash"};
+    juce::StringArray geminiModels{"gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash-lite"};
     
     auto provider = getAiProvider();
     if (provider == "Ollama")    return ollamaModels[idx % ollamaModels.size()];

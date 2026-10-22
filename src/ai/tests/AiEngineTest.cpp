@@ -231,6 +231,20 @@ public:
             expect (! OpenCodeProvider::isKnownModel ("jev-1.13-free"));
             expect (AiEngine::providerFromId ("OpenCode") == Provider::OpenCode);
             expect (AiEngine::providerToId (Provider::OpenCode) == "opencode");
+
+            // Output vero di "opencode run --format json" (22/10/2026).
+            const juce::String ok =
+                "{\"type\":\"step_start\",\"part\":{\"type\":\"step-start\"}}\n"
+                "{\"type\":\"text\",\"part\":{\"type\":\"text\",\"text\":\"ok\"}}\n"
+                "{\"type\":\"step_finish\",\"part\":{\"reason\":\"stop\",\"tokens\":{\"input\":30710,\"output\":2,\"cache\":{\"write\":0,\"read\":1792}}}}\n";
+            const auto r = OpenCodeProvider::parseCliOutput (ok);
+            expect (r.success && r.text == "ok");
+            expect (r.usage.inputTokens == 30710 && r.usage.outputTokens == 2);
+            expect (! OpenCodeProvider::parseCliOutput ({}).success);
+
+            const auto a = OpenCodeProvider::buildArguments ("big-pickle\" & calc & \"");
+            expect (a.contains ("opencode/" + OpenCodeProvider::defaultModel()));
+            expect (OpenCodeProvider::buildArguments ("big-pickle").contains ("opencode/big-pickle"));
         }
 
         beginTest ("Un nome sconosciuto non cambia la scelta gia' fatta");
