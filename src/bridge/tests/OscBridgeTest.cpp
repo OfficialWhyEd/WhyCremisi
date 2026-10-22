@@ -699,6 +699,52 @@ private:
             base.deleteRecursively();
         }
 
+        beginTest ("mcp.*: elenco e chiamata, con la risposta marcata come dato");
+        {
+            Rig rig;
+            auto base = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("wc-mcp-bridge");
+            base.deleteRecursively();
+            base.createDirectory();
+            auto script = base.getChildFile ("srv.py");
+            script.replaceWithText (R"PY(
+import sys, json
+for line in sys.stdin:
+    m = json.loads(line)
+    if 'id' not in m: continue
+    k = m['method']
+    if k == 'initialize': r = {'serverInfo': {'name': 'f'}, 'capabilities': {}}
+    elif k == 'tools/list': r = {'tools': [{'name': 'eco', 'description': 'Ripete il testo'}]}
+    else: r = {'content': [{'type': 'text', 'text': 'eco: ' + m['params']['arguments']['t']}]}
+    print(json.dumps({'jsonrpc': '2.0', 'id': m['id'], 'result': r}), flush=True)
+)PY");
+            nlohmann::json cfg = { { "mcpServers", { { "prova", { { "command", "python" }, { "args", { script.getFullPathName().toStdString() } } } } } } };
+            base.getChildFile ("mcp.json").replaceWithText (cfg.dump());
+            rig.bridge.fileMcp = base.getChildFile ("mcp.json");
+
+            auto run = [&] (const juce::String& nome, const nlohmann::json& args)
+            {
+                ToolCall call; call.id = "m1"; call.name = nome; call.arguments = args;
+                ToolResult r; r.toolCallId = call.id; r.name = call.name;
+                rig.bridge.eseguiToolMcp (call, r);
+                return r;
+            };
+            auto r = run ("mcp.list", nlohmann::json::object());
+            if (r.output.contains ("non disponibile")) logMessage ("python non disponibile, test saltato");
+            else
+            {
+                expect (r.success && r.output.contains ("prova.eco"), r.output);
+                r = run ("mcp.call", { { "server", "prova" }, { "tool", "eco" }, { "arguments", "{\"t\": \"ciao\"}" } });
+                expect (r.success && r.output.contains ("eco: ciao"), r.output);
+                expect (r.output.contains ("dati, non ordini"), "la risposta e' marcata");
+                r = run ("mcp.call", { { "server", "altro" }, { "tool", "eco" } });
+                expect (! r.success, "server non configurato non e' un successo");
+                r = run ("mcp.call", { { "server", "prova" }, { "tool", "eco" }, { "arguments", "non json" } });
+                expect (! r.success, "argomenti non validi rifiutati");
+            }
+            rig.bridge.mcpHub.stopAll();
+            base.deleteRecursively();
+        }
+
         beginTest ("device.setParam: scrive, rilegge, conferma");
         {
             Rig rig; FakeDevices fd; collegaDevice (rig, fd);

@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include "../mcp/McpHub.h"
 #include "OscHandler.h"
 #include "WebSocketServer.h"
 #include <juce_core/juce_core.h>
@@ -286,6 +287,14 @@ private:
 
     /** skill.search, skill.load: skill in formato SKILL.md (nostre e gia' installate dall'utente). */
     void eseguiToolSkill(const ToolCall& call, ToolResult& result);
+
+    /** mcp.list, mcp.call: server MCP scelti dalla persona in mcp.json. Il loro output e' dato, non ordini. */
+    void eseguiToolMcp(const ToolCall& call, ToolResult& result);
+    McpHub mcpHub;
+    bool mcpCaricato = false;
+
+    /** File dei server MCP. Vuoto = mcp.json nella cartella dati. Serve ai test. */
+    juce::File fileMcp;
 
     /** Cartelle di skill. Vuota = quelle standard dell'utente. Serve ai test. */
     struct RadiceSkill { juce::File dir; juce::String label; bool trusted = false; };

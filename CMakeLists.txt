@@ -120,6 +120,7 @@ target_sources(WhyCremisiVSTPlugin
         src/agent/AgentWorkspace.cpp
         src/agent/Dreamer.cpp
         src/mcp/McpClient.cpp
+        src/mcp/McpHub.cpp
         src/agent/WorkspaceFiles.cpp
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
@@ -243,6 +244,7 @@ if(BUILD_UNIT_TESTS)
             src/agent/AgentWorkspace.cpp
             src/agent/Dreamer.cpp
             src/mcp/McpClient.cpp
+            src/mcp/McpHub.cpp
             src/agent/WorkspaceFiles.cpp
             src/agent/PersonalityCore.cpp
             src/osc/OscHandler.cpp

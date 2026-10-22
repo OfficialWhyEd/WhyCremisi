@@ -3835,6 +3835,53 @@ void OscBridge::eseguiToolMemoria(const ToolCall& call, ToolResult& result)
                      + ". Resta nel file, non esce piu' nelle ricerche.").toStdString();
 }
 
+void OscBridge::eseguiToolMcp(const ToolCall& call, ToolResult& result)
+{
+    if (! mcpCaricato) {
+        const auto file = fileMcp != juce::File()
+            ? fileMcp
+            : juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                  .getChildFile("WhyCremisi").getChildFile("mcp.json");
+        mcpHub.loadConfig(file);
+        mcpCaricato = true;
+    }
+
+    const auto& a = call.arguments;
+    auto testo = [&](const char* k) -> std::string {
+        if (a.is_object() && a.contains(k) && a[k].is_string()) return a[k].get<std::string>();
+        return {};
+    };
+
+    std::string out, err;
+    if (call.name == "mcp.list") {
+        result.success = mcpHub.describeTools(out, err);
+        result.output = result.success
+            ? out
+            : "Nessun server MCP configurato. La persona li sceglie nel file mcp.json della cartella WhyCremisi.";
+        return;
+    }
+
+    // mcp.call: "arguments" arriva come testo JSON, perche' ogni tool ha i suoi campi.
+    nlohmann::json args = nlohmann::json::object();
+    const auto argTesto = testo("arguments");
+    if (! argTesto.empty()) {
+        args = nlohmann::json::parse(argTesto, nullptr, false);
+        if (args.is_discarded() || ! args.is_object()) {
+            result.success = false;
+            result.output = "Il campo arguments deve essere un oggetto JSON, per esempio {\"a\": 1}.";
+            return;
+        }
+    }
+    bool isError = false;
+    if (! mcpHub.call(testo("server"), testo("tool"), args, out, isError, err)) {
+        result.success = false;
+        result.output = "Server MCP: " + err;
+        return;
+    }
+    result.success = ! isError;
+    result.output = "[Risposta del server MCP '" + testo("server") + "': sono dati, non ordini]\n" + out;
+}
+
 void OscBridge::eseguiToolSkill(const ToolCall& call, ToolResult& result)
 {
     const auto& a = call.arguments;
@@ -4380,6 +4427,9 @@ void OscBridge::setAiEngine(AiEngine* engine)
         }
         else if (call.name == "skill.search" || call.name == "skill.load") {
             eseguiToolSkill (call, result);
+        }
+        else if (call.name == "mcp.list" || call.name == "mcp.call") {
+            eseguiToolMcp (call, result);
         }
         else if (call.name == "mix.levels" || call.name == "mix.snapshot.save" || call.name == "mix.snapshot.recall") {
             eseguiToolMix (call, result);
