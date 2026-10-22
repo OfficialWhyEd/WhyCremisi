@@ -26,6 +26,7 @@
 #include "DawDetector.h"
 #include "../samples/SampleLibrary.h"
 #include "../samples/BeatBuilder.h"
+#include "../music/NoteComposer.h"
 #include "../daw/MixSnapshots.h"
 #include "../daw/LiveDevices.h"
 #include <chrono>
@@ -3770,6 +3771,93 @@ void OscBridge::eseguiToolSample(const ToolCall& call, ToolResult& result)
     result.output = r;
 }
 
+void OscBridge::eseguiToolMusica(const ToolCall& call, ToolResult& result)
+{
+    const auto& a = call.arguments;
+    auto testo = [&](const char* k) -> juce::String {
+        if (a.is_object() && a.contains(k) && a[k].is_string()) return juce::String(a[k].get<std::string>()).trim();
+        return {};
+    };
+    auto numero = [&](const char* k, double def) -> double {
+        if (! a.is_object() || ! a.contains(k)) return def;
+        if (a[k].is_number()) return a[k].get<double>();
+        if (a[k].is_string()) {
+            const auto s = juce::String(a[k].get<std::string>()).trim();
+            if (s.containsOnly("0123456789.-") && s.isNotEmpty()) return s.getDoubleValue();
+        }
+        return def;
+    };
+    auto fallisci = [&](const juce::String& perche) {
+        result.success = false;
+        result.output = perche + " Nessuna nota scritta.";
+    };
+
+    const auto scala = NoteComposer::parseScale(testo("key"));
+    if (! scala.valid()) { fallisci("Tonalita' non capita: scrivi per esempio 'A minor', 'F# major', 'D dorian'."); return; }
+    const int battute = (int) juce::jlimit(1.0, 32.0, numero("bars", 4.0));
+    const double lunghezza = battute * 4.0;
+    const int velocity = (int) juce::jlimit(1.0, 127.0, numero("velocity", 90.0));
+
+    std::vector<NoteComposer::Note> note;
+    juce::String resoconto;
+    if (testo("notes").isNotEmpty()) {
+        NoteComposer::Report rep;
+        note = NoteComposer::sanitize(testo("notes"), scala, lunghezza, rep);
+        resoconto = rep.summary();
+        if (note.empty()) { fallisci("Nessuna nota valida nel JSON. " + resoconto); return; }
+    } else if (testo("progression").isNotEmpty()) {
+        const auto l = testo("layer").toLowerCase();
+        const auto strato = l == "bass" ? NoteComposer::Layer::Bass
+                          : l == "arp"  ? NoteComposer::Layer::Arp
+                                        : NoteComposer::Layer::Chords;
+        note = NoteComposer::progression(scala, testo("progression"), battute, strato, velocity);
+        if (note.empty()) { fallisci("Progressione non capita: usa gradi romani come 'i VI III VII' o 'I V vi IV'."); return; }
+        resoconto = juce::String((int) note.size()) + " note da progressione '" + testo("progression") + "'.";
+    } else if (a.is_object() && a.contains("pulses") && a.contains("steps")) {
+        const int passi = (int) juce::jlimit(1.0, 64.0, numero("steps", 16.0));
+        const auto ritmo = NoteComposer::euclidean((int) numero("pulses", 4.0), passi);
+        const int altezza = (int) juce::jlimit(0.0, 127.0, numero("pitch", 36.0));
+        const double durataPasso = 4.0 / passi;
+        for (double inizio = 0.0; inizio < lunghezza - 1e-9; inizio += 4.0)
+            for (int i = 0; i < (int) ritmo.size(); ++i)
+                if (ritmo[(size_t) i])
+                    note.push_back({ altezza, inizio + i * durataPasso, durataPasso * 0.9, velocity });
+        resoconto = "Ritmo euclideo " + juce::String((int) numero("pulses", 4.0)) + " colpi su " + juce::String(passi) + " passi, "
+                  + juce::String((int) note.size()) + " note.";
+        if (note.empty()) { fallisci("Nessun colpo nel ritmo."); return; }
+    } else {
+        fallisci("Passa 'notes' (JSON), oppure 'progression', oppure 'pulses' e 'steps'.");
+        return;
+    }
+
+    juce::String r = resoconto;
+    const double traccia = numero("track", -1.0);
+    if (traccia < 0.0) {
+        result.success = true;
+        result.output = r + " Nessuna clip scritta: indica 'track' per metterle in Live.";
+        return;
+    }
+    if (! (dawHandler && dawHandler->isAbleton())) {
+        result.success = false;
+        result.output = r + " Clip MIDI non scritta: serve Ableton Live con AbletonOSC.";
+        return;
+    }
+    auto* live = static_cast<AbletonDawHandler*>(dawHandler.get());
+    const int t = (int) traccia;
+    const int slot = (int) numero("slot", 0.0);
+    int inviate = 0;
+    live->createMidiClip(t, slot, (float) lunghezza);
+    for (const auto& n : note) {
+        if (inviate >= 600) break;
+        live->addMidiNote(t, slot, n.pitch, (float) n.startBeat, (float) n.lengthBeats, n.velocity);
+        ++inviate;
+    }
+    r << " Clip MIDI inviata a Live (traccia " << juce::String(t) << ", slot " << juce::String(slot) << ", "
+      << juce::String(inviate) << " note su " << juce::String((int) note.size()) << "): inviata, non confermata da Live.";
+    result.success = true;
+    result.output = r;
+}
+
 bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
 {
     const nlohmann::json& args = call.arguments;
@@ -4126,6 +4214,9 @@ void OscBridge::setAiEngine(AiEngine* engine)
         // ── Sample e beat dai suoni dell'utente ─────────────────────
         else if (call.name == "samples.scan" || call.name == "samples.search" || call.name == "beat.create") {
             eseguiToolSample (call, result);
+        }
+        else if (call.name == "music.compose") {
+            eseguiToolMusica (call, result);
         }
         else if (call.name == "mix.levels" || call.name == "mix.snapshot.save" || call.name == "mix.snapshot.recall") {
             eseguiToolMix (call, result);

@@ -158,6 +158,27 @@ void ToolRegistry::registerBuiltinTools()
         {"slot", "number", "Slot della clip, di norma 0", false, 0, 127}
     }});
 
+    registerTool({"music.compose",
+        "Scrive musica vera in una clip MIDI di Live: melodia, accordi, basso, "
+        "arpeggio o un ritmo euclideo. Tre modi: 'notes' (le note le scrivi tu "
+        "come JSON, il plugin le controlla), 'progression' (gradi romani come "
+        "'i VI III VII' con layer chords, bass o arp), oppure 'pulses' e 'steps' "
+        "per un ritmo euclideo su una nota. Il plugin sposta sulla scala le "
+        "note stonate, taglia quelle oltre la clip e dice cosa ha cambiato. "
+        "Serve sempre 'key'. Con 'track' scrive la clip in Live.", {
+        {"key", "string", "Tonalita' e modo: 'A minor', 'F# major', 'D dorian'", true},
+        {"notes", "string", "JSON: array di {\"pitch\":60,\"start\":0,\"length\":1,\"velocity\":100}, start e length in quarti", false},
+        {"progression", "string", "Gradi romani, un accordo per battuta: 'i VI III VII'", false},
+        {"layer", "string", "Con progression: chords, bass o arp (di norma chords)", false},
+        {"pulses", "number", "Ritmo euclideo: quanti colpi", false, 0, 64},
+        {"steps", "number", "Ritmo euclideo: su quanti passi per battuta", false, 1, 64},
+        {"pitch", "number", "Ritmo euclideo: nota MIDI, di norma 36 (kick)", false, 0, 127},
+        {"bars", "number", "Battute, di norma 4 (massimo 32)", false, 1, 32},
+        {"velocity", "number", "Forza di base, di norma 90", false, 1, 127},
+        {"track", "number", "Traccia di Live (da 0) dove scrivere la clip; vuoto = solo il resoconto", false, 0, 255},
+        {"slot", "number", "Slot della clip, di norma 0", false, 0, 127}
+    }});
+
     registerTool({"mix.levels",
         "Legge da Ableton Live lo stato REALE del mixer, traccia per traccia: "
         "volume in dB, pan e mute. Usalo prima di toccare il mix e dopo, per "
