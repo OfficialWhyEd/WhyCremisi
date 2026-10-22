@@ -26,4 +26,9 @@ public:
     void setFxBypass(int trackId, int fxId, bool bypass) override;
 
     juce::String getName() const override { return "REAPER"; }
+    bool isReaper() const override { return true; }
+
+    /** dB -> posizione del fader (0..1) secondo la curva misurata di REAPER.
+        Pubblica per poterla provare senza DAW. */
+    static float faderPositionForDb (float db);
 };

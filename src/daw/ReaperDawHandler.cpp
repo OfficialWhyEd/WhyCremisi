@@ -1,4 +1,5 @@
 #include "ReaperDawHandler.h"
+#include <cmath>
 
 // ── Adattatore REAPER ──────────────────────────────────────────────
 //
@@ -51,10 +52,44 @@ void ReaperDawHandler::setTempo(float bpm)
     if (sendCallback) sendCallback("/tempo/raw", bpm);
 }
 
+// Curva del fader di REAPER, MISURATA su questa installazione (22/10):
+// si manda una posizione su /track/N/volume e REAPER risponde su
+// /track/N/volume/db. Nove punti, poi interpolazione:
+//
+//   pos  0.1    0.2     0.3     0.4     0.5     0.6     0.7    0.8   0.9   1.0
+//   dB  -54.0  -35.9   -25.2   -17.4   -11.1    -5.6    -0.8   3.8   8.0  12.0
+//
+// Perche' serve: /track/N/volume/db e' SOLO feedback. Le scritture passano
+// dalla posizione normalizzata, quindi i dB vanno convertiti qui.
+// (La curva non e' quella di Live: mandare il guadagno lineare sulla
+// posizione portava -6 dB a finire a -11 dB.)
+static constexpr int kPuntiCurva = 10;
+static const float kPos[kPuntiCurva] = { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f };
+static const float kDb [kPuntiCurva] = { -54.012f, -35.890f, -25.162f, -17.358f, -11.059f,
+                                         -5.633f,  -0.753f,   3.756f,   7.990f,  12.000f };
+
+float ReaperDawHandler::faderPositionForDb (float db)
+{
+    if (! std::isfinite (db)) return 0.0f;
+    if (db <= kDb[0])          return 0.0f;
+    if (db >= kDb[kPuntiCurva-1]) return 1.0f;
+
+    for (int i = 0; i < kPuntiCurva - 1; ++i)
+    {
+        if (db <= kDb[i+1])
+        {
+            const float t = (db - kDb[i]) / (kDb[i+1] - kDb[i]);
+            return kPos[i] + t * (kPos[i+1] - kPos[i]);
+        }
+    }
+    return 1.0f;
+}
+
 void ReaperDawHandler::setVolumeDb(int trackId, float db)
 {
     if (sendCallback)
-        sendCallback("/track/" + juce::String(reaperIndex(trackId)) + "/volume/db", db);
+        sendCallback("/track/" + juce::String(reaperIndex(trackId)) + "/volume",
+                     faderPositionForDb (db));
 }
 
 void ReaperDawHandler::setPan(int trackId, float value)

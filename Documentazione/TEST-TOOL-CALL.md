@@ -466,3 +466,48 @@ Dopo questa correzione, al primo feedback la DAW viene riconosciuta
 (`DawType::Reaper`), si attiva l'adattatore giusto, i tool offerti al modello
 si restringono a quelli validi per REAPER e l'esito dei comandi può finally
 essere `Confirmed` invece di `Unconfirmed`.
+
+---
+
+# Terza causa (misurata): `/volume/db` è solo feedback
+
+## Il test che l'ha dimostrato
+Con REAPER aperto, mandando a mano su `127.0.0.1:8000`:
+
+```
+/track/1/volume 0.5          →  REAPER applica
+                                 e risponde su :9000
+                                 /track/1/volume/db  -> -11.059
+                                 /track/1/volume/str -> "-11.0dB"
+```
+
+Quindi:
+- **scrittura**: solo `/track/N/volume`, con la **posizione del fader** (0..1);
+- **lettura/conferma**: `/track/N/volume/db` (e `…/str`), che REAPER manda a
+  ogni cambio;
+- `/volume/db` **non accetta scritture**: il "send and receive" del file
+  ReaperOSC vale per l'azione, non per ogni singolo pattern.
+
+## Curva del fader, misurata su questa installazione
+Mandando dieci posizioni e leggendo il dB di ritorno:
+
+| pos | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1.0 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| dB | −54.0 | −35.9 | −25.2 | −17.4 | −11.1 | −5.6 | −0.8 | 3.8 | 8.0 | +12.0 |
+
+0 dB ≈ posizione 0.716. La curva **non è quella di Live**: mandare il guadagno
+lineare sulla posizione (come faceva il codice prima) portava −6 dB a finire
+a −11 dB — ecco perché il comando "sembrava funzionare" ma al livello sbagliato.
+
+## Cosa è cambiato
+- `ReaperDawHandler::faderPositionForDb()`: dB → posizione, interpolando la
+  tabella misurata. La scrittura ora usa `/track/N/volume`.
+- `OscBridge` conserva l'ultimo `/track/N/volume/db` per traccia e, sui comandi
+  di volume verso REAPER, aspetta il feedback e confronta: **solo allora**
+  `confirmed = true` e `success = true`. Se non arriva, resta "inviato, non
+  confermato" — che è la verità.
+- `Verifica` ha una tolleranza separata per REAPER (0.6 dB, un passo di fader);
+  quella di Live resta 0.01 per non cambiare il comportamento esistente.
+
+Test: la curva (0 dB→0.716, −11.059→0.5, +12→1.0, −96→0) e la scrittura
+sull'indirizzo normalizzato. Suite: **3430 controlli, 0 falliti**.

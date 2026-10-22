@@ -29,6 +29,8 @@
 #include <thread>
 #include <mutex>
 #include <map>
+#include <array>
+#include <atomic>
 #include <string>
 #include <vector>
 #include <functional>
@@ -108,6 +110,12 @@ public:
     //==============================================================================
     /** Configuration */
     int getOscPort() const { return oscPort; }
+
+    /** Ultimo volume riportato da REAPER su /track/N/volume/db (1-based).
+        Serve alla conferma: REAPER manda il valore in dB, noi abbiamo scritto
+        la posizione del fader, e senza questa lettura l'esito resterebbe
+        "non confermato" per sempre. */
+    bool lastReaperVolumeDb (int track1based, float& outDb, juce::int64 maxAgeMs) const;
     int getWebSocketPort() const { return wsPort; }
 
     //==============================================================================
@@ -248,6 +256,10 @@ private:
 
     // Ports
     int oscPort;
+
+    // Feedback volume di REAPER: indice 1-based, 256 tracce.
+    mutable std::array<std::atomic<float>, 257> reaperVolDb {};
+    std::array<std::atomic<juce::int64>, 257> reaperVolTs {};
     int wsPort;
 
     // Error tracking

@@ -487,6 +487,22 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
             if (handled)
                 handleAbletonTrackData(address, value);
         }
+        // REAPER: il volume torna in dB su /track/N/volume/db (l'indirizzo
+        // normalizzato /volume serve a SCRIVERE). Va conservato: e' l'unica
+        // prova che il comando e' arrivato.
+        else if (address.startsWith("/track/") && address.endsWith("/volume/db"))
+        {
+            const juce::String idStr = address.fromFirstOccurrenceOf("/track/", false, true)
+                                              .upToFirstOccurrenceOf("/", false, true);
+            const int t = idStr.getIntValue();
+            if (t >= 1 && t <= 256)
+            {
+                reaperVolDb[(size_t) t].store (value);
+                reaperVolTs[(size_t) t].store (juce::Time::currentTimeMillis());
+            }
+            forwardOscToUI(address, value);
+            return;
+        }
         // REAPER-specific
         else if (address.startsWith("/track/") && address.endsWith("/volume"))
             trackId = extractTrackId("/volume");
@@ -515,6 +531,16 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
 //==============================================================================
 // OSC string callback — handles track names, device names, etc.
 //==============================================================================
+bool OscBridge::lastReaperVolumeDb (int track1based, float& outDb, juce::int64 maxAgeMs) const
+{
+    if (track1based < 1 || track1based > 256) return false;
+    const auto ts = reaperVolTs[(size_t) track1based].load();
+    if (ts == 0) return false;
+    if (maxAgeMs > 0 && juce::Time::currentTimeMillis() - ts > maxAgeMs) return false;
+    outDb = reaperVolDb[(size_t) track1based].load();
+    return true;
+}
+
 void OscBridge::onOscStringReceived(const juce::String& address, const juce::String& value)
 {
     if (!juce::MessageManager::existsAndIsCurrentThread())
@@ -4373,6 +4399,11 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
         int    trackId   = -1;
         double atteso    = 0.0;
         double tolleranza = 0.01;
+        // REAPER: il valore va cercato nel feedback /track/N/volume/db, e si
+        // confronta in dB (per Live `atteso` resta la posizione del fader).
+        bool   reaperVolume = false;
+        double attesoReaperDb = 0.0;
+        double tolleranzaReaperDb = 0.6;   // un passo di fader vale ~0.5 dB
     };
 
     // Esito della lettura di ritorno, riempito da `invia` solo per Live.
@@ -4462,6 +4493,27 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
         confermato = lettura.stato == EsitoLettura::Stato::Confermato;
         if (lettura.stato == EsitoLettura::Stato::Confermato || lettura.stato == EsitoLettura::Stato::Diverso)
             statoDaw = { { "read", lettura.letto }, { "expected", verifica->atteso } };
+
+        // REAPER: la scrittura va sulla posizione normalizzata, ma il valore
+        // vero torna in dB su /track/N/volume/db. Si aspetta quel feedback e
+        // si confronta con i dB richiesti: cosi' "confermato" significa
+        // davvero confermato, non "inviato".
+        if (dawHandler && dawHandler->isReaper() && verifica != nullptr && verifica->reaperVolume)
+        {
+            const int track1based = verifica->trackId + 1;
+            for (int tentativo = 0; tentativo < 10; ++tentativo)
+            {
+                float letto = 0.0f;
+                if (lastReaperVolumeDb (track1based, letto, 600)
+                    && std::abs ((double) letto - verifica->attesoReaperDb) <= verifica->tolleranza)
+                {
+                    confermato = true;
+                    statoDaw = { { "read", letto }, { "expected", verifica->attesoReaperDb } };
+                    break;
+                }
+                juce::Thread::sleep (40);
+            }
+        }
 
         // Solo un comando confermato da Live si puo' annullare con certezza.
         if (confermato)
@@ -4560,7 +4612,10 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
             const double attesoLive = AbletonDawHandler::liveVolumeFromGain (
                 juce::Decibels::decibelsToGain ((float) db));
             // La curva dB -> fader di Live 11 e' misurata (AbletonDawHandler::liveVolumeFromDb): niente avviso.
-            const Verifica v { "/live/track/get/volume", { (float) track }, track, attesoLive, 0.01 };
+            Verifica v { "/live/track/get/volume", { (float) track }, track, attesoLive, 0.01 };
+            v.reaperVolume  = true;
+            v.attesoReaperDb = db;   // su REAPER si confrontano i dB (la
+                                     // tolleranza e' separata: per Live resta 0.01)
             invia (c, "Richiesta di volume " + juce::String (db, 1) + " dB sulla traccia "
                           + juce::String (track), std::move (avvisi), &v);
         }

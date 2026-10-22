@@ -48,6 +48,10 @@ public:
     // Status
     virtual bool isAbleton() const { return false; }
 
+    /** La conferma su REAPER si fa sul feedback in dB, non sull'API di Live:
+        serve sapere di che adattatore si tratta, non solo "non Live". */
+    virtual bool isReaper() const { return false; }
+
     // Callback type for raw OSC send (provided by OscBridge)
     using SendOscCallback = std::function<void(const juce::String&, float)>;
     virtual void setSendCallback(SendOscCallback cb) { sendCallback = std::move(cb); }

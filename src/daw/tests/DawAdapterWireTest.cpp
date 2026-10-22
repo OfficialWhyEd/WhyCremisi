@@ -62,8 +62,11 @@ private:
 
         auto v = registraReaper ([] (ReaperDawHandler& h) { h.setVolumeDb (1, -6.0f); });
         expectEquals ((int) v.size(), 1);
-        expectEquals (v[0].addr, juce::String ("/track/2/volume/db"), "traccia 1 (0-based) = /track/2");
-        expectWithinAbsoluteError (v[0].val, -6.0f, 0.001f);
+        // Si scrive la POSIZIONE del fader: /volume/db e' solo feedback.
+        expectEquals (v[0].addr, juce::String ("/track/2/volume"), "traccia 1 (0-based) = /track/2");
+        expectWithinAbsoluteError (v[0].val, ReaperDawHandler::faderPositionForDb (-6.0f), 0.0005f);
+        // -6 dB sta fra 0.5 (-11.06) e 0.6 (-5.63): circa 0.593.
+        expectWithinAbsoluteError (v[0].val, 0.593f, 0.01f);
 
         auto p = registraReaper ([] (ReaperDawHandler& h) { h.setPan (0, -0.5f); });
         expectEquals (p[0].addr, juce::String ("/track/1/pan"));
@@ -85,6 +88,15 @@ private:
 
     void testReaperMarkerNonDisponibili()
     {
+        beginTest ("REAPER: curva fader misurata");
+        {
+            // Punti misurati sul campo il 22/10.
+            expectWithinAbsoluteError (ReaperDawHandler::faderPositionForDb (0.0f), 0.716f, 0.01f);
+            expectWithinAbsoluteError (ReaperDawHandler::faderPositionForDb (-11.059f), 0.5f, 0.01f);
+            expectWithinAbsoluteError (ReaperDawHandler::faderPositionForDb (12.0f), 1.0f, 0.001f);
+            expectWithinAbsoluteError (ReaperDawHandler::faderPositionForDb (-96.0f), 0.0f, 0.001f);
+        }
+
         beginTest ("REAPER: i marker non mandano niente (solo lettura nella sua OSC)");
 
         auto v = registraReaper ([] (ReaperDawHandler& h) {
