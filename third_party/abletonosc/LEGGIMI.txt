@@ -1,0 +1,5 @@
+AbletonOSC, copia inclusa nel plugin (22/10/2026)
+Origine: github.com/ideoforms/AbletonOSC, commit 0ca68214bd62c9b5cb641ca34006cfd70ba94430, licenza MIT (LICENSE.md dentro lo zip).
+Cosa e' incluso: solo i file che Live esegue (__init__.py, manager.py, abletonosc/, pythonosc/, LICENSE.md). Niente test ne' client.
+Unica modifica: osc_server.py ascolta su 127.0.0.1 invece di 0.0.0.0, cosi' nessun altro computer della rete puo' comandare Live.
+Il plugin lo copia nella cartella Remote Scripts solo con azione esplicita dell'utente; nessun download.

@@ -29,6 +29,9 @@ public:
     // e zip senza i file che AbletonOSC deve avere.
     static Result installFromZip (juce::InputStream& zipData, const juce::File& remoteScripts);
 
+    // Installa la copia inclusa nel plugin (stesso commit, ascolta solo su 127.0.0.1). Nessun download.
+    static Result installBundled (const juce::File& remoteScripts);
+
     // Scarica (bloccante, da thread di lavoro) e installa.
     static Result downloadAndInstall (const juce::File& remoteScripts);
 };

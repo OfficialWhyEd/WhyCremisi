@@ -48,3 +48,9 @@ Regola: ogni scelta si misura su "lo usa chiunque senza installare niente" e "fu
 
 ## Da dire a Whyed
 YouTube, passo manuale in Live, BM25 invece di FTS5, login Claude, licenze da verificare (OpenClaw, Hermes, mcpp, assistant-ui, browser-use, SWS), mail JUCE/openDAW non inviate, merge non fatto.
+
+## Porte MIDI virtuali (ricerca Haiku, 22/10)
+- Mac: CoreMIDI crea porte senza driver. Funziona.
+- Windows: JUCE `createNewDevice` non funziona (MME). Windows MIDI Services (MIT) solo Win11 24H2+, API da verificare nel repo ufficiale. teVirtualMIDI e loopMIDI: licenza di ridistribuzione NON trovata, richiedono driver. Quindi niente porta virtuale garantita senza installazioni.
+- Scelta: MCU resta la rete di sicurezza, il protocollo e l'handler sono pronti e testati (2985f4b), il trasporto si collega dopo (Mac subito, Windows con Windows MIDI Services se c'è, altrimenti avviso chiaro).
+- Per le DAW principali la via a zero installazioni è lo script nativo copiato con un clic: Ableton (Remote Script Python in User Library), Cubase (MIDI Remote JS in Documents\Steinberg), Reaper (OSC già nel programma, serve un file di pattern).

@@ -69,6 +69,20 @@ public:
             expect (AbletonOscInstaller::downloadUrl().contains (AbletonOscInstaller::pinnedCommit()));
         }
 
+        beginTest ("La copia inclusa nel plugin si installa senza rete e ascolta solo su localhost");
+        {
+            const auto dove = root.getChildFile ("inclusa");
+            dove.createDirectory();
+            auto r = AbletonOscInstaller::installBundled (dove);
+            expect (r.ok, r.message);
+            expect (AbletonOscInstaller::isInstalled (dove));
+            expect (dove.getChildFile ("AbletonOSC/LICENSE.md").existsAsFile());
+            expect (! dove.getChildFile ("AbletonOSC/tests").exists());
+            const auto server = dove.getChildFile ("AbletonOSC/abletonosc/osc_server.py").loadFileAsString();
+            expect (server.contains ("('127.0.0.1', OSC_LISTEN_PORT)"));
+            expect (! server.contains ("('0.0.0.0', OSC_LISTEN_PORT)"));
+        }
+
         root.deleteRecursively();
     }
 };

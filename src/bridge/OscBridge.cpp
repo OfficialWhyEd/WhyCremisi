@@ -4048,13 +4048,12 @@ void OscBridge::eseguiToolSetupAbleton(const ToolCall& call, ToolResult& result)
     }
     if (! conferma) {
         result.success = false;
-        result.output = "AbletonOSC non e' installato. Installarlo scarica codice di terzi (AbletonOSC, licenza MIT, "
-                        "github.com/ideoforms/AbletonOSC, versione fissata " + AbletonOscInstaller::pinnedCommit().substring(0, 8)
-                        + ") e lo copia in " + cartella.getFullPathName() + ", dove Live lo esegue. Dillo all'utente; "
-                        "solo se accetta, richiama questo tool con confirm=true. Niente e' stato scaricato.";
+        result.output = "AbletonOSC non e' installato. Installarlo copia codice di terzi (AbletonOSC, licenza MIT, incluso nel plugin, versione "
+                        + AbletonOscInstaller::pinnedCommit().substring(0, 8) + ", ascolta solo sul computer stesso) in "
+                        + cartella.getFullPathName() + ", dove Live lo esegue. Dillo all'utente; solo se accetta, richiama questo tool con confirm=true. Nulla e' stato copiato.";
         return;
     }
-    const auto esito = AbletonOscInstaller::downloadAndInstall(cartella);
+    const auto esito = AbletonOscInstaller::installBundled(cartella);
     result.success = esito.ok;
     result.output = esito.message;
 }

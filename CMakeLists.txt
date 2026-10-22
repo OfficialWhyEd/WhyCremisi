@@ -160,8 +160,15 @@ target_sources(WhyCremisiVSTPlugin
 # Link Libraries
 # ==============================================================================
 
+juce_add_binary_data(AbletonOscData
+    HEADER_NAME AbletonOscData.h
+    NAMESPACE AbletonOscData
+    SOURCES third_party/abletonosc/AbletonOSC.zip)
+set_target_properties(AbletonOscData PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_link_libraries(WhyCremisiVSTPlugin
     PRIVATE
+        AbletonOscData
         # Audio modules (required for Standalone)
         juce::juce_audio_utils
         juce::juce_dsp
@@ -319,6 +326,7 @@ if(BUILD_UNIT_TESTS)
 
     target_link_libraries(WhyCremisiTests
         PRIVATE
+            AbletonOscData
             juce::juce_audio_utils
             juce::juce_dsp
             juce::juce_audio_devices

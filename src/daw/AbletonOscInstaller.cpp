@@ -1,4 +1,5 @@
 #include "AbletonOscInstaller.h"
+#include "AbletonOscData.h"
 
 juce::File AbletonOscInstaller::remoteScriptsDir()
 {
@@ -115,5 +116,11 @@ AbletonOscInstaller::Result AbletonOscInstaller::downloadAndInstall (const juce:
     juce::MemoryBlock data;
     stream->readIntoMemoryBlock (data);
     juce::MemoryInputStream mem (data, false);
+    return installFromZip (mem, remoteScripts);
+}
+
+AbletonOscInstaller::Result AbletonOscInstaller::installBundled (const juce::File& remoteScripts)
+{
+    juce::MemoryInputStream mem (AbletonOscData::AbletonOSC_zip, (size_t) AbletonOscData::AbletonOSC_zipSize, false);
     return installFromZip (mem, remoteScripts);
 }
