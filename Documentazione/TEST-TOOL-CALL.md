@@ -149,11 +149,68 @@ non li espone). Restano sul protocollo testuale JSON.
 
 ---
 
+## L'alea che resta: gli argomenti delle call non vengono validati
+
+Questa e' la parte da decidere **prima** di aggiungere altro codice.
+
+Oggi `ToolRegistry::executeTool` (`src/ai/ToolRegistry.cpp:395`) inoltra la
+call all'executor senza controllare niente. L'executor e' una catena di
+`if/else` sul nome (`src/bridge/OscBridge.cpp:4659`) che legge gli argomenti
+con `value()` o `get<>()`. Le conseguenze, per classe di errore:
+
+| Errore del modello | Cosa succede oggi | Visibile? |
+|---|---|---|
+| Nome strumento inesistente | `success = false`, `"Unknown tool: …"` | **Sì**: il modello lo legge e puo' correggere |
+| Parametro obbligatorio mancante | il tool usa un default implicito o legge un valore assente | **No**: il log dice `OK` |
+| Tipo sbagliato (`"due"` dove serve un numero) | `nlohmann` lancia un'eccezione, catturata dal bridge: **l'intero turno fallisce** con "Errore interno durante la richiesta" e il modello non riceve nulla su cui correggere | Parzialmente: si vede l'errore, non la causa |
+| Valore fuori scala (es. volume `0..1` invece dei dB) | viene eseguito: il fader si muove in un punto sbagliato e lo strumento riporta `OK` | **No**: l'azione sbagliata e' indistinguibile da una giusta |
+| Parametro sconosciuto (nome inventato) | ignorato in silenzio: il modello crede di aver chiesto altro | **No** |
+
+Due di questi casi sono la vera alea: **l'azione sbagliata viene eseguita e
+registrata come riuscita**. Non e' un errore che si nota: e' un errore che
+produce un log pulito.
+
+### Vantaggi della validazione, per classe di call
+
+1. **Call con parametri mancanti** → oggi esegue con un default che nessuno ha
+   scelto; con la validazione torna al modello l'elenco di cosa manca, e il
+   turno successivo e' corretto invece di essere plausibile.
+2. **Call con tipi sbagliati** → oggi costa il turno intero (eccezione); con la
+   coercizione (`"-6"` → `-6`) la call passa, altrimenti l'errore arriva al
+   modello come testo, che puo' riprovare.
+3. **Call con valori fuori scala** → oggi muovono la DAW e risultano `OK`; con
+   i range dichiarati vengono rifiutate **prima** di toccare la DAW, e il
+   modello riceve il range ammesso.
+4. **Call con parametri sconosciuti** → oggi l'intenzione si perde in silenzio;
+   con un warning nel log l'errore e' almeno **registrato**.
+5. **Diagnosi** → ogni rifiuto e' una riga nel log (`[ai] strumento … rifiutato:
+   motivo`). Oggi, per un'azione sbagliata, non c'e' nessuna riga da cercare.
+
+### Cosa serve per farla senza inventare vincoli
+
+Su **39 tool** registrati in `ToolRegistry::registerBuiltinTools`, solo **2**
+dichiarano `min/max` (`daw.track.setVolume`: −96…12 dB, `daw.track.setPan`:
+−1…1) e 2 dichiarano un `enum`. Quei range li ha scritti chi conosce la DAW:
+non sono deducibili dal codice.
+
+Quindi la regola: **si valida solo cio' che e' dichiarato; nessun vincolo
+inventato.** I range mancanti vanno compilati da chi conosce i tool (una
+riga per parametro), poi la validazione li applica senza altre modifiche.
+
+### Cosa la validazione **non** risolve
+
+Il modello che sceglie lo strumento giusto con un valore **valido ma non
+desiderato** ("muta la traccia 1" quando l'utente intendeva la 2). Per quello
+serve una conferma prima delle scritture: e' un passo separato, con una
+modifica alla UI.
+
+---
+
 ## Cosa **non** è coperto da questa modifica
 
 1. **Validazione degli argomenti**: `ToolRegistry::executeTool` esegue senza
-   controllare tipi, parametri obbligatori o range. Un modello che manda
-   `{"track":"due"}` arriva comunque all'esecuzione.
+   controllare tipi, parametri obbligatori o range. Dettagli e conseguenze
+   nella sezione precedente: e' il punto da cui ripartire.
 2. **Conferma per le scritture**: nessun passaggio di approvazione prima di
    muovere fader o mutare tracce.
 3. **Il giro dopo i tool è in streaming?** No: la chiamata successiva è
