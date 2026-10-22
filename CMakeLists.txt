@@ -125,6 +125,7 @@ target_sources(WhyCremisiVSTPlugin
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
         src/ai/AIProvider.cpp
+        src/account/WhyAccount.cpp
         src/ai/ChainProvider.cpp
         src/ai/ToolRegistry.cpp
         src/samples/SampleLibrary.cpp
@@ -228,6 +229,7 @@ if(BUILD_UNIT_TESTS)
             src/core/tests/PluginProcessorTest.cpp
             src/bridge/tests/OscBridgeTest.cpp
             src/ai/tests/AiEngineTest.cpp
+            src/account/tests/WhyAccountTest.cpp
             src/ai/tests/ChainProviderTest.cpp
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
@@ -260,6 +262,7 @@ if(BUILD_UNIT_TESTS)
             src/osc/OscHandler.cpp
             src/ai/AiEngine.cpp
             src/ai/AIProvider.cpp
+            src/account/WhyAccount.cpp
             src/ai/ChainProvider.cpp
             src/ai/ToolRegistry.cpp
             src/samples/SampleLibrary.cpp

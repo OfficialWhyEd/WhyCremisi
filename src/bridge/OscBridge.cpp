@@ -12,6 +12,7 @@
 #include "OscBridge.h"
 #include "AiEngine.h"
 #include "AIProvider.h"
+#include "../account/WhyAccount.h"
 #include "ToolRegistry.h"
 #include "SessionManager.h"
 #include "MidiHandler.h"
@@ -2308,7 +2309,10 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
     const bool isAzione = configKey == "ai.openLogin" || configKey == "ai.detectSubscription"
                        || configKey == "ai.detectCodex" || configKey == "ai.linkOpenRouter"
                        || configKey == "ai.linkCodex" || configKey == "ai.linkClaude"
-                       || configKey == "ai.testConnection";
+                       || configKey == "ai.testConnection"
+                       || configKey == "account.status" || configKey == "account.signOut"
+                       || configKey == "account.signIn" || configKey == "account.signUp"
+                       || configKey == "account.google" || configKey == "account.reset";
     bool isRead = !payload.contains("value") && ! isAzione;
 
     // Helper to send a config.response
@@ -2795,6 +2799,71 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         nlohmann::json rp;
         rp["key"] = "ai.linkOpenRouter";
         rp["status"] = "opened";
+        sendConfigResponse (rp);
+    }
+    else if (configKey == "account.status")
+    {
+        // Com'e' l'accesso a WhyCremisi: quasi tutto in locale; se il token e' scaduto lo rinnova su un thread.
+        const auto cfg = WhyAccount::caricaConfig();
+        auto sess = WhyAccount::carica();
+        nlohmann::json rp;
+        rp["key"] = "account.status";
+        rp["status"] = "ok";
+        rp["configured"] = cfg.valida();
+        rp["loggedIn"] = sess.valida();
+        rp["email"] = sess.email.toStdString();
+        sendConfigResponse (rp);
+    }
+    else if (configKey == "account.signOut")
+    {
+        WhyAccount::esci();
+        nlohmann::json rp;
+        rp["key"] = "account.signOut";
+        rp["status"] = "ok";
+        sendConfigResponse (rp);
+    }
+    else if (configKey == "account.signIn" || configKey == "account.signUp"
+             || configKey == "account.google" || configKey == "account.reset")
+    {
+        // Accesso per tutti: email e password, Google, recupero password. Il lavoro di rete
+        // gira su un thread e la risposta torna come config.response con il motivo in chiaro.
+        const auto lingua = juce::String (payload.value ("lang", std::string ("it")));
+        const auto email = juce::String (payload.value ("email", std::string()));
+        const auto password = juce::String (payload.value ("password", std::string()));
+        accessoStop = true;
+        if (accessoThread && accessoThread->joinable())
+            accessoThread->join();
+        accessoStop = false;
+        accessoThread = std::make_unique<std::thread> ([this, configKey, lingua, email, password]()
+        {
+            const auto cfg = WhyAccount::caricaConfig();
+            WhyAccount::Esito e;
+            if (configKey == "account.signIn")        e = WhyAccount::accedi (cfg, email, password, lingua);
+            else if (configKey == "account.signUp")   e = WhyAccount::registrati (cfg, email, password, lingua);
+            else if (configKey == "account.reset")    e = WhyAccount::recuperaPassword (cfg, email, lingua);
+            else e = WhyAccount::accediConGoogle (cfg, 180, lingua,
+                        [] (const juce::String& url) { juce::URL (url).launchInDefaultBrowser(); }, &accessoStop);
+            if (accessoStop) return;
+            if (e.ok && e.sessione.valida())
+                WhyAccount::salva (e.sessione);
+
+            nlohmann::json rp;
+            rp["key"] = configKey.toStdString();
+            rp["status"] = (e.ok || e.serveConferma) ? "ok" : "error";
+            rp["loggedIn"] = e.ok && e.sessione.valida();
+            rp["needsConfirm"] = e.serveConferma;
+            rp["email"] = e.sessione.email.toStdString();
+            rp["message"] = e.errore.toStdString();
+            nlohmann::json risposta = nlohmann::json::object();
+            risposta["type"] = "config.response";
+            risposta["timestamp"] = juce::Time::currentTimeMillis();
+            risposta["payload"] = rp;
+            if (wsServer)
+                wsServer->broadcast (risposta);
+        });
+        nlohmann::json rp;
+        rp["key"] = configKey.toStdString();
+        rp["status"] = "working";
         sendConfigResponse (rp);
     }
     else if (configKey == "ai.linkCodex")

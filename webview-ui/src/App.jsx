@@ -6,11 +6,14 @@ import { useValoriLenti } from './components/useValoreLento'
 import { MaskLogo } from './components/MaskLogo'
 import { SessionPanel } from './components/SessionPanel'
 import { SetupScreen } from './components/SetupScreen'
+import { AccountGate } from './components/AccountGate'
 import './index.css'
 import { UserBubble, BotBubble } from './components/ChatBubble'
 
 export default function App() {
   // ── setup state ───────────────────────────────────────────────────
+  // Accesso all'account WhyCremisi: si chiede solo se il servizio è collegato e l'utente non è dentro.
+  const [serveAccesso, setServeAccesso] = useState(false)
   const [setupComplete, setSetupComplete] = useState(() => {
     const done = localStorage.getItem('whycremisi_setup_done') === 'true'
     if (!done) return false
@@ -342,6 +345,14 @@ export default function App() {
             whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: cfg.apiKey, provider: cfg.provider } })
         })
         whycremisi.send({ type: 'config.get', payload: { key: 'ai.status' } })
+        const unsubAccount = whycremisi.on('config.response', (p) => {
+          if (p?.key !== 'account.status') return
+          unsubAccount()
+          let saltato = false
+          try { saltato = sessionStorage.getItem('whycremisi_account_skip') === '1' } catch {}
+          if (p.configured && !p.loggedIn && !saltato) setServeAccesso(true)
+        })
+        whycremisi.send({ type: 'config.set', payload: { key: 'account.status' } })
       }
       if (s === ConnectionState.DISCONNECTED || s === ConnectionState.ERROR) {
         setBotState('sad')
@@ -1012,6 +1023,13 @@ export default function App() {
           ))}
         </AnimatePresence>
       </div>
+
+      {serveAccesso && (
+        <AccountGate
+          onDone={() => setServeAccesso(false)}
+          onSkip={() => { try { sessionStorage.setItem('whycremisi_account_skip', '1') } catch {}; setServeAccesso(false) }}
+        />
+      )}
 
       <AnimatePresence>
         {!setupComplete && (
