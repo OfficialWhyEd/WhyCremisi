@@ -37,3 +37,21 @@
 
 ## 5. Come si riporta il lavoro
 Una riga a Whyed: cosa è fatto e provato, cosa NON lo è. Frasi corte, italiano con accenti, niente trattini lunghi, mai "hai ragione".
+
+## 6. Provare come un utente: cliccare lo schermo
+Un test verde non basta. Si prova come lo usa Whyed: aprire, cliccare, leggere cosa succede.
+- UI del plugin (React): si apre nel browser dal server di sviluppo della UI e si guarda con Chrome. Io ho usato Claude in Chrome: tabs_context, navigate, read_page/get_page_text, computer (clic, screenshot), read_console_messages, read_network_requests (vedi se il WebSocket 17373 parla).
+- Plugin dentro la DAW (finestra vera): serve controllo del desktop. Strade, in ordine: (a) la funzione computer-use di Claude, se c'è; (b) Python con `pywinauto` (Windows UI Automation) per cliccare e leggere i controlli; (c) `pyautogui` + screenshot con `mss`, confrontando le immagini; (d) AutoHotkey.
+- Controllo lato DAW senza guardare lo schermo: Ableton via AbletonOSC (da /live/song/get/tempo e simili), Reaper via suo script/OSC. Dopo ogni comando si rilegge lo stato dalla DAW: se non è cambiato, esito Unconfirmed.
+- Ogni prova lascia uno screenshot in `prove\` con data. Se la prova non c'è, nel report si scrive "NON provato".
+- Sul PC di Whyed Valorant aperto = RAM libera, niente DAW pesanti in parallelo.
+- Dove non si può cliccare davvero (Linux di Carlo, Mac), si scrive nel report e si chiede a Whyed/Carlo di fare la prova, riportando il passo esatto.
+
+## 7. WebSocket: è davvero un limite?
+No. Il WebSocket (porta 17373) è solo il canale tra l'interfaccia (WebView) e il plugin, tutto in locale: va bene, è veloce.
+Il controllo della DAW passa da altri canali, e lì si può fare molto di più:
+- Ableton: AbletonOSC / Remote Script Python; Max for Live; MIDI mappato.
+- Reaper: ReaScript, API C++ di Reaper, OSC, anche extension SWS.
+- Altri: MIDI (CC, MCP/HUI come superficie di controllo), parametri esposti dal plugin (automazione), OSC, API proprie di ogni DAW.
+- Sul master il plugin vede l'audio: analisi, LUFS, spettro, senza chiedere nulla alla DAW.
+Quindi non si dice "con il WebSocket non si può": si cerca il canale giusto per ogni DAW e si fa un adattatore (nucleo comandi unico + adattatori). Se un canale manca, prima si cercano 3 strade (GitHub, open source, script della DAW).

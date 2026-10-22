@@ -1,4 +1,5 @@
 # WhyCremisi: lista infinita (per DeepSeek e chiunque lavori)
+PRIMA di tutto leggi OBIETTIVI-VERI.md. Gli obiettivi non si cancellano e non si ammorbidiscono. Questa lista serve solo a raggiungerli.
 Scritta il 22/10/2026. Si lavora sempre dall'alto. Quando la lista finisce si aggiungono voci nuove (vedi in fondo). Non si finisce mai.
 
 ## IL CICLO (ripetilo senza fermarti)
@@ -29,8 +30,11 @@ Merge in master, invio mail, pubblicazione beta, chiavi, installazione di codice
 - [ ] 10. Analizzare i reel di @smylzmusic (Dee3FJwhIwe, DeeCUU9NVaP, DeXDwviovWM, DeUi_IzI9Q2): come sono fatti, cosa serve a WhyCremisi.
 - [ ] 11. Tradurre in comandi WhyCremisi ogni cosa del README non ancora fatta (il README si fa tutto, extra compresi).
 - [ ] 12. Test: per ogni comando DAW, un test di esito (Done/Unsupported/Rejected/Failed/Unconfirmed).
-- [!] 13. Chiave di firma aggiornamenti: la genera Whyed.
-- [!] 14. Merge dei rami in master: serve OK di Whyed.
+- [ ] 13. Provare come utente (MANUALE-OPERATIVO sezione 6): UI nel browser con Chrome e finestra vera con pywinauto/screenshot. Salvare screenshot in prove\.
+- [ ] 14. Adattatori per altre DAW (Reaper vero, poi FL, Logic, Cubase): cercare il canale giusto per ognuna (sezione 7). Nessun "non si può" prima di 3 strade.
+- [ ] 15. Creare un pezzo da zero con la chat (beat, basso, melodia, mix) come nel video di SMYLZ, con i tool WhyMixy.
+- [!] 16. Chiave di firma aggiornamenti: la genera Whyed.
+- [!] 17. Merge dei rami in master: serve OK di Whyed.
 
 ## QUANDO LA LISTA FINISCE
 Rileggi il README e STATO.md, cerca lacune (numeri senza misura, pulsanti finti, comandi senza conferma dalla DAW, messaggi d'errore senza motivo, testi solo IT o solo EN). Ogni lacuna diventa una voce nuova qui sopra. Poi ricomincia dal ciclo.
