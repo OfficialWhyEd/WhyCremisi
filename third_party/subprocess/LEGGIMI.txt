@@ -1,0 +1,2 @@
+subprocess.h di sheredom (https://github.com/sheredom/subprocess.h), licenza Unlicense (pubblico dominio).
+Scaricato il 22/10/2026 dal ramo master. Usato da src/mcp/McpClient.cpp.
