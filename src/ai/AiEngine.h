@@ -16,6 +16,7 @@
 #include <juce_events/juce_events.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "AIProvider.h"
+#include "ToolRegistry.h"
 #include <memory>
 #include <vector>
 #include <map>
@@ -91,7 +92,15 @@ public:
         juce::StringArray panels;
         bool success = false;
         juce::String rawToolResponse;
+        // Strumenti richiesti da chi non ha le funzioni native (Claude, ChatGPT,
+        // Gemini, Ollama): li esegue resolveTextToolCalls.
+        std::vector<ToolCall> calls;
     };
+
+    /** Esegue gli strumenti chiesti nel JSON e rimanda al modello i risultati
+        veri (max 3 giri). Il testo finale parte da quello che la DAW ha
+        confermato, non da quello che il modello pensava di aver fatto. */
+    StructuredResponse resolveTextToolCalls (const juce::String& userPrompt, StructuredResponse first);
 
     /** Box che la chat sa disegnare. Unica lista: la usano il tool ui.showPanels
         e il campo "panels" del JSON dei fornitori senza strumenti nativi. */

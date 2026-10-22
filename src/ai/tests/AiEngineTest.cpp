@@ -74,6 +74,17 @@ public:
             expect (s.success && s.panels.isEmpty());
         }
 
+        beginTest ("JSON dentro le fence e strumenti chiesti nel testo");
+        {
+            AiEngine engine;
+            auto r = engine.parseStructuredResponse (
+                "```json\n{\"text\":\"Ok\",\"calls\":[{\"name\":\"daw.track.setVolume\",\"arguments\":{\"trackId\":1}}]}\n```");
+            expect (r.success);
+            expect (r.text == "Ok", "Testo senza fence: " + r.text);
+            expect (r.calls.size() == 1 && r.calls[0].name == "daw.track.setVolume");
+            expect (r.calls[0].arguments.value ("trackId", 0) == 1);
+        }
+
         beginTest ("Claude Code non viene scambiato per Anthropic");
         {
             // Anthropic usa la chiave API, Claude Code il login del programma

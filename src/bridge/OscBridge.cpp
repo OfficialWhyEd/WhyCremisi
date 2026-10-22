@@ -2034,6 +2034,10 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
 
                         // Parse accumulated streaming text — no second API call
                         auto structured = aiEngine->parseStructuredResponse(accumulated);
+                        // Se il modello ha chiesto strumenti, li eseguo ora e il testo
+                        // mostrato nasce dai risultati veri della DAW.
+                        if (! structured.calls.empty())
+                            structured = aiEngine->resolveTextToolCalls(capturedPrompt, structured);
                         bool success = structured.success || !accumulated.isEmpty();
 
                         // Se non e' arrivato niente, il motivo lo sa il
