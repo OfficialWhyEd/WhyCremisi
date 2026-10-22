@@ -20,7 +20,6 @@
 
 #include "OscHandler.h"
 #include <cstring>
-#include <arpa/inet.h>   // ntohl
 
 //==============================================================================
 // Lifecycle
@@ -430,9 +429,10 @@ void OscHandler::handleOscPacket(const char* data, int size)
         int ptr = 16;   // 8 byte "#bundle\0" (arrotondati) + 8 di timetag
         while (ptr + 4 <= size)
         {
-            uint32_t len = 0;
-            std::memcpy(&len, data + ptr, 4);
-            len = ntohl(len);
+            // Lunghezza big-endian letta a mano: <arpa/inet.h> non esiste su MSVC.
+            const auto* b = reinterpret_cast<const unsigned char*>(data + ptr);
+            uint32_t len = ((uint32_t)b[0] << 24) | ((uint32_t)b[1] << 16)
+                         | ((uint32_t)b[2] << 8)  |  (uint32_t)b[3];
             ptr += 4;
 
             if (len == 0 || len > (uint32_t)(size - ptr)) break;

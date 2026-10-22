@@ -249,6 +249,7 @@ if(BUILD_UNIT_TESTS)
             src/ai/tests/ChainProviderTest.cpp
             src/ai/tests/ToolCallParsingTest.cpp
             src/ai/tests/ContextTrimTest.cpp
+            src/ai/tests/Utf8Test.cpp
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
             src/daw/tests/DawAdapterWireTest.cpp

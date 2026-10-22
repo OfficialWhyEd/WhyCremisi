@@ -257,17 +257,17 @@ void WhyCremisiProcessorEditor::handleFrontendMessage(const nlohmann::json& mess
 {
     if (!message.contains("type")) return;
     std::string type = message["type"];
-    juce::String msgType(type.data(), type.size());
+    juce::String msgType(type);
 
     if (msgType == "daw.command" && message.contains("payload") && message["payload"].contains("command"))
     {
         std::string cmd = message["payload"]["command"];
-        DBG("[WhyCremisi] Comando DAW: " + juce::String(cmd.data()));
+        DBG("[WhyCremisi] Comando DAW: " + juce::String(cmd));
     }
     else if (msgType == "ai.prompt" && message.contains("payload") && message["payload"].contains("prompt"))
     {
         std::string prompt = message["payload"]["prompt"];
-        audioProcessor.sendAiPrompt(juce::String(prompt.data()));
+        audioProcessor.sendAiPrompt(juce::String(prompt));
     }
 }
 

@@ -25,14 +25,17 @@ static juce::String makeHttp(const juce::String& urlStr, const juce::String& met
             .withConnectionTimeoutMs(timeoutMs).withExtraHeaders(headers));
     }
 
-    juce::String response;
+    // Si accumulano i byte e si decodifica UTF-8 una volta sola: convertire ogni
+    // blocco con String(const char*) legge ASCII/Latin-1 (è -> "Ã¨") e spezza i
+    // caratteri a due byte quando cadono a cavallo di due letture.
+    juce::MemoryBlock bytes;
     char buffer[4096];
     while (stream && !stream->isExhausted()) {
-        int bytesRead = stream->read(buffer, sizeof(buffer) - 1);
-        if (bytesRead > 0) { buffer[bytesRead] = '\0'; response += juce::String(buffer); }
+        int bytesRead = stream->read(buffer, sizeof(buffer));
+        if (bytesRead > 0) bytes.append(buffer, (size_t) bytesRead);
         else break;
     }
-    return response;
+    return juce::String::fromUTF8((const char*) bytes.getData(), (int) bytes.getSize());
 }
 
 static nlohmann::json parseJsonSafe(const juce::String& raw)
@@ -493,10 +496,12 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
 
     bool ricevutoQualcosa = false;
     juce::String line;
+    std::string lineBytes;   // byte grezzi: UTF-8 si decodifica a fine riga
     char ch;
     while (stream->isExhausted() == false && !abortRequested.load()) {
         if (stream->read(&ch, 1) == 0) break;
         if (ch == '\n') {
+            line = juce::String::fromUTF8 (lineBytes.data(), (int) lineBytes.size());
             if (line.startsWith("data: ")) {
                 juce::String data = line.substring(6).trim();
                 if (data == "[DONE]") break;
@@ -538,9 +543,9 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
                     }
                 }
             }
-            line.clear();
+            lineBytes.clear();
         } else {
-            line += ch;
+            lineBytes += ch;
         }
     }
 
@@ -1673,10 +1678,12 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
 
     bool ricevutoQualcosa = false;
     juce::String line;
+    std::string lineBytes;   // byte grezzi: UTF-8 si decodifica a fine riga
     char ch;
     while (!stream->isExhausted() && !abortRequested.load()) {
         if (stream->read(&ch, 1) == 0) break;
         if (ch == '\n') {
+            line = juce::String::fromUTF8 (lineBytes.data(), (int) lineBytes.size());
             if (line.startsWith("data: ")) {
                 auto j = parseJsonSafe(line.substring(6));
                 if (j.contains("type")) {
@@ -1721,9 +1728,9 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
                     if (type == "message_stop") break;
                 }
             }
-            line.clear();
+            lineBytes.clear();
         } else {
-            line += ch;
+            lineBytes += ch;
         }
     }
 
@@ -2016,10 +2023,12 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
 
     bool ricevutoQualcosa = false;
     juce::String line;
+    std::string lineBytes;   // byte grezzi: UTF-8 si decodifica a fine riga
     char ch;
     while (!stream->isExhausted() && !abortRequested.load()) {
         if (stream->read(&ch, 1) == 0) break;
         if (ch == '\n') {
+            line = juce::String::fromUTF8 (lineBytes.data(), (int) lineBytes.size());
             if (line.startsWith("data: ")) {
                 auto j = parseJsonSafe(line.substring(6));
                 if (j.contains ("error")) {
@@ -2051,9 +2060,9 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
                     }
                 } catch (...) {}
             }
-            line.clear();
+            lineBytes.clear();
         } else {
-            line += ch;
+            lineBytes += ch;
         }
     }
 
@@ -2213,7 +2222,7 @@ juce::String OpenRouterAuth::accedi (int timeoutSecondi, juce::String& errore, s
     const auto risposta = makeHttp ("https://openrouter.ai/api/v1/auth/keys", "POST", corpo.dump(), 15000);
     const auto j = parseJsonSafe (risposta);
     if (j.is_object() && j.contains ("key") && j["key"].is_string())
-        return juce::String (j["key"].get<std::string>().data());
+        return juce::String (j["key"].get<std::string>());
     errore = "OpenRouter non ha restituito la chiave.";
     return {};
 }

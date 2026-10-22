@@ -67,7 +67,7 @@ void WebViewBridge::sendToFrontend(const nlohmann::json& message)
     
     // Converti JSON in stringa
     std::string jsonStd = message.dump();
-    juce::String jsonStr(jsonStd.data(), jsonStd.size());
+    juce::String jsonStr(jsonStd);
     
     // Usa Base64 per trasmettere il payload in modo assolutamente sterile rispetto all'interprete URL
     juce::String base64Json = juce::Base64::toBase64(jsonStd.data(), jsonStd.size());
@@ -77,7 +77,7 @@ void WebViewBridge::sendToFrontend(const nlohmann::json& message)
     
     webView->goToURL(jsCode);
     
-    DBG("[WebViewBridge] Messaggio inviato: " + juce::String(message["type"].get<std::string>().data()));
+    DBG("[WebViewBridge] Messaggio inviato: " + juce::String(message["type"].get<std::string>()));
 }
 
 // MARK: - Shortcuts per messaggi comuni

@@ -113,7 +113,7 @@ void SessionManager::startSession(const juce::String& dawHint)
     header["started_at"]      = humanTime(sessionStartMs).toStdString();
     header["ended_at"]        = nullptr;
     header["duration_seconds"]= nullptr;
-    headerFile.replaceWithText(juce::String(header.dump(2).data()));
+    headerFile.replaceWithText(juce::String(header.dump(2)));
 
     // Truncate events file (fresh start)
     eventsFile.replaceWithText("");
@@ -160,7 +160,7 @@ void SessionManager::closeSession()
         root["ended_at"]         = humanTime(endMs).toStdString();
         root["ended_at_ms"]      = endMs;
         root["duration_seconds"] = durSec;
-        headerFile.replaceWithText(juce::String(root.dump(2).data()));
+        headerFile.replaceWithText(juce::String(root.dump(2)));
     }
     catch (...) {}
 
@@ -175,14 +175,14 @@ void SessionManager::closeSession()
     summary["ai_prompts"]       = countAiPrompt.load();
     summary["ai_responses"]     = countAiResponse.load();
     summary["errors"]           = countError.load();
-    summaryFile.replaceWithText(juce::String(summary.dump(2).data()));
+    summaryFile.replaceWithText(juce::String(summary.dump(2)));
 
     // Clear current.json
     nlohmann::json closed;
     closed["session_id"]   = sessionId.toStdString();
     closed["status"]       = "closed";
     closed["ended_at"]     = humanTime(endMs).toStdString();
-    currentFile.replaceWithText(juce::String(closed.dump(2).data()));
+    currentFile.replaceWithText(juce::String(closed.dump(2)));
 }
 
 //==============================================================================
@@ -235,7 +235,7 @@ void SessionManager::updateMemory()
         mem["sessions"].erase(mem["sessions"].begin());
 
     getAppDataDirectory().createDirectory();
-    memFile.replaceWithText(juce::String(mem.dump(2).data()));
+    memFile.replaceWithText(juce::String(mem.dump(2)));
 }
 
 //==============================================================================
@@ -261,7 +261,7 @@ void SessionManager::appendEvent(const nlohmann::json& event)
     eventCount.fetch_add(1);
 
     // Append one JSON line to events.jsonl
-    juce::String line(event.dump().data());
+    juce::String line(event.dump());
     eventsFile.appendText(line + "\n");
 
     // Update current.json with live session snapshot
@@ -285,7 +285,7 @@ void SessionManager::appendEvent(const nlohmann::json& event)
         {"ai_prompts", countAiPrompt.load()},
         {"errors",     countError.load()}
     };
-    currentFile.replaceWithText(juce::String(current.dump(2).data()));
+    currentFile.replaceWithText(juce::String(current.dump(2)));
 }
 
 //==============================================================================

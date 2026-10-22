@@ -1045,7 +1045,7 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
     }
 
     juce::String reqId = message.contains("id") && !message["id"].is_null()
-                         ? juce::String(message["id"].get<std::string>().data())
+                         ? juce::String(message["id"].get<std::string>())
                          : "";
 
     log("[WS->OSC] " + msgType + (reqId.isNotEmpty() ? " (id=" + reqId + ")" : ""));
@@ -1155,7 +1155,7 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
             else if (style == "warm")
                 aiEngine->setPersonalityStyle(AiPersonalityStyle::Warm);
 
-            log("[AI] Personality style set to: " + juce::String(style.data()));
+            log("[AI] Personality style set to: " + juce::String(style));
         }
     }
     else if (msgType == "chain.get")
@@ -1368,12 +1368,12 @@ bool OscBridge::dispatchDawCommand(const nlohmann::json& payload)
 
 bool OscBridge::dispatchDawCommandValidated(const nlohmann::json& payload, const std::string& cmd)
 {
-    juce::String command(cmd.data(), cmd.size());
+    juce::String command(cmd);
 
     log("[CMD] " + command);
 
     if (sessionManager)
-        sessionManager->logDawCommand(command, juce::String(payload.dump().data()));
+        sessionManager->logDawCommand(command, juce::String(payload.dump()));
 
     broadcastSessionEvent("daw_command", {{"command", command.toStdString()}});
 
@@ -1928,7 +1928,7 @@ bool OscBridge::dispatchDawCommandValidated(const nlohmann::json& payload, const
         {
             int idx = payload["index"].get<int>();
             std::string name = payload["name"];
-            pluginProcessor->changeProgramName(idx, juce::String(name.data()));
+            pluginProcessor->changeProgramName(idx, juce::String(name));
         }
     }
     else if (command == "presetSave")
@@ -1936,7 +1936,7 @@ bool OscBridge::dispatchDawCommandValidated(const nlohmann::json& payload, const
         if (payload.contains("path") && pluginProcessor)
         {
             std::string path = payload["path"];
-            pluginProcessor->savePreset(juce::File(juce::String(path.data())));
+            pluginProcessor->savePreset(juce::File(juce::String(path)));
         }
         else if (pluginProcessor)
         {
@@ -1955,8 +1955,8 @@ bool OscBridge::dispatchDawCommandValidated(const nlohmann::json& payload, const
         if (payload.contains("path") && pluginProcessor)
         {
             std::string path = payload["path"];
-            pluginProcessor->loadPreset(juce::File(juce::String(path.data())));
-            log("[CMD] Preset loaded: " + juce::String(path.data()));
+            pluginProcessor->loadPreset(juce::File(juce::String(path)));
+            log("[CMD] Preset loaded: " + juce::String(path));
         }
     }
     else
@@ -1975,7 +1975,7 @@ void OscBridge::dispatchDawRequest(const nlohmann::json& payload, const juce::St
         return;
 
     std::string req = payload["request"];
-    juce::String request(req.data(), req.size());
+    juce::String request(req);
 
     log("[REQ] " + request);
 
@@ -2016,7 +2016,7 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
         return;
 
     std::string promptStr = payload["prompt"];
-    juce::String prompt(promptStr.data(), promptStr.size());
+    juce::String prompt(promptStr);
 
     log("[AI] Prompt received (id=" + reqId + "): " + prompt.substring(0, 50));
 
@@ -2366,7 +2366,7 @@ void OscBridge::dispatchWidgetChange(const nlohmann::json& payload)
     if (!payload.contains("widgetId") || !payload.contains("value"))
         return;
 
-    juce::String widgetId = juce::String(payload["widgetId"].get<std::string>().data());
+    juce::String widgetId = juce::String(payload["widgetId"].get<std::string>());
     float value = payload["value"].get<float>();
 
     log("[WIDGET] " + widgetId + " = " + juce::String(value));
@@ -2385,7 +2385,7 @@ void OscBridge::dispatchMidiLearn(const juce::String& msgType,
         if (!payload.contains("widgetId"))
             return;
 
-        juce::String widgetId = juce::String(payload["widgetId"].get<std::string>().data());
+        juce::String widgetId = juce::String(payload["widgetId"].get<std::string>());
         log("[MIDI] Learn start for widget: " + widgetId);
 
         if (midiHandler)
@@ -2422,7 +2422,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         return;
 
     std::string key = payload["key"].get<std::string>();
-    juce::String configKey(key.data(), key.size());
+    juce::String configKey(key);
     if (configKey.startsWith ("ai.")) log("[CONFIG] richiesta " + configKey);   // solo il nome, mai il valore
     // Le azioni (collega, rileva, apri il login, prova) non portano un "value":
     // sono comandi, non letture, e vanno al ramo di scrittura.
@@ -2551,7 +2551,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
     {
         if (!payload.contains("value") || !payload["value"].is_string()) return;
         std::string provider = payload["value"].get<std::string>();
-        log("[CONFIG] AI provider set to: " + juce::String(provider.data()));
+        log("[CONFIG] AI provider set to: " + juce::String(provider));
         
         if (aiEngine)
         {
@@ -2645,13 +2645,13 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
     {
         if (!payload.contains("value") || !payload["value"].is_string()) return;
         std::string model = payload["value"].get<std::string>();
-        log("[CONFIG] AI model set to: " + juce::String(model.data()));
+        log("[CONFIG] AI model set to: " + juce::String(model));
         
         if (aiEngine)
         {
             aiEngine->updateConfig([&model](AiEngine::Config& cfg)
             {
-                cfg.model = juce::String(model.data());
+                cfg.model = juce::String(model);
             });
         }
 
@@ -2672,13 +2672,13 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                              : AiEngine::providerToId (aiEngine ? aiEngine->getConfig().provider
                                                                 : AiEngine::Provider::Ollama).toStdString();
         std::string apiKey = payload["value"].get<std::string>();
-        log("[CONFIG] API key set for: " + juce::String(provider.data()));
+        log("[CONFIG] API key set for: " + juce::String(provider));
         
         if (aiEngine)
         {
             aiEngine->updateConfig([&apiKey](AiEngine::Config& cfg)
             {
-                cfg.apiKey = juce::String(apiKey.data());
+                cfg.apiKey = juce::String(apiKey);
                 // Chiave API e abbonamento sono alternativi: impostarne una
                 // deve annullare l'altro, altrimenti resterebbero entrambi
                 // e il token vincerebbe silenziosamente sulla chiave.
@@ -2728,7 +2728,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         {
             aiEngine->updateConfig([&token](AiEngine::Config& cfg)
             {
-                cfg.authToken = juce::String(token.data());
+                cfg.authToken = juce::String(token);
                 if (! token.empty())
                 {
                     cfg.apiKey = {};
@@ -2753,7 +2753,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         // senza alcun messaggio d'errore. Qui si sceglie la DAW e le porte
         // si impostano da sole.
         if (!payload.contains("value") || !payload["value"].is_string()) return;
-        const juce::String preset (payload["value"].get<std::string>().data());
+        const juce::String preset (payload["value"].get<std::string>());
 
         int sendPort = 0, receivePort = 0;
         if (preset == "ableton")
@@ -2801,7 +2801,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         // ma e' il percorso piu' breve che funziona: un clic, il login
         // vero, e si torna.
         if (!payload.contains("provider") || !payload["provider"].is_string()) return;
-        const juce::String provider (payload["provider"].get<std::string>().data());
+        const juce::String provider (payload["provider"].get<std::string>());
 
         juce::String url;
         if (provider == "anthropic")       url = "https://console.anthropic.com/settings/keys";
@@ -3140,7 +3140,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         std::string effort = payload["value"].get<std::string>();
 
         static const juce::StringArray validEffort { "low", "medium", "high", "xhigh", "max" };
-        if (! validEffort.contains (juce::String (effort.data())))
+        if (! validEffort.contains (juce::String(effort)))
         {
             nlohmann::json err;
             err["key"] = "ai.effort";
@@ -3150,13 +3150,13 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
             return;
         }
 
-        log("[CONFIG] Claude effort set to: " + juce::String(effort.data()));
+        log("[CONFIG] Claude effort set to: " + juce::String(effort));
 
         if (aiEngine)
         {
             aiEngine->updateConfig([&effort](AiEngine::Config& cfg)
             {
-                cfg.effort = juce::String(effort.data());
+                cfg.effort = juce::String(effort);
             });
         }
 
@@ -3170,13 +3170,13 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
     {
         if (!payload.contains("value") || !payload["value"].is_string()) return;
         std::string url = payload["value"].get<std::string>();
-        log("[CONFIG] Ollama URL set to: " + juce::String(url.data()));
+        log("[CONFIG] Ollama URL set to: " + juce::String(url));
         
         if (aiEngine)
         {
             aiEngine->updateConfig([&url](AiEngine::Config& cfg)
             {
-                cfg.baseUrl = juce::String(url.data());
+                cfg.baseUrl = juce::String(url);
                 cfg.provider = AiEngine::Provider::Ollama;
             });
         }
@@ -3194,12 +3194,12 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         // 8080, non la 11434 di Ollama.
         if (!payload.contains("value") || !payload["value"].is_string()) return;
         std::string url = payload["value"].get<std::string>();
-        log("[CONFIG] llama.cpp URL set to: " + juce::String(url.data()));
+        log("[CONFIG] llama.cpp URL set to: " + juce::String(url));
 
         if (aiEngine)
             aiEngine->updateConfig([&url](AiEngine::Config& cfg)
             {
-                cfg.baseUrl = juce::String(url.data());
+                cfg.baseUrl = juce::String(url);
             });
 
         nlohmann::json rp;
@@ -3272,7 +3272,7 @@ void OscBridge::dispatchOscSend(const nlohmann::json& payload)
         return;
 
     std::string addr = payload["address"];
-    juce::String address(addr.data(), addr.size());
+    juce::String address(addr);
     float value = payload["value"].get<float>();
 
     sendOscToDaw(address, value);
@@ -5124,10 +5124,10 @@ void OscBridge::dispatchChainSet(const nlohmann::json& payload)
     for (const auto& jp : payload["plugins"])
     {
         PluginInfo p;
-        p.id           = juce::String(jp.value("id", "").data());
-        p.name         = juce::String(jp.value("name", "").data());
-        p.manufacturer = juce::String(jp.value("manufacturer", "").data());
-        p.format       = juce::String(jp.value("format", "VST3").data());
+        p.id           = juce::String(jp.value("id", ""));
+        p.name         = juce::String(jp.value("name", ""));
+        p.manufacturer = juce::String(jp.value("manufacturer", ""));
+        p.format       = juce::String(jp.value("format", "VST3"));
         p.slot         = jp.value("slot", 0);
         p.enabled      = jp.value("enabled", true);
         if (p.name.isNotEmpty())
@@ -5146,11 +5146,11 @@ void OscBridge::dispatchAiAction(const nlohmann::json& payload, const juce::Stri
     if (!payload.contains("widgetId") || !payload.contains("value"))
         return;
 
-    juce::String widgetId = juce::String(payload["widgetId"].get<std::string>().data());
+    juce::String widgetId = juce::String(payload["widgetId"].get<std::string>());
     float value = payload["value"].get<float>();
     juce::String description;
     if (payload.contains("description"))
-        description = juce::String(payload["description"].get<std::string>().data());
+        description = juce::String(payload["description"].get<std::string>());
 
     log("[AI ACTION] " + widgetId + " = " + juce::String(value) + (description.isNotEmpty() ? " (" + description + ")" : ""));
 
