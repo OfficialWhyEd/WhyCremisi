@@ -260,7 +260,7 @@ public:
 
         beginTest ("Il modello predefinito di Claude e' quello di punta");
         {
-            expect (AnthropicProvider::defaultModel() == "claude-opus-5",
+            expect (AnthropicProvider::defaultModel() == "claude-opus-5-5",
                     "Opus 5 e' il modello di riferimento del progetto");
         }
 

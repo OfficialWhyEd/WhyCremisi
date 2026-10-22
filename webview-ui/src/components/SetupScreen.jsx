@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { whycremisi } from '../whycremisi-bridge'
+import { TESTI, guessLang, saveLang } from './onboarding/setupTesti'
 
 const modelsByProvider = {
   ollama:    ['llama3.2', 'llama3.1', 'mistral', 'mixtral', 'codellama', 'qwen2.5'],
   gemini:    ['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite-preview', 'gemini-2.0-flash', 'gemini-1.5-pro'],
   openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'],
+  anthropic: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
   // Con l'account Claude i modelli sono gli alias del programma ufficiale.
   claudecode: ['sonnet', 'opus', 'haiku'],
   // Con l'account ChatGPT il modello predefinito è quello dell'abbonamento.
@@ -27,31 +28,31 @@ const isFreeModel = (m) => m.endsWith(':free') || m === 'openrouter/free'
 // Su OpenRouter gli id sono lunghi: nella UI mostriamo solo il nome.
 const shortModelName = (m) => m.replace(':free', '').split('/').pop()
 
-// Etichette leggibili: nella UI si sceglie "Opus 5", non "claude-opus-5".
-const modelLabels = {
-  'claude-opus-5':    { name: 'Opus 5',    note: 'Il più capace' },
-  'claude-sonnet-5':  { name: 'Sonnet 5',  note: 'Equilibrato' },
-  'claude-haiku-4-5': { name: 'Haiku 4.5', note: 'Rapido ed economico' },
-  sonnet: { name: 'Sonnet', note: 'Equilibrato: ideale per il lavoro in DAW' },
-  opus:   { name: 'Opus',   note: 'Il più capace, più lento' },
-  haiku:  { name: 'Haiku',  note: 'Rapido ed economico' },
-  default: { name: 'Predefinito', note: 'Il modello che ChatGPT sceglie per il tuo abbonamento' },
+// Nomi dei modelli: nella UI si sceglie "Opus 5.5", non "claude-opus-5-5".
+// Le note (equilibrato, rapido…) stanno nei testi, per lingua.
+const modelNames = {
+  'claude-opus-5-5': 'Opus 5.5',
+  'claude-sonnet-5-5': 'Sonnet 5.5',
+  'claude-haiku-5-5': 'Haiku 5.5',
+  sonnet: 'Sonnet',
+  opus: 'Opus',
+  haiku: 'Haiku',
 }
 
 // Profondità di ragionamento. Alza la qualità sui compiti difficili e
 // il numero di token spesi.
 const effortLevels = [
-  { id: 'low',    label: 'Low',    note: 'Risposte rapide' },
-  { id: 'medium', label: 'Medium', note: 'Compromesso' },
-  { id: 'high',   label: 'High',   note: 'Predefinito' },
-  { id: 'xhigh',  label: 'X-High', note: 'Compiti complessi' },
-  { id: 'max',    label: 'Max',    note: 'Nessun compromesso' },
+  { id: 'low',    label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high',   label: 'High' },
+  { id: 'xhigh',  label: 'X-High' },
+  { id: 'max',    label: 'Max' },
 ]
 
+// Nome mostrato per ogni servizio. Per Ollama dipende dalla lingua.
 const providerNames = {
-  ollama: 'LOCAL CORE',
   gemini: 'GEMINI',
-  openai: 'OPENAI',
+  openai: 'ChatGPT',
   anthropic: 'CLAUDE',
   openrouter: 'OPENROUTER',
 }
@@ -59,10 +60,14 @@ const providerNames = {
 export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   // "claudecode" è come il plugin chiama l'accesso con l'account Claude; qui
   // sta sotto la card Claude, con la modalità "Abbonamento".
+  const [lang, setLang] = useState(() => guessLang().lang)
+  const t = TESTI[lang]
+  const cambiaLingua = (l) => { setLang(l); saveLang(l) }
+  const nomeProvider = (id) => (id === 'ollama' ? t.nameOllama : providerNames[id])
   const savedClaudeCode = initialConfig.provider === 'claudecode'
   const savedCodex = initialConfig.provider === 'codex'
   const [provider, setProvider] = useState(
-    savedClaudeCode ? 'anthropic' : savedCodex ? 'openai' : (initialConfig.provider || 'ollama'))
+    savedClaudeCode ? 'anthropic' : savedCodex ? 'openai' : (initialConfig.provider || 'anthropic'))
   const [model, setModel] = useState(
     initialConfig.model
     || modelsByProvider[savedClaudeCode ? 'claudecode' : savedCodex ? 'codex' : initialConfig.provider]?.[0]
@@ -73,7 +78,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const [showKey, setShowKey] = useState(false)
   // Su Claude si può entrare con un abbonamento invece che con una chiave API.
   const [claudeAuthMode, setClaudeAuthMode] = useState(
-    (savedClaudeCode || savedCodex) ? 'subscription' : (initialConfig.claudeAuthMode || 'subscription'))
+    'subscription')
   const [effort, setEffort] = useState(initialConfig.effort || 'high')
   // null = non ancora verificato, true/false = esito del rilevamento.
   const [subscriptionDetected, setSubscriptionDetected] = useState(null)
@@ -126,7 +131,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     const unsub = whycremisi.on('config.response', (payload) => {
       if (payload?.key !== 'ai.linkOpenRouter') return
       if (payload.status === 'ok') { setOrCollegato(true); setOrInCorso(false); setErrorMsg('') }
-      else if (payload.status === 'error') { setOrInCorso(false); setErrorMsg(payload.message || 'Accesso non riuscito.') }
+      else if (payload.status === 'error') { setOrInCorso(false); setErrorMsg(payload.message || t.loginFail) }
     })
     return () => unsub()
   }, [])
@@ -180,14 +185,14 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
         pollRef.current = setInterval(() => {
           if (Date.now() - inizio > 5 * 60 * 1000) {
             clearInterval(pollRef.current); pollRef.current = null
-            setCollegamento('Accesso non completato. Riprova.')
+            setCollegamento(t.linkFail)
             return
           }
           whycremisi.send({ type: 'config.set', payload: { key: chiaveDetect } })
         }, 2500)
       } else {
         // Il motivo va detto: un pulsante che torna com'era non spiega niente.
-        setCollegamento(payload.message || 'Collegamento non riuscito.')
+        setCollegamento(payload.message || t.linkFail2)
       }
     })
     whycremisi.send({ type: 'config.set', payload: { key: chiaveDetect } })
@@ -198,11 +203,11 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   }, [provider])
 
   const providers = [
-    { id: 'ollama',    icon: 'memory',       desc: 'In locale sulla tua macchina. Nessuna chiave.', keyRequired: false },
-    { id: 'gemini',    icon: 'cloud_queue',  desc: 'Google Gemini.', keyRequired: true, keyPrefix: 'AIza' },
-    { id: 'openai',    icon: 'auto_awesome', desc: 'Il tuo account ChatGPT, oppure una chiave API.', keyRequired: true, keyPrefix: 'sk-' },
-    { id: 'anthropic', icon: 'psychology',   desc: 'Il tuo account Claude, oppure una chiave API.', keyRequired: true, keyPrefix: 'sk-ant-' },
-    { id: 'openrouter', icon: 'hub',         desc: 'Senza abbonamento: modelli gratuiti con una chiave gratis.', keyRequired: true, keyPrefix: 'sk-or-' },
+    { id: 'anthropic', icon: 'psychology',   desc: t.descClaude },
+    { id: 'openai',    icon: 'auto_awesome', desc: t.descChat },
+    { id: 'gemini',    icon: 'cloud_queue',  desc: t.descGemini },
+    { id: 'openrouter', icon: 'hub',         desc: t.descOpenrouter },
+    { id: 'ollama',    icon: 'memory',       desc: t.descOllama },
   ]
 
   const handleTestConnection = async () => {
@@ -226,7 +231,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
       // fallito quando invece stava andando a buon fine.
       const timeout = setTimeout(() => {
         setStatus('error')
-        setErrorMsg('Nessuna risposta dal plugin entro 20 secondi.')
+        setErrorMsg(t.noReply)
       }, 20000)
       timeoutsRef.current.push(timeout)
 
@@ -243,7 +248,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
           // Il motivo vero arriva dal plugin: chiave rifiutata, quota finita,
           // servizio spento. Prima usciva sempre "Connection failed." e non
           // c'era modo di capire cosa correggere.
-          setErrorMsg(payload.error || 'Verifica non riuscita, senza motivo riportato.')
+          setErrorMsg(payload.error || t.cantTalk(nomeAccount))
         }
       })
       unsubRef.current = unsub
@@ -259,12 +264,22 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
           timeoutsRef.current.push(t2)
         } else {
           setStatus('error')
-          setErrorMsg('Plugin non collegato. Avvia lo Standalone e riprova.')
+          setErrorMsg(t.noPlugin)
         }
       }, 1000)
       timeoutsRef.current.push(t)
     }
   }
+
+  const Etichetta = ({ n, children }) => (
+    <label className="flex items-center gap-2 text-[11px] font-bold text-white tracking-tight mb-1.5">
+      <span className="w-4 h-4 rounded-full bg-[#DC143C] text-white text-[9px] flex items-center justify-center flex-shrink-0">{n}</span>
+      {children}
+    </label>
+  )
+
+  const nomeModello = (m) => modelNames[m] || (provider === 'openrouter' ? shortModelName(m) : m)
+  const notaModello = (m) => t.models[m] || ''
 
   return (
     <motion.div
@@ -285,37 +300,47 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
         animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0)' }}
         exit={{ opacity: 0, y: -20, scale: 0.97, filter: 'blur(4px)' }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="relative w-full max-w-lg bg-[#131313]/95 backdrop-blur-xl border border-[#222222] shadow-2xl overflow-hidden"
+        className="relative w-full max-w-lg max-h-[96vh] overflow-y-auto bg-[#131313]/95 backdrop-blur-xl border border-[#222222] shadow-2xl"
       >
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-[#DC143C] via-[#FFB000] to-[#00E5FF]" />
 
         <div className="px-5 py-4">
-          <header className="flex items-center justify-between mb-4">
+          <header className="flex items-start justify-between mb-4 gap-3">
             <div className="flex items-center gap-3">
-              <img src="/whycremisi-mask.png" className="w-7 h-7 flex-shrink-0" alt="WhyCremisi" />
+              <img src="/whycremisi-mask.png" className="w-8 h-8 flex-shrink-0" alt="WhyCremisi" />
               <div>
-                <h2 className="text-xs font-black tracking-tighter text-white uppercase leading-none">
-                  Neural <span className="text-[#DC143C]">Link</span>
-                </h2>
-                <p className="text-[8px] text-[#4d4d4d] font-mono uppercase tracking-[0.15em] leading-tight">Configure AI Backend</p>
+                <h2 className="text-base font-black tracking-tight text-white leading-tight">{t.title}</h2>
+                <p className="text-[11px] text-[#8a8a8a] leading-tight">{t.subtitle}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex border border-[#222] rounded-full overflow-hidden" role="group" aria-label="Lingua / Language">
+                {['it', 'en'].map(l => (
+                  <button
+                    key={l}
+                    onClick={() => cambiaLingua(l)}
+                    aria-pressed={lang === l}
+                    className={`px-2 py-0.5 text-[10px] font-bold uppercase transition-colors ${
+                      lang === l ? 'bg-white text-black' : 'text-[#777] hover:text-white'
+                    }`}
+                  >{l}</button>
+                ))}
+              </div>
               {onSkip && (
                 <button
                   onClick={onSkip}
-                  className="text-[8px] text-[#555] hover:text-[#888] font-mono uppercase tracking-widest underline decoration-dotted underline-offset-2 transition-colors"
+                  className="text-[10px] text-[#777] hover:text-white underline decoration-dotted underline-offset-2 transition-colors"
                 >
-                  Skip
+                  {t.skip}
                 </button>
               )}
             </div>
           </header>
 
+          <Etichetta n="1">{t.step1}</Etichetta>
           {/* Due colonne, con l'ultima card a piena larghezza quando i
-              provider sono in numero dispari: così nessuna resta orfana
-              su una riga occupandone solo un quarto. */}
-          <div className="grid grid-cols-2 gap-1.5 mb-3 items-stretch">
+              provider sono in numero dispari: così nessuna resta orfana. */}
+          <div className="grid grid-cols-2 gap-1.5 mb-4 items-stretch">
             {providers.map((p, idx) => {
               const isSelected = provider === p.id
               const isLastOdd = idx === providers.length - 1 && providers.length % 2 === 1
@@ -329,16 +354,16 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                     setProvider(p.id)
                     setModel(modelsByProvider[claudeAuthMode === 'subscription' && p.id === 'anthropic' ? 'claudecode' : claudeAuthMode === 'subscription' && p.id === 'openai' ? 'codex' : p.id][0])
                   }}
-                  className={`px-2 py-1.5 border text-left transition-all flex items-center gap-2 min-h-[2.75rem] ${
+                  className={`px-2.5 py-2 border text-left transition-all flex items-center gap-2 min-h-[3rem] ${
                     isSelected
                       ? 'bg-[#1a1a1a] border-[#DC143C]'
-                      : 'bg-[#0d0d0d] border-[#1a1a1a] opacity-50 hover:opacity-100'
+                      : 'bg-[#0d0d0d] border-[#1a1a1a] opacity-60 hover:opacity-100'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-sm flex-shrink-0" style={{ color: isSelected ? '#DC143C' : '#555' }}>{p.icon}</span>
+                  <span className="material-symbols-outlined text-base flex-shrink-0" style={{ color: isSelected ? '#DC143C' : '#666' }}>{p.icon}</span>
                   <span className="min-w-0">
-                    <span className="block text-[9px] font-bold text-white uppercase tracking-tight leading-none mb-0.5">{providerNames[p.id]}</span>
-                    <span className="block text-[7px] text-[#555] leading-tight">{p.desc}</span>
+                    <span className="block text-[11px] font-bold text-white tracking-tight leading-tight">{nomeProvider(p.id)}</span>
+                    <span className="block text-[10px] text-[#8a8a8a] leading-tight">{p.desc}</span>
                   </span>
                 </motion.button>
               )
@@ -353,42 +378,43 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden"
             >
-              {hasAccount && (
-                <div className="mb-3">
-                  <label className="text-[8px] font-bold text-[#FFB000] uppercase tracking-widest block mb-1">
-                    Accesso
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[
-                      { id: 'subscription', label: 'Il mio account', note: isChatGpt ? 'ChatGPT Plus, Pro o Business, nessuna chiave' : 'Claude Pro o Max, nessuna chiave' },
-                      { id: 'apikey',       label: 'Chiave API',  note: 'Consumo a token' },
-                    ].map(mode => {
-                      const active = claudeAuthMode === mode.id
-                      return (
-                        <button
-                          key={mode.id}
-                          onClick={() => setClaudeAuthMode(mode.id)}
-                          className={`px-2 py-1.5 border text-left transition-all ${
-                            active
-                              ? 'bg-[#1a1a1a] border-[#DC143C]'
-                              : 'bg-[#0d0d0d] border-[#1a1a1a] opacity-60 hover:opacity-100'
-                          }`}
-                        >
-                          <div className="text-[9px] font-bold text-white uppercase tracking-tight">{mode.label}</div>
-                          <div className="text-[7px] text-[#555] leading-tight">{mode.note}</div>
-                        </button>
-                      )
-                    })}
-                  </div>
+              {provider !== 'ollama' && (
+                <div className="mb-4">
+                  <Etichetta n="2">{t.step2}</Etichetta>
+
+                  {hasAccount && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { id: 'subscription', label: t.accessMine, note: isChatGpt ? t.noteChatAcc : t.noteClaudeAcc },
+                        { id: 'apikey',       label: t.accessKey,  note: t.noteKey },
+                      ].map(mode => {
+                        const active = claudeAuthMode === mode.id
+                        return (
+                          <button
+                            key={mode.id}
+                            onClick={() => setClaudeAuthMode(mode.id)}
+                            className={`px-2.5 py-2 border text-left transition-all ${
+                              active
+                                ? 'bg-[#1a1a1a] border-[#DC143C]'
+                                : 'bg-[#0d0d0d] border-[#1a1a1a] opacity-60 hover:opacity-100'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold text-white tracking-tight">{mode.label}</div>
+                            <div className="text-[10px] text-[#8a8a8a] leading-tight">{mode.note}</div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
 
                   {usingSubscription && (
-                    <div className="mt-1.5">
+                    <div className="mt-2">
                       {subscriptionDetected === true ? (
-                        <p className="text-[8px] text-[#00E5FF] font-mono">
-                          Account {nomeAccount} collegato — nessuna chiave da inserire.
+                        <p className="text-[11px] text-[#00E5FF] font-bold">
+                          {t.accountOk(nomeAccount)}
                         </p>
                       ) : claudeCodePresente ? (
-                        // Il programma "claude" c'è: un clic apre il suo login
+                        // Il programma c'è: un clic apre il suo login
                         // ufficiale. Il plugin non vede mai le credenziali.
                         <>
                           <button
@@ -396,187 +422,167 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                             disabled={collegamento === 'corso'}
                             onClick={() => {
                               setCollegamento('corso')
-                              whycremisi.send({ type: 'config.set', payload: { key: 'ai.linkClaude' } })
+                              whycremisi.send({ type: 'config.set', payload: { key: chiaveLink } })
                             }}
-                            className="group w-full flex items-center justify-between gap-2 bg-white text-black px-3 py-2 rounded-full disabled:opacity-60 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]"
+                            className="group w-full flex items-center justify-between gap-2 bg-white text-black px-4 py-2.5 rounded-full disabled:opacity-60 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]"
                           >
-                            <span className="text-[10px] font-medium tracking-tight">
-                              {collegamento === 'corso' ? 'In attesa dell’accesso…' : `Collega il mio account ${nomeAccount}`}
+                            <span className="text-[12px] font-semibold tracking-tight">
+                              {collegamento === 'corso' ? t.waiting : t.linkBtn(nomeAccount)}
                             </span>
-                            <span className="w-5 h-5 rounded-full bg-black/5 flex items-center justify-center transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:-translate-y-[1px]">
-                              <span className="text-[9px]">↗</span>
+                            <span className="w-6 h-6 rounded-full bg-black/5 flex items-center justify-center transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:-translate-y-[1px]">
+                              <span className="text-[11px]">↗</span>
                             </span>
                           </button>
-                          <p className="text-[7px] text-[#555] leading-tight mt-1">
+                          <p className="text-[10px] text-[#8a8a8a] leading-snug mt-1.5">
                             {collegamento && collegamento !== 'corso' && collegamento !== 'fatto'
-                              ? collegamento
-                              : collegamento === 'corso'
-                                ? 'Completa l’accesso nella finestra e nel browser, poi torna qui.'
-                                : `Si apre il login ufficiale di ${nomeAccount}: accedi con il tuo account, non devi incollare nulla.`}
+                              ? <span className="text-[#FFB000]">{collegamento}</span>
+                              : collegamento === 'corso' ? t.linkWait : t.linkHint(nomeAccount)}
                           </p>
                         </>
                       ) : (
                         <>
-                          <p className="text-[8px] text-[#FFB000] font-mono">
+                          <p className="text-[11px] text-[#FFB000] font-bold">
                             {claudeCodePresente === false
-                              ? `Il programma ${isChatGpt ? 'Codex' : 'Claude'} non è installato su questo computer.`
-                              : `Controllo dell’account ${nomeAccount}…`}
+                              ? t.notInstalled(isChatGpt ? 'Codex' : 'Claude')
+                              : t.checking(nomeAccount)}
                           </p>
                           {claudeCodePresente === false && (
-                            <p className="text-[7px] text-[#555] leading-tight mt-0.5">
-                              {isChatGpt ? 'Installa Codex da openai.com/codex' : 'Installa Claude Code da claude.com/claude-code'}, poi riapri questa schermata:
-                              l’accesso si fa con un clic. In alternativa usa una chiave API.
+                            <p className="text-[10px] text-[#8a8a8a] leading-snug mt-0.5">
+                              {t.installHint(isChatGpt ? 'openai.com/codex' : 'claude.com/claude-code')}
                             </p>
                           )}
                         </>
                       )}
                     </div>
                   )}
-                </div>
-              )}
 
-              {provider === 'openrouter' && (
-                <div className="mb-2 px-2 py-1.5 border border-[#1a1a1a] bg-[#0d0d0d]">
-                  <p className="text-[8px] text-[#00E5FF] font-bold uppercase tracking-widest mb-0.5">
-                    Nessun abbonamento necessario
-                  </p>
-                  {orCollegato && (
-                    <p className="text-[8px] text-[#00FFaa] font-bold mb-0.5">Account OpenRouter collegato, nessuna chiave da incollare.</p>
+                  {provider === 'openrouter' && (
+                    <div className="mb-2 px-2.5 py-2 border border-[#1a1a1a] bg-[#0d0d0d]">
+                      <p className="text-[11px] text-[#00E5FF] font-bold mb-0.5">{t.orTitle}</p>
+                      {orCollegato && (
+                        <p className="text-[11px] text-[#00FFaa] font-bold mb-0.5">{t.orLinked}</p>
+                      )}
+                      <p className="text-[10px] text-[#8a8a8a] leading-snug">{t.orBody}</p>
+                    </div>
                   )}
-                  <p className="text-[7px] text-[#777] leading-relaxed">
-                    La chiave di OpenRouter si crea gratis su openrouter.ai. DeepSeek V4.1 Flash è il primo modello:
-                    costa pochi centesimi ogni migliaia di richieste. I modelli{' '}
-                    <span className="text-[#00FFaa] font-bold">FREE</span> non si pagano, ma hanno limiti più stretti.
-                    Se uno è sovraccarico o senza credito, si passa da soli a uno gratuito.
-                  </p>
-                </div>
-              )}
 
-              {needsApiKey && (
-                <div className="mb-3">
-                  <label className="text-[8px] font-bold text-[#FFB000] uppercase tracking-widest block mb-1">
-                    API Key
-                  </label>
-                  {/* Accesso col proprio account: apre la pagina vera del
-                      fornitore nel browser, dove si entra con la propria
-                      email. Da lì si copia la chiave e si torna qui — una
-                      volta sola, poi resta salvata. */}
-                  <button
-                    onClick={() => {
-                      if (provider === 'openrouter') {
-                        // Un clic: login ufficiale nel browser, la chiave torna da sola.
-                        setOrInCorso(true)
-                        whycremisi.send({ type: 'config.set', payload: { key: 'ai.linkOpenRouter' } })
-                      } else {
-                        whycremisi.send({ type: 'config.set', payload: { key: 'ai.openLogin', provider } })
-                      }
-                    }}
-                    className="group w-full mb-1.5 inline-flex items-center justify-between rounded-full pl-3.5 pr-1.5 py-1.5 text-[10px] font-bold tracking-tight transition-all duration-500"
-                    style={{ backgroundColor: '#ffffff', color: '#0a0a0a' }}
-                  >
-                    {provider === 'openrouter' && orInCorso ? 'In attesa dell’accesso…' : `Accedi con ${providerNames[provider]}`}
-                    <span className="w-5 h-5 rounded-full bg-black/10 flex items-center justify-center transition-transform duration-500 group-hover:translate-x-0.5">
-                      <span className="material-symbols-outlined text-[12px]">open_in_new</span>
-                    </span>
-                  </button>
+                  {needsApiKey && (
+                    <div className={hasAccount ? 'mt-2' : ''}>
+                      {/* Accesso col proprio account: apre la pagina vera del
+                          fornitore nel browser. Su OpenRouter un clic basta e
+                          la chiave torna da sola. */}
+                      <button
+                        onClick={() => {
+                          if (provider === 'openrouter') {
+                            setOrInCorso(true)
+                            whycremisi.send({ type: 'config.set', payload: { key: 'ai.linkOpenRouter' } })
+                          } else {
+                            whycremisi.send({ type: 'config.set', payload: { key: 'ai.openLogin', provider } })
+                          }
+                        }}
+                        className="group w-full mb-1.5 inline-flex items-center justify-between rounded-full pl-4 pr-2 py-2 text-[12px] font-semibold tracking-tight transition-all duration-500"
+                        style={{ backgroundColor: '#ffffff', color: '#0a0a0a' }}
+                      >
+                        {provider === 'openrouter' && orInCorso ? t.waiting : t.loginWith(nomeProvider(provider))}
+                        <span className="w-6 h-6 rounded-full bg-black/10 flex items-center justify-center transition-transform duration-500 group-hover:translate-x-0.5">
+                          <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                        </span>
+                      </button>
 
-                  <div className="relative flex">
-                    <input
-                      type={showKey ? 'text' : 'password'}
-                      placeholder={
-                        provider === 'gemini' ? 'AIza...'
-                        : provider === 'openai' ? 'sk-...'
-                        : provider === 'openrouter' ? 'sk-or-...'
-                        : 'sk-ant-...'
-                      }
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      className="flex-1 bg-[#0d0d0d] border border-[#1a1a1a] px-2.5 py-1.5 text-xs text-white font-mono focus:border-[#DC143C] focus:outline-none transition-colors"
-                    />
-                    <button
-                      onClick={() => setShowKey(!showKey)}
-                      className="px-2 border border-l-0 border-[#1a1a1a] text-[#555] hover:text-[#FFB000] transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-sm">{showKey ? 'visibility_off' : 'visibility'}</span>
-                    </button>
-                  </div>
-                  {apiKey.length > 0 && provider === 'gemini' && !apiKey.startsWith('AIza') && (
-                    <p className="text-[8px] text-[#FFB000] font-mono mt-0.5">Gemini keys start with "AIza..."</p>
-                  )}
-                  {apiKey.length > 0 && provider === 'openai' && !apiKey.startsWith('sk-') && (
-                    <p className="text-[8px] text-[#FFB000] font-mono mt-0.5">OpenAI keys start with "sk-..."</p>
-                  )}
-                  {apiKey.length > 0 && provider === 'anthropic' && !apiKey.startsWith('sk-ant-') && (
-                    <p className="text-[8px] text-[#FFB000] font-mono mt-0.5">Anthropic keys start with "sk-ant-..."</p>
-                  )}
-                  {apiKey.length > 0 && provider === 'openrouter' && !apiKey.startsWith('sk-or-') && (
-                    <p className="text-[8px] text-[#FFB000] font-mono mt-0.5">OpenRouter keys start with "sk-or-..."</p>
+                      <div className="relative flex">
+                        <input
+                          type={showKey ? 'text' : 'password'}
+                          placeholder={
+                            provider === 'gemini' ? 'AIza...'
+                            : provider === 'openai' ? 'sk-...'
+                            : provider === 'openrouter' ? 'sk-or-...'
+                            : 'sk-ant-...'
+                          }
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          className="flex-1 bg-[#0d0d0d] border border-[#1a1a1a] px-3 py-2 text-[12px] text-white font-mono focus:border-[#DC143C] focus:outline-none transition-colors"
+                        />
+                        <button
+                          onClick={() => setShowKey(!showKey)}
+                          className="px-2.5 border border-l-0 border-[#1a1a1a] text-[#777] hover:text-[#FFB000] transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-base">{showKey ? 'visibility_off' : 'visibility'}</span>
+                        </button>
+                      </div>
+                      {apiKey.length > 0 && provider === 'gemini' && !apiKey.startsWith('AIza') && (
+                        <p className="text-[10px] text-[#FFB000] mt-1">{t.keyBad('AIza')}</p>
+                      )}
+                      {apiKey.length > 0 && provider === 'openai' && !apiKey.startsWith('sk-') && (
+                        <p className="text-[10px] text-[#FFB000] mt-1">{t.keyBad('sk-')}</p>
+                      )}
+                      {apiKey.length > 0 && provider === 'anthropic' && !apiKey.startsWith('sk-ant-') && (
+                        <p className="text-[10px] text-[#FFB000] mt-1">{t.keyBad('sk-ant-')}</p>
+                      )}
+                      {apiKey.length > 0 && provider === 'openrouter' && !apiKey.startsWith('sk-or-') && (
+                        <p className="text-[10px] text-[#FFB000] mt-1">{t.keyBad('sk-or-')}</p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
 
-              <div className="mb-3">
-                <label className="text-[8px] font-bold text-[#00E5FF] uppercase tracking-widest block mb-1">Model</label>
+              <div className="mb-4">
+                <Etichetta n={provider === 'ollama' ? '2' : '3'}>{t.step3}</Etichetta>
                 {/* Su OpenRouter i nomi sono lunghi e disuguali: in griglia
                     restano incolonnati invece di spezzarsi a caso. */}
-                <div className={provider === 'openrouter' ? 'grid grid-cols-2 gap-1' : 'flex flex-wrap gap-1'}>
+                <div className={provider === 'openrouter' ? 'grid grid-cols-2 gap-1.5' : 'flex flex-wrap gap-1.5'}>
                   {modelList.map(m => {
-                    const label = modelLabels[m]
                     const free = isFreeModel(m)
-                    const text = label ? label.name
-                      : provider === 'openrouter' ? shortModelName(m)
-                      : m
+                    const nome = m === 'default' ? t.defaultName : nomeModello(m)
                     return (
                       <motion.button
                         key={m}
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setModel(m)}
-                        title={label ? `${m} — ${label.note}` : m}
-                        className={`px-2 py-1 text-[8px] font-bold uppercase tracking-wider border transition-all flex items-center justify-between gap-1 min-w-0 ${
+                        title={notaModello(m) ? `${m}: ${notaModello(m)}` : m}
+                        className={`px-2.5 py-1.5 text-[11px] font-semibold border transition-all flex items-center justify-between gap-1.5 min-w-0 ${
                           model === m
                             ? 'bg-[#DC143C] text-white border-[#DC143C]'
-                            : 'bg-[#0d0d0d] text-[#777] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white'
+                            : 'bg-[#0d0d0d] text-[#999] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white'
                         }`}
                       >
-                        <span className="truncate">{text}</span>
+                        <span className="truncate">{nome}</span>
                         {free && (
-                          <span className={`text-[6px] px-1 leading-[1.4] flex-shrink-0 ${
+                          <span className={`text-[8px] px-1 leading-[1.5] flex-shrink-0 ${
                             model === m ? 'bg-white/20 text-white' : 'bg-[#00FFaa]/15 text-[#00FFaa]'
-                          }`}>FREE</span>
+                          }`}>{t.free}</span>
                         )}
                       </motion.button>
                     )
                   })}
                 </div>
-                {hasAccount && modelLabels[model] && (
-                  <p className="text-[7px] text-[#555] leading-tight mt-0.5">{modelLabels[model].note}</p>
+                {notaModello(model) && (
+                  <p className="text-[10px] text-[#8a8a8a] leading-snug mt-1">{notaModello(model)}</p>
                 )}
               </div>
 
               {(isClaude || usingSubscription) && (
-                <div className="mb-3">
-                  <label className="text-[8px] font-bold text-[#00E5FF] uppercase tracking-widest block mb-1">
-                    Ragionamento
-                  </label>
-                  <div className="flex flex-wrap gap-1">
+                <div className="mb-4">
+                  <label className="text-[11px] font-bold text-white tracking-tight block mb-1.5">{t.step4}</label>
+                  <div className="flex flex-wrap gap-1.5">
                     {effortLevels.filter(lvl => !(isChatGpt && lvl.id === 'max')).map(lvl => (
                       <motion.button
                         key={lvl.id}
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setEffort(lvl.id)}
-                        title={lvl.note}
-                        className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider border transition-all ${
+                        title={t.efforts[lvl.id]}
+                        className={`px-2.5 py-1 text-[11px] font-semibold border transition-all ${
                           effort === lvl.id
                             ? 'bg-[#DC143C] text-white border-[#DC143C]'
-                            : 'bg-[#0d0d0d] text-[#777] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white'
+                            : 'bg-[#0d0d0d] text-[#999] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white'
                         }`}
                       >{lvl.label}</motion.button>
                     ))}
                   </div>
-                  <p className="text-[7px] text-[#555] leading-tight mt-0.5">
-                    Più alto significa risposte migliori sui compiti difficili e più token consumati.
+                  <p className="text-[10px] text-[#8a8a8a] leading-snug mt-1">
+                    {t.efforts[effort]}. {t.effortNote}
                   </p>
                 </div>
               )}
@@ -591,21 +597,21 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
               disabled={
                 status === 'testing' ||
                 (needsApiKey && !apiKey) ||
-                // Con l'account Claude serve l'accesso già fatto.
+                // Con l'account serve l'accesso già fatto.
                 (usingSubscription && !subscriptionDetected)
               }
-              className={`flex-1 py-2 font-black uppercase tracking-[0.15em] text-[9px] flex items-center justify-center gap-2 transition-all ${
+              className={`flex-1 py-3 font-black tracking-wide text-[13px] flex items-center justify-center gap-2 transition-all ${
                 status === 'success' ? 'bg-[#00FFaa] text-black' :
                 status === 'error' ? 'bg-[#DC143C] text-white' :
                 'bg-[#FFB000] text-black hover:bg-white'
               } disabled:opacity-40`}
             >
               {status === 'testing' ? (
-                <><div className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />CONNECT</>
+                <><div className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />{t.trying}</>
               ) : status === 'success' ? (
-                <><span className="material-symbols-outlined text-xs">check_circle</span>LINKED</>
+                <><span className="material-symbols-outlined text-base">check_circle</span>{t.connected}</>
               ) : (
-                'INITIALIZE LINK'
+                t.start
               )}
             </motion.button>
           </div>
@@ -616,7 +622,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="text-center text-[8px] text-[#DC143C] font-mono uppercase font-bold mt-2"
+                className="text-center text-[12px] text-[#ff6b6b] font-semibold mt-2 leading-snug"
               >
                 {errorMsg}
               </motion.p>
@@ -625,9 +631,9 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
         </div>
 
         <div className="px-5 py-1.5 border-t border-[#1a1a1a] flex justify-between items-center">
-          <span className="text-[7px] font-mono text-[#333] tracking-wider">WHYCREMISI AI BACKEND</span>
-          <span className="text-[7px] font-mono text-[#333]">
-            {status === 'success' ? 'AUTHENTICATED' : provider === 'ollama' ? 'LOCAL MODE' : 'KEY PENDING'}
+          <span className="text-[9px] font-mono text-[#444] tracking-wider">WHYCREMISI</span>
+          <span className="text-[9px] font-mono text-[#444]">
+            {status === 'success' ? t.footerOk : provider === 'ollama' ? t.nameOllama : t.footerNo}
           </span>
         </div>
       </motion.div>

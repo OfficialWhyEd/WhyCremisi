@@ -2284,7 +2284,14 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
 
     std::string key = payload["key"].get<std::string>();
     juce::String configKey(key.data(), key.size());
-    bool isRead = !payload.contains("value");
+    if (configKey.startsWith ("ai.")) log("[CONFIG] richiesta " + configKey);   // solo il nome, mai il valore
+    // Le azioni (collega, rileva, apri il login, prova) non portano un "value":
+    // sono comandi, non letture, e vanno al ramo di scrittura.
+    const bool isAzione = configKey == "ai.openLogin" || configKey == "ai.detectSubscription"
+                       || configKey == "ai.detectCodex" || configKey == "ai.linkOpenRouter"
+                       || configKey == "ai.linkCodex" || configKey == "ai.linkClaude"
+                       || configKey == "ai.testConnection";
+    bool isRead = !payload.contains("value") && ! isAzione;
 
     // Helper to send a config.response
     auto sendConfigResponse = [&](nlohmann::json responsePayload) {
@@ -2665,28 +2672,45 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         // La UI chiede come sta l'accesso con l'account Claude: installato,
         // gia' collegato oppure da collegare. Lo dice il programma ufficiale
         // ("claude auth status"); qui non si legge ne' si conserva nessun token.
-        const auto stato = ClaudeCodeProvider::queryLoginState();
-
-        // Se e' gia' collegato si passa direttamente a quel modo di entrare.
-        if (stato.loggedIn && aiEngine)
+        // Gira su un thread di lavoro: lanciare il programma e aspettarlo sul
+        // thread dei messaggi blocca tutta la finestra del plugin dentro la DAW.
+        accessoStop = true;
+        if (accessoThread && accessoThread->joinable())
+            accessoThread->join();
+        accessoStop = false;
+        accessoThread = std::make_unique<std::thread> ([this]()
         {
-            aiEngine->updateConfig([](AiEngine::Config& cfg)
-            {
-                cfg.provider = AiEngine::Provider::ClaudeCode;
-                cfg.apiKey = {};
-                cfg.authToken = {};
-                if (! juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
-                    cfg.model = ClaudeCodeProvider::defaultModel();
-            });
-        }
+            const auto stato = ClaudeCodeProvider::queryLoginState();
+            if (accessoStop) return;
 
-        nlohmann::json rp;
-        rp["key"] = "ai.detectSubscription";
-        rp["status"] = "ok";
-        rp["found"] = stato.loggedIn;
-        rp["claudeCode"] = stato.installed;
-        rp["method"] = stato.method.toStdString();
-        sendConfigResponse(rp);
+            // Se e' gia' collegato si passa direttamente a quel modo di entrare.
+            if (stato.loggedIn && aiEngine)
+            {
+                aiEngine->updateConfig([](AiEngine::Config& cfg)
+                {
+                    cfg.provider = AiEngine::Provider::ClaudeCode;
+                    cfg.apiKey = {};
+                    cfg.authToken = {};
+                    if (! juce::StringArray { "sonnet", "opus", "haiku" }.contains (cfg.model))
+                        cfg.model = ClaudeCodeProvider::defaultModel();
+                });
+            }
+
+            nlohmann::json rp;
+            rp["key"] = "ai.detectSubscription";
+            rp["status"] = "ok";
+            rp["found"] = stato.loggedIn;
+            rp["claudeCode"] = stato.installed;
+            rp["method"] = stato.method.toStdString();
+            nlohmann::json risposta = nlohmann::json::object();
+            risposta["type"] = "config.response";
+            risposta["timestamp"] = juce::Time::currentTimeMillis();
+            risposta["payload"] = rp;
+            if (wsServer)
+                wsServer->broadcast (risposta);
+            if (stato.loggedIn)
+                juce::MessageManager::callAsync ([this] { if (pluginProcessor) pluginProcessor->saveUserSettings(); });
+        });
     }
     else if (configKey == "ai.detectCodex")
     {
@@ -2842,16 +2866,30 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
     }
     else if (configKey == "ai.testConnection")
     {
-        bool connected = aiEngine ? aiEngine->testConnection() : false;
-        juce::String errorMsg = aiEngine ? aiEngine->getLastError() : "AI engine not initialized";
-        
-        nlohmann::json rp;
-        rp["key"] = "ai.testConnection";
-        rp["connected"] = connected;
-        rp["error"] = errorMsg.toStdString();
-        sendConfigResponse(rp);
-        
-        log("[CONFIG] AI test connection: " + juce::String(connected ? "SUCCESS" : "FAILED"));
+        // La prova chiama il provider (rete o programma): su un thread di lavoro,
+        // mai sul thread dei messaggi, che e' quello della finestra dentro la DAW.
+        accessoStop = true;
+        if (accessoThread && accessoThread->joinable())
+            accessoThread->join();
+        accessoStop = false;
+        accessoThread = std::make_unique<std::thread> ([this]()
+        {
+            const bool connected = aiEngine ? aiEngine->testConnection() : false;
+            const juce::String errorMsg = aiEngine ? aiEngine->getLastError() : "AI engine not initialized";
+            if (accessoStop) return;
+
+            nlohmann::json rp;
+            rp["key"] = "ai.testConnection";
+            rp["connected"] = connected;
+            rp["error"] = errorMsg.toStdString();
+            nlohmann::json risposta = nlohmann::json::object();
+            risposta["type"] = "config.response";
+            risposta["timestamp"] = juce::Time::currentTimeMillis();
+            risposta["payload"] = rp;
+            if (wsServer)
+                wsServer->broadcast (risposta);
+            log("[CONFIG] AI test connection: " + juce::String(connected ? "SUCCESS" : "FAILED"));
+        });
     }
     else if (configKey == "ai.getModels")
     {

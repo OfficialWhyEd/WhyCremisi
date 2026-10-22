@@ -146,9 +146,9 @@ public:
     juce::String getName() const override { return "Anthropic Claude"; }
 
     // Modello di riferimento del progetto.
-    static juce::String defaultModel() { return "claude-opus-5"; }
+    static juce::String defaultModel() { return "claude-opus-5-5"; }
 
-    // Etichetta leggibile per la UI: "Opus 5" invece di "claude-opus-5".
+    // Etichetta leggibile per la UI: "Opus 5" invece di "claude-opus-5-5".
     static juce::String displayNameFor (const juce::String& modelId);
 
     // Token passato dall'utente stesso con la variabile ANTHROPIC_AUTH_TOKEN

@@ -1123,9 +1123,9 @@ juce::StringArray CodexProvider::getAvailableModels()
 
 juce::String AnthropicProvider::displayNameFor (const juce::String& modelId)
 {
-    if (modelId == "claude-opus-5")    return "Opus 5";
-    if (modelId == "claude-sonnet-5")  return "Sonnet 5";
-    if (modelId == "claude-haiku-4-5") return "Haiku 4.5";
+    if (modelId == "claude-opus-5-5")    return "Opus 5.5";
+    if (modelId == "claude-sonnet-5-5")  return "Sonnet 5.5";
+    if (modelId == "claude-haiku-5-5") return "Haiku 5.5";
     return modelId;
 }
 
@@ -1341,7 +1341,7 @@ bool AnthropicProvider::testConnection()
     // credenziale: se e' sbagliata si torna indietro con un errore di auth
     // prima ancora di generare qualcosa.
     nlohmann::json ping;
-    ping["model"] = "claude-haiku-4-5";
+    ping["model"] = "claude-haiku-5-5";
     ping["max_tokens"] = 1;
     ping["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", "ping"}}});
 
@@ -1367,7 +1367,7 @@ juce::StringArray AnthropicProvider::getAvailableModels()
     // I modelli attuali. Gli id non portano suffisso di data: aggiungerlo
     // produce un 404. Opus 5 e' il default del progetto, Sonnet 5 il
     // compromesso qualita'/costo, Haiku 4.5 quello rapido ed economico.
-    return { "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5" };
+    return { "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5" };
 }
 
 // ═══════════════════════════════════════════════════════════════════
