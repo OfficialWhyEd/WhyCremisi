@@ -31,7 +31,7 @@ if exist "%DEST%\AbletonOSC" (
 
 echo   Scarico da github.com/ideoforms/AbletonOSC ...
 powershell -NoProfile -Command ^
-  "try { Invoke-WebRequest -Uri 'https://github.com/ideoforms/AbletonOSC/archive/refs/heads/master.zip' -OutFile '%TMPZIP%' -UseBasicParsing; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
+  "try { Invoke-WebRequest -Uri 'https://github.com/ideoforms/AbletonOSC/archive/0ca68214bd62c9b5cb641ca34006cfd70ba94430.zip' -OutFile '%TMPZIP%' -UseBasicParsing; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
 if %errorlevel% neq 0 (
     echo   [ERRORE] Download non riuscito. Controlla la connessione.
     pause
@@ -43,12 +43,12 @@ if exist "%TMPDIR%" rmdir /s /q "%TMPDIR%"
 powershell -NoProfile -Command "Expand-Archive -Path '%TMPZIP%' -DestinationPath '%TMPDIR%' -Force"
 
 if not exist "%DEST%" mkdir "%DEST%"
-xcopy "%TMPDIR%\AbletonOSC-master" "%DEST%\AbletonOSC\" /E /I /Y /Q >nul
+xcopy "%TMPDIR%\AbletonOSC-0ca68214bd62c9b5cb641ca34006cfd70ba94430" "%DEST%\AbletonOSC\" /E /I /Y /Q >nul
 
 del "%TMPZIP%" >nul 2>&1
 rmdir /s /q "%TMPDIR%" >nul 2>&1
 
-if not exist "%DEST%\AbletonOSC\AbletonOSC.py" (
+if not exist "%DEST%\AbletonOSC\__init__.py" (
     echo   [ERRORE] L'installazione non sembra completa.
     pause
     exit /b 1
