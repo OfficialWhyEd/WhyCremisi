@@ -2594,8 +2594,20 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                         break;
 
                     case AiEngine::Provider::Gemini:
-                        if (cfg.model.isEmpty() || ! cfg.model.startsWith ("gemini"))
-                            cfg.model = "gemini-2.0-flash";
+                        // Un modello spento (1.x, 2.0) rimasto salvato dalle
+                        // versioni precedenti darebbe errore: si riparte dal
+                        // modello consigliato.
+                        if (cfg.model.isEmpty() || ! cfg.model.startsWith ("gemini")
+                            || GeminiProvider::isRetiredModel (cfg.model)
+                            || GeminiProvider::isNonChatModel (cfg.model))
+                            cfg.model = GeminiProvider::defaultModel();
+                        break;
+
+                    case AiEngine::Provider::OpenCode:
+                        // Gli id di OpenCode sono nomi semplici; un id di un
+                        // altro fornitore (con "/" o "gpt"/"claude") non vale.
+                        if (! OpenCodeProvider::isKnownModel (cfg.model))
+                            cfg.model = OpenCodeProvider::defaultModel();
                         break;
 
                     case AiEngine::Provider::OpenAI:
@@ -2809,6 +2821,7 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         else if (provider == "gemini")     url = "https://aistudio.google.com/app/apikey";
         else if (provider == "openrouter") url = "https://openrouter.ai/keys";
         else if (provider == "groq")       url = "https://console.groq.com/keys";
+        else if (provider == "opencode")   url = "https://opencode.ai/zen";
 
         if (url.isEmpty())
         {

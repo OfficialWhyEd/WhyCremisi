@@ -420,6 +420,18 @@ public:
     juce::StringArray getAvailableModels() override;
     juce::String getName() const override { return "Google Gemini"; }
 
+    // Modello leggero consigliato da Google per i progetti nuovi (pagina
+    // dei modelli, 22/10/2026). gemini-2.0-flash e' spento.
+    static juce::String defaultModel() { return "gemini-3.5-flash-lite"; }
+
+    // true per i modelli spenti da Google (serie 1.x e 2.0): chi li aveva
+    // salvati riceverebbe un errore senza capirne il motivo.
+    static bool isRetiredModel (const juce::String& modelId);
+
+    // true per i modelli che non rispondono a una chat di testo (voce,
+    // immagini, live, trascrizione, embedding, robotica, musica).
+    static bool isNonChatModel (const juce::String& modelId);
+
 private:
     juce::String makeHttpRequest(const juce::String& url, const juce::String& method,
                                   const juce::String& jsonBody, int timeoutMs,
@@ -456,6 +468,30 @@ private:
     juce::String getApiUrl() const override { return "https://openrouter.ai/api/v1/chat/completions"; }
     juce::String getExtraHeaders() const override;
     void addRouting (nlohmann::json& body) const override;
+};
+
+// OpenCode Zen: stesso formato di OpenAI, con alcuni modelli gratuiti (tra
+// cui DeepSeek V4.1 Flash). Serve un account OpenCode e la sua chiave; i
+// modelli ":free" non si pagano. Pagina: opencode.ai/docs/zen
+class OpenCodeProvider : public OpenAIProvider
+{
+public:
+    using OpenAIProvider::OpenAIProvider;
+    juce::String getName() const override { return "OpenCode"; }
+    juce::StringArray getAvailableModels() override;
+
+    static juce::String defaultModel() { return "deepseek-v4.1-flash-free"; }
+
+    // Modelli gratuiti con chat/completions (elenco della pagina Zen del
+    // 22/10/2026). Quelli "per uso di prova" non vanno usati con dati privati.
+    static juce::StringArray freeModels();
+
+    // true se l'id e' uno dei modelli di OpenCode (per correggere un id
+    // rimasto da un altro fornitore).
+    static bool isKnownModel (const juce::String& modelId);
+
+private:
+    juce::String getApiUrl() const override { return "https://opencode.ai/inference/openai/v1/chat/completions"; }
 };
 
 class GroqProvider : public OpenAIProvider

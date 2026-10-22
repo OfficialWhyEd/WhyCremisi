@@ -32,7 +32,8 @@ public:
             const Provider tutti[] = { Provider::Ollama, Provider::Gemini,
                                        Provider::Anthropic, Provider::OpenAI,
                                        Provider::OpenRouter, Provider::Groq,
-                                       Provider::ClaudeCode };
+                                       Provider::ClaudeCode, Provider::Codex,
+                                       Provider::LlamaCpp, Provider::OpenCode };
 
             for (auto p : tutti)
             {
@@ -206,6 +207,30 @@ public:
             // OpenRouter accetta al massimo tre modelli nel campo "models"
             expect (OpenRouterProvider::fallbackChain().size() <= 2);
             expect (! OpenRouterProvider::fallbackChain().contains (OpenRouterProvider::defaultModel()));
+        }
+
+        beginTest ("Gemini: modelli spenti e non-chat vengono riconosciuti");
+        {
+            expect (GeminiProvider::isRetiredModel ("gemini-2.0-flash"));
+            expect (GeminiProvider::isRetiredModel ("gemini-1.5-pro"));
+            expect (! GeminiProvider::isRetiredModel ("gemini-2.5-flash"));
+            expect (! GeminiProvider::isRetiredModel (GeminiProvider::defaultModel()));
+            expect (GeminiProvider::isNonChatModel ("gemini-3.5-flash-tts"));
+            expect (GeminiProvider::isNonChatModel ("gemini-3.8-flash-live"));
+            expect (! GeminiProvider::isNonChatModel ("gemini-3.8-flash"));
+            expect (! GeminiProvider::isNonChatModel (GeminiProvider::defaultModel()));
+        }
+
+        beginTest ("OpenCode: DeepSeek gratuito per primo, solo id chat");
+        {
+            const auto modelli = OpenCodeProvider::freeModels();
+            expect (modelli[0] == OpenCodeProvider::defaultModel());
+            expect (OpenCodeProvider::defaultModel() == "deepseek-v4.1-flash-free");
+            expect (OpenCodeProvider::isKnownModel ("big-pickle"));
+            expect (! OpenCodeProvider::isKnownModel ("gpt-4o"));
+            expect (! OpenCodeProvider::isKnownModel ("jev-1.13-free"));
+            expect (AiEngine::providerFromId ("OpenCode") == Provider::OpenCode);
+            expect (AiEngine::providerToId (Provider::OpenCode) == "opencode");
         }
 
         beginTest ("Un nome sconosciuto non cambia la scelta gia' fatta");

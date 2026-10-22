@@ -680,6 +680,40 @@ bool OpenRouterProvider::testConnection()
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  OpenCode Zen (modelli gratuiti, API di OpenAI)
+// ═══════════════════════════════════════════════════════════════════
+
+juce::StringArray OpenCodeProvider::freeModels()
+{
+    // Dalla pagina opencode.ai/docs/zen del 22/10/2026. jev-1.13-free manca
+    // apposta: usa un endpoint che non e' chat/completions.
+    return {
+        "deepseek-v4.1-flash-free",
+        "big-pickle",
+        "glm-5.3-flash-free",
+        "mimo-v2.6-flash-free",
+        "mimo-v2.5-free",
+        "longcat-2.5-preview-free",
+        "flint-40b-free",
+        "exo-free",
+        "beam-free",
+        "nemotron-3-ultra-free",
+        "nemotron-3.5-lightning-free",
+        "nemotron-3.5-super-vl-free",
+    };
+}
+
+bool OpenCodeProvider::isKnownModel (const juce::String& modelId)
+{
+    return freeModels().contains (modelId);
+}
+
+juce::StringArray OpenCodeProvider::getAvailableModels()
+{
+    return freeModels();
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  llama.cpp Provider (llama-server in locale, API di OpenAI)
 // ═══════════════════════════════════════════════════════════════════
 
@@ -2139,7 +2173,12 @@ juce::StringArray GeminiProvider::getAvailableModels()
 
                 // I nomi arrivano come "models/gemini-...": si tiene la parte utile.
                 juce::String nome (m["name"].get<std::string>());
-                trovati.add (nome.fromLastOccurrenceOf ("/", false, true));
+                nome = nome.fromLastOccurrenceOf ("/", false, true);
+
+                // Voce, immagini, live e simili parlano ma non reggono una
+                // chat con strumenti; i modelli spenti darebbero errore.
+                if (isNonChatModel (nome) || isRetiredModel (nome)) continue;
+                trovati.add (nome);
             }
 
             if (! trovati.isEmpty())
@@ -2149,7 +2188,25 @@ juce::StringArray GeminiProvider::getAvailableModels()
 
     // Senza chiave non si puo' chiedere niente: si mostra un punto di
     // partenza ragionevole, che verra' sostituito appena la chiave c'e'.
-    return { "gemini-2.0-flash" };
+    return { defaultModel(), "gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash" };
+}
+
+bool GeminiProvider::isRetiredModel (const juce::String& modelId)
+{
+    // Spenti secondo la pagina dei modelli (22/10/2026): tutta la serie
+    // 1.x e la 2.0. I 2.5 sono ancora serviti, quindi restano.
+    return modelId.startsWith ("gemini-1.") || modelId.startsWith ("gemini-2.0")
+        || modelId == "gemini-pro" || modelId == "gemini-pro-vision";
+}
+
+bool GeminiProvider::isNonChatModel (const juce::String& modelId)
+{
+    static const char* parole[] = { "tts", "image", "live", "transcribe", "native-audio",
+                                    "embedding", "robotics", "lyria", "computer-use",
+                                    "imagen", "veo", "translate", "nano-banana", "omni" };
+    for (auto* p : parole)
+        if (modelId.contains (p)) return true;
+    return false;
 }
 
 //==============================================================================
