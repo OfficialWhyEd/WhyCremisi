@@ -277,6 +277,9 @@ private:
     /** device.list, device.params, device.setParam: plugin di una traccia di Live, letti e impostati con conferma. */
     void eseguiToolDevice(const ToolCall& call, ToolResult& result);
 
+    /** Dove device.dictionary salva i dizionari dei plugin. Vuota = cartella dati dell'utente. */
+    juce::File cartellaDizionario;
+
     /** Registra una risposta di Live con testi e numeri mescolati (liste di device e parametri). */
     void registraRispostaPiena (const juce::String& address, const std::vector<OscHandler::OscArg>& args);
 

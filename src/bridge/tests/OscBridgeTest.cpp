@@ -623,6 +623,22 @@ private:
             expect (! r.output.contains ("Master"), "il filtro esclude gli altri");
         }
 
+        beginTest ("device.dictionary: salva nomi ed escursioni letti da Live");
+        {
+            Rig rig; FakeDevices fd; collegaDevice (rig, fd);
+            auto cartella = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("wc-dizionario-test");
+            cartella.deleteRecursively();
+            rig.bridge.cartellaDizionario = cartella;
+            auto r = runDevice (rig, "device.dictionary", { { "track", 0 }, { "device", "serum" } });
+            expect (r.success, r.output);
+            auto json = juce::JSON::parse (cartella.getChildFile ("Serum.json"));
+            expect (json["device"].toString() == "Serum", "nome del device nel file");
+            expectEquals (json["parameters"].size(), (int) fd.nomi.size());
+            expect (json["parameters"][1]["name"].toString().containsIgnoreCase ("cutoff"), "secondo parametro = cutoff");
+            expectEquals (fd.inviati, 0);   // sola lettura: nessun comando a Live
+            cartella.deleteRecursively();
+        }
+
         beginTest ("device.setParam: scrive, rilegge, conferma");
         {
             Rig rig; FakeDevices fd; collegaDevice (rig, fd);

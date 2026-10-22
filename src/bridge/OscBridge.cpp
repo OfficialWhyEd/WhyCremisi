@@ -3495,6 +3495,42 @@ void OscBridge::eseguiToolDevice(const ToolCall& call, ToolResult& result)
     const juce::String nomeDev = nomiDevice[dev];
     auto arrotonda = [](double x) { return std::round(x * 1000.0) / 1000.0; };
 
+    if (call.name == "device.dictionary") {
+        // Dizionario del plugin: solo cio' che Live dice adesso (nomi, escursioni, valore attuale).
+        // Niente etichette inventate: il significato dei parametri si aggiunge dopo, da misure.
+        juce::Array<juce::var> elenco;
+        for (const auto& p : params) {
+            auto* o = new juce::DynamicObject();
+            o->setProperty("index", p.index);
+            o->setProperty("name", p.name);
+            o->setProperty("min", p.min);
+            o->setProperty("max", p.max);
+            o->setProperty("valueAtRead", p.value);
+            elenco.add(juce::var(o));
+        }
+        auto* radice = new juce::DynamicObject();
+        radice->setProperty("device", nomiDevice[dev]);
+        radice->setProperty("source", "AbletonOSC");
+        radice->setProperty("readAt", juce::Time::getCurrentTime().toISO8601(true));
+        radice->setProperty("parameters", elenco);
+
+        auto cartella = cartellaDizionario != juce::File()
+            ? cartellaDizionario
+            : juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                  .getChildFile("WhyCremisi").getChildFile("dictionary");
+        const auto nomeFile = juce::File::createLegalFileName(nomiDevice[dev]) + ".json";
+        const auto file = cartella.getChildFile(nomeFile);
+        if (! cartella.createDirectory().wasOk()
+            || ! file.replaceWithText(juce::JSON::toString(juce::var(radice))))
+        {
+            fine(false, "Letti " + juce::String((int) params.size()) + " parametri ma non riesco a scrivere " + file.getFullPathName() + ".");
+            return;
+        }
+        fine(true, nomiDevice[dev] + ": " + juce::String((int) params.size()) + " parametri letti da Live e salvati in "
+                       + file.getFullPathName() + ".");
+        return;
+    }
+
     if (call.name == "device.params") {
         const juce::String filtro = testo("query");
         const int limite = (int) juce::jlimit(1.0, 200.0, testo("limit").isEmpty() ? 40.0 : testo("limit").getDoubleValue());
@@ -3977,9 +4013,9 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
     }
     // ── Plugin di terze parti: manca la discovery ───────────────────
     else if (call.name == "daw.plugin.setParam" || call.name == "daw.plugin.bypass") {
-        nonSupportato ("Il controllo dei plugin di terze parti non e' disponibile: WhyCremisi non ha ancora "
-                       "un modo per trovare i plugin della DAW e i loro parametri. Posso agire sulla catena "
-                       "interna (dsp.*) e sui comandi DAW di trasporto, mixer e marker.");
+        nonSupportato ("Questo comando non e' piu' usato. Per i plugin di Ableton Live usa device.list, device.params "
+                       "e device.setParam (letti e confermati da Live). Per le altre DAW non c'e' ancora un ponte "
+                       "ai plugin. Posso agire sulla catena interna (dsp.*) e sui comandi di trasporto, mixer e marker.");
     }
     // ── Marker ──────────────────────────────────────────────────────
     else if (call.name == "daw.marker.goto") {
@@ -4094,7 +4130,7 @@ void OscBridge::setAiEngine(AiEngine* engine)
         else if (call.name == "mix.levels" || call.name == "mix.snapshot.save" || call.name == "mix.snapshot.recall") {
             eseguiToolMix (call, result);
         }
-        else if (call.name == "device.list" || call.name == "device.params" || call.name == "device.setParam") {
+        else if (call.name == "device.list" || call.name == "device.params" || call.name == "device.setParam" || call.name == "device.dictionary") {
             eseguiToolDevice (call, result);
         }
         // ── Catena DSP interna ──────────────────────────────────────

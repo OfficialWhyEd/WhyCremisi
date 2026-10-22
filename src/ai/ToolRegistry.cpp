@@ -206,6 +206,14 @@ void ToolRegistry::registerBuiltinTools()
         {"normalized", "number", "Alternativa a value: da 0 (minimo) a 1 (massimo)", false, 0, 1}
     }});
 
+    registerTool({"device.dictionary",
+        "Salva il dizionario di un plugin di Live: tutti i suoi parametri con nome, "
+        "minimo, massimo e valore attuale, letti davvero da Live, in un file JSON. "
+        "Serve a non rileggere ogni volta lo stesso plugin.", {
+        {"track", "number", "Traccia di Live, da 0", true, 0, 255},
+        {"device", "string", "Nome (anche parziale) o numero del device", true}
+    }});
+
     registerTool({"dsp.getState",
         "Riporta com'e' messa adesso la catena interna: quali moduli sono "
         "attivi e con quali valori. Chiamalo prima di modificare qualcosa, "
