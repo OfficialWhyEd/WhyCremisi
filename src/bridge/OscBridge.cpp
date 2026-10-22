@@ -91,6 +91,13 @@ OscBridge::OscBridge(int oscReceivePort, int wsListenPort)
     oscHandler = std::make_unique<OscHandler>(oscPort);
     wsServer = std::make_unique<WebSocketServer>(wsPort);
 
+    // std::atomic non e' inizializzato da `= {}` prima del C++20: senza questo
+    // ciclo i timestamp del feedback volume contengono spazzatura, il controllo
+    // di freschezza li scarta e la conferma non arriva MAI — anche quando il
+    // feedback e' appena stato ricevuto.
+    for (auto& v : reaperVolDb) v.store (0.0f);
+    for (auto& t : reaperVolTs) t.store ((juce::int64) 0);
+
     // Le righe dell'ascolto OSC (avvio, pacchetti arrivati) finiscono nel file di log:
     // senza questo la ricezione da Live era invisibile e impossibile da diagnosticare.
     oscHandler->setLogCallback([](const juce::String& riga) { whycremisi::log ("osc", riga); });
