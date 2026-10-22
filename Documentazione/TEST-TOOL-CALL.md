@@ -368,3 +368,67 @@ sono, invece di chiamarli e ricevere "AbletonOSC non risponde".
 Senza questo censimento, ogni tool del gruppo C è un turno sprecato e un
 messaggio d'errore fuorviante. Con il censimento, la matrice diventa una tabella
 di capacità per adattatore, e il modello vede solo ciò che esiste davvero.
+
+---
+
+# Diagnosi: perché su REAPER non arrivava niente (22 ottobre 2026)
+
+## Il sintomo
+I comandi sembravano partire, ma niente conferme, niente rilevamento della
+DAW, e alcuni comandi senza effetto. Sembrava un problema delle tool call.
+
+## La prova
+```
+$ ss -lunp | grep -E ":8000|:9000"
+UNCONN 0 0 0.0.0.0:8000 0.0.0.0:* users:(("reaper",pid=135040,fd=12))
+UNCONN 0 0 0.0.0.0:9000 0.0.0.0:* users:(("reaper",pid=135040,fd=29))
+```
+```
+~/.config/WhyCremisi/whycremisi.log
+19:14:08  [osc]    [OSC] ERROR: Cannot bind to port 9000 — retrying in 1s
+19:14:08  [bridge] [ERROR] Failed to start OSC listener on port 9000
+```
+
+Reaper occupa **entrambe** le porte: ascolta su 9000 e manda su 8000. Il plugin
+fa l'opposto (ascolta 9000, manda 8000). Le due parti si parlano su porte
+incrociate, quindi:
+
+1. il plugin **non apre** la sua porta (occupata da Reaper);
+2. non riceve **nessun feedback** → `DawType` resta `Unknown`;
+3. con la DAW non identificata si usa il **percorso di ripiego**, che manda
+   entrambi i dialetti (Live + Reaper);
+4. nessuna conferma può arrivare: `Confirmed` era impossibile **per
+   costruzione**, non per il codice dei tool.
+
+## La configurazione corretta
+
+In REAPER: `Opzioni → Preferenze → Control/OSC/web` → doppio clic sul device.
+
+| Campo | Valore giusto | Perché |
+|---|---|---|
+| Local listen port | **8000** | Reaper ascolta qui i comandi del plugin |
+| Device IP | `127.0.0.1` | locale |
+| Device port | **9000** | Reaper manda qui il feedback; il plugin ascolta qui |
+
+Se i due valori sono scambiati (9000/8000), Reaper si prende entrambe le porte
+e il plugin resta muto. Verifica dopo il cambio:
+
+```bash
+ss -lunp | grep -E ":8000|:9000"   # 8000 = reaper, 9000 = il processo del plugin
+```
+
+Nota: nel `.ini` di Reaper il device è la riga
+`csurf_0=OSC "<nome>" <modo> <device port> <ip> <local listen port> ...`.
+
+## Difetto del plugin da correggere
+
+Quando non riesce ad aprire la porta OSC, il plugin **continua in silenzio**:
+lo scrive nel log e basta. L'interfaccia non mostra niente, quindi il guasto
+sembra un mistero.
+
+Da fare (piccolo, ma importante):
+- se il listener OSC non parte, mostrarlo nella UI ("OSC non disponibile:
+  porta 9000 già occupata") e nel pannello di stato, non solo nel log;
+- se la DAW non è identificata dopo N secondi dal caricamento, dirlo
+  esplicitamente ("nessun feedback dalla DAW: controlla le porte OSC");
+- non presentare come `Confirmed` niente finché il feedback non è reale.
