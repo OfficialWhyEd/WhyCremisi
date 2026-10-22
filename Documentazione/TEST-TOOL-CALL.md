@@ -266,3 +266,77 @@ curl -s http://127.0.0.1:11434/v1/models     # Ollama risponde?
 
 Da allegare in caso di segnalazione: le righe del log dal `[AI] Prompt received`
 fino a `[AI] Risposta`, più il nome del provider e del modello.
+
+---
+
+# Censimento dei tool: cosa è condiviso fra REAPER e Ableton
+
+**Fonti:** `src/ai/ToolRegistry.cpp` (37 tool) · `~/.config/REAPER/OSC/Default.ReaperOSC`
+(la configurazione reale) · README di AbletonOSC (`ideoforms/AbletonOSC`).
+
+Tre gruppi. Solo il gruppo B può avere **una call davvero condivisa**: cambia
+l'indirizzo, non il significato.
+
+## A — Interni al plugin: identici su ogni DAW (15)
+
+`dsp.compressor.set` · `dsp.limiter.set` · `dsp.bypass` · `dsp.getState` ·
+`mix.analyze` · `ui.showPanels` · `samples.scan` · `samples.search` ·
+`memory.remember` · `memory.search` · `memory.forget` · `skill.search` ·
+`skill.load` · `mcp.list` · `mcp.call`
+
+Nessuna dipendenza dalla DAW: non c'è niente da astrarre.
+
+## B — Comuni: stessa intenzione, indirizzi diversi (10 + 3 parziali)
+
+| Tool | REAPER (config reale) | Ableton (AbletonOSC) | Note |
+|---|---|---|---|
+| `daw.transport.play` | `t/play` | `/live/song/start_playing` | ok entrambi |
+| `daw.transport.stop` | `t/stop` | `/live/song/stop_playing` | ok entrambi |
+| `daw.transport.record` | `t/record` = **toggle** | `/live/song/set/session_record`, `trigger_session_record` | **parziale**: Reaper non ha "record on/off", solo toggle; Ableton distingue sessione/arrangiamento |
+| `daw.transport.setTempo` | `f/tempo/raw` | `/live/song/set/tempo` | ok entrambi (mai `/tempo`, che è normalizzato) |
+| `daw.track.setVolume` | `f/track/@/volume/db` | `/live/track/set/volume` (lineare) | **convenzione**: nel contratto il valore è dB; l'adattatore converte |
+| `daw.track.setPan` | `n/track/@/pan` | `/live/track/set/pan` | entrambi −1…1 |
+| `daw.track.mute` | `b/track/@/mute` (0/1) | `/live/track/set/mute` | ok entrambi |
+| `daw.track.solo` | `b/track/@/solo` (0/1) | `/live/track/set/solo` | ok entrambi |
+| `daw.plugin.setParam` | `n/track/@/fx/@/fxparam/@/value` | `/live/device/set/parameter/value` | **convenzione**: come si identifica il plugin (slot/indice vs nome) |
+| `daw.plugin.bypass` | `b/track/@/fx/@/bypass` | non esiste un bypass: si passa dal parametro "Device On" | Reaper pieno, Ableton **parziale** |
+| `mix.levels` | feedback su `track/@/volume`, `…/mute` | `/live/track/get/volume` … | Ableton pieno; Reaper **parziale** (solo ciò che la config rimanda) |
+| `mix.snapshot.save` / `recall` | possibile: scrive su `…/volume/db` + mute; **rileggere** è il problema | pieno (get + set) | **parziale**: su Reaper manca la lettura affidabile |
+| `daw.marker.goto` / `daw.marker.set` | la config espone i marker solo in **lettura** (`s/marker/@/name`, `f/marker/@/time`) | AbletonOSC non ha marker | **non disponibile** su entrambi via OSC |
+
+## C — Solo Ableton (7)
+
+| Tool | Perché | Su Reaper |
+|---|---|---|
+| `ableton.setup` | installa AbletonOSC | non ha senso |
+| `music.compose` | scrive note in una clip: `/live/clip/add/notes` | OSC Reaper non scrive MIDI |
+| `beat.create` | come sopra, dai sample | idem |
+| `device.list` | enumerazione dei device di Live | Reaper non espone l'elenco FX via OSC |
+| `device.params` | parametri con nome/valore di Live | parziale: solo se Reaper li manda (`s/fx/@/name`) |
+| `device.setParam` | impostazione + rilettura su Live | coperto da `daw.plugin.setParam` |
+| `device.dictionary` | dizionario dei parametri di Live | solo da feedback, non enumerabile |
+
+## Le tre convenzioni da fissare nel contratto
+
+1. **Indice traccia: 0-based sempre.** REAPER parte da 1 → l'adattatore somma 1
+   (`/track/@`), Ableton parte da 0. Oggi il valore passa crudo: su Reaper è
+   off-by-one.
+2. **Unità nel contratto, non nel provider.** `setVolume` riceve **dB**;
+   l'adattatore sceglie `…/volume/db` (Reaper) o converte per Live. Oggi il
+   valore cambia scala a seconda del percorso (handler = lineare, fallback = dB).
+3. **Stato, non toggle.** `record(on/off)` e `mute(on/off)`: dove la DAW ha solo
+   un toggle (Reaper `/record`), l'adattatore deve conoscere lo stato corrente
+   (dal feedback) e agire solo se serve.
+
+## Conseguenza per il contratto dei tool
+
+- Gruppo **A**: nessuna modifica.
+- Gruppo **B**: il tool resta uno solo; cambia l'adattatore. È qui che si
+  guadagna l'astrazione.
+- Gruppo **C**: il tool **non va offerto** al modello quando la DAW non lo
+  supporta, e se chiamato deve rispondere *"non disponibile su REAPER"*, non
+  *"AbletonOSC non risponde"*.
+
+Senza questo censimento, ogni tool del gruppo C è un turno sprecato e un
+messaggio d'errore fuorviante. Con il censimento, la matrice diventa una tabella
+di capacità per adattatore, e il modello vede solo ciò che esiste davvero.
