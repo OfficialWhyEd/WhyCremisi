@@ -952,6 +952,8 @@ void OscBridge::handleWebSocketMessage(const nlohmann::json& message)
 
     juce::String validationError;
     juce::String msgType = message.contains("type") ? juce::String(message["type"].get<std::string>()) : "";
+    if (onUserActivity && (msgType == "ai.prompt" || msgType == "widget.valueChange" || msgType == "ai.action"))
+        onUserActivity();
     auto schema = getSchemaForType(msgType);
     if (!validateMessage(message, schema, validationError)) {
         log("[WS] Validation failed: " + validationError + " (type: " + msgType + ")");

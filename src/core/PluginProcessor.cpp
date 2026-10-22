@@ -18,6 +18,7 @@
 #include "DSPEngine.h"
 #include "../agent/PersonalityCore.h"
 #include "../agent/AgentWorkspace.h"
+#include "../agent/Dreamer.h"
 #include "../debug/DebugLog.h"
 #include <nlohmann/json.hpp>
 
@@ -158,6 +159,12 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     oscBridge->setPluginProcessor(this);
     paramMapper->setOscBridge(oscBridge.get());
 
+    // Sogno: il tempo fermo riparte da zero a ogni gesto della persona.
+    lastActivityMs.store(juce::Time::currentTimeMillis());
+    lastDreamMs = Dreamer::lastDreamFromDiary(whycremisi::appDataDirectory().getChildFile("DREAMS.md"));
+    oscBridge->onUserActivity = [this] { noteUserActivity(); };
+    startTimer(dreamTickMs);
+
     // Route widget changes from UI → ParameterMapper → MIDI/OSC + Personality + Memory
     oscBridge->widgetChangeCallback = [this](const juce::String& widgetId, float value) {
         if (paramMapper)
@@ -277,6 +284,7 @@ WhyCremisiProcessor::WhyCremisiProcessor()
 
 WhyCremisiProcessor::~WhyCremisiProcessor()
 {
+    stopTimer();
     cancelPendingUpdate();
     parameters.removeParameterListener("dawOscPort", this);
     if (oscBridge)
@@ -903,8 +911,29 @@ juce::String WhyCremisiProcessor::getAiApiKey(const juce::String& provider) cons
     return (it != apiKeys.end()) ? it->second : juce::String();
 }
 
+void WhyCremisiProcessor::timerCallback()
+{
+    if (! agentWorkspace) return;
+    const auto now = juce::Time::currentTimeMillis();
+    const double fermoMin = (double) (now - lastActivityMs.load()) / 60000.0;
+    const double tickMin = (double) dreamTickMs / 60000.0;
+    const Dreamer::Settings s;
+    const int daRiordinare = Dreamer::countUnconsolidated(*agentWorkspace, lastDreamMs);
+    if (! Dreamer::shouldFallAsleep(s, fermoMin, tickMin, daRiordinare, dreamDice))
+        return;
+
+    const auto rep = Dreamer::dream(*agentWorkspace, whycremisi::appDataDirectory().getChildFile("DREAMS.md"),
+                                    lastDreamMs, now, s);
+    if (! rep.slept) return;
+    lastDreamMs = rep.dreamedAtMs;
+    whycremisi::log("plugin", "sogno: " + juce::String(rep.habitsWritten) + " abitudini, "
+                    + juce::String(rep.repeatsPromoted) + " ripetuti, " + juce::String(rep.archived) + " archiviati");
+    refreshAiContext();
+}
+
 void WhyCremisiProcessor::sendAiPrompt(const juce::String& prompt)
 {
+    noteUserActivity();
     if (!aiEngine || !aiEnabled || aiEnabled->load() <= 0.5f)
     {
         lastAiResponse = "AI disabled or not initialized";

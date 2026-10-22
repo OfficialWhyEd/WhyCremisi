@@ -30,6 +30,7 @@ class AgentWorkspace;
 class WhyCremisiProcessor : public juce::AudioProcessor
                            , private juce::AudioProcessorValueTreeState::Listener
                            , private juce::AsyncUpdater
+                           , private juce::Timer
 {
 public:
     //==============================================================================
@@ -183,6 +184,14 @@ private:
     std::unique_ptr<PersonalityCore> personalityCore;
 
     void refreshAiContext();
+
+    // Sogno: a plugin aperto e fermo, di tanto in tanto riordina i ricordi (src/agent/Dreamer).
+    void timerCallback() override;
+    void noteUserActivity() { lastActivityMs.store(juce::Time::currentTimeMillis()); }
+    std::atomic<juce::int64> lastActivityMs { 0 };
+    juce::int64 lastDreamMs = 0;
+    juce::Random dreamDice;
+    static constexpr int dreamTickMs = 60 * 1000;
 
     // Agent Workspace (OpenClaw templates: identity, soul, user, memory, heartbeat, tools, agents rules)
     std::unique_ptr<AgentWorkspace> agentWorkspace;

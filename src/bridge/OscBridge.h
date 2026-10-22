@@ -125,6 +125,9 @@ public:
     /** Set Plugin Processor for program/preset management */
     void setPluginProcessor(WhyCremisiProcessor* proc) { pluginProcessor = proc; }
 
+    /** Chiamata quando la persona scrive o muove un controllo: azzera il tempo fermo del sogno. */
+    std::function<void()> onUserActivity;
+
     /** Set Session Manager for event logging */
     void setSessionManager(SessionManager* sm);
 
