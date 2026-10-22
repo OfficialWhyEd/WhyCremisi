@@ -40,7 +40,7 @@ void OscHandler::start()
         return;
 
     socket = std::make_unique<juce::DatagramSocket>();
-    socket->setEnablePortReuse(true);
+    socket->setEnablePortReuse(false);
     if (!socket->bindToPort(port))
     {
         juce::String err = "[OSC] ERROR: Cannot bind to port " + juce::String(port) + " — retrying in 1s";
@@ -48,7 +48,7 @@ void OscHandler::start()
         fprintf(stderr, "%s\n", err.toRawUTF8());
         juce::Thread::sleep(1000);
         socket = std::make_unique<juce::DatagramSocket>();
-        socket->setEnablePortReuse(true);
+        socket->setEnablePortReuse(false);
         if (!socket->bindToPort(port))
         {
             juce::String err2 = "[OSC] ERROR: Still cannot bind to port " + juce::String(port);
@@ -327,6 +327,8 @@ void OscHandler::sendMessage(const juce::String& address, int value)
 void OscHandler::listenerLoop()
 {
     std::vector<char> buffer(65536);
+    addToLog("[OSC] ascolto avviato sulla porta " + juce::String(port));
+    int ultimoEsito = 99;
 
     while (running.load())
     {
@@ -338,13 +340,34 @@ void OscHandler::listenerLoop()
 
         juce::String senderIp;
         int senderPort = 0;
-        int bytesRead = socket->read(buffer.data(), static_cast<int>(buffer.size()), true, senderIp, senderPort);
+        // Con blockUntilSpecifiedAmountHasArrived = true JUCE aspetta tutti i
+        // 65536 byte del buffer: un pacchetto OSC ne ha poche decine e non
+        // verrebbe mai consegnato. Si aspetta che il socket sia pronto e si
+        // legge un datagramma alla volta.
+        const int pronto = socket->waitUntilReady(true, 100);
+        if (pronto != ultimoEsito && pronto != 0)
+        {
+            ultimoEsito = pronto;
+            addToLog("[OSC] attesa socket: esito " + juce::String(pronto));
+        }
+        if (pronto != 1)
+        {
+            if (pronto < 0)
+                juce::Thread::sleep(100);
+            continue;
+        }
+        int bytesRead = socket->read(buffer.data(), static_cast<int>(buffer.size()), false, senderIp, senderPort);
 
         if (bytesRead <= 0)
         {
             juce::Thread::sleep(10);
             continue;
         }
+
+        static std::atomic<int> primiPacchetti { 0 };
+        if (primiPacchetti.fetch_add(1) < 12)
+            addToLog("[OSC] pacchetto di " + juce::String(bytesRead) + " byte da " + senderIp + ":" + juce::String(senderPort)
+                     + " (porta " + juce::String(port) + ")");
 
         handleOscPacket(buffer.data(), bytesRead);
     }
@@ -366,6 +389,11 @@ void OscHandler::handleOscPacket(const char* data, int size)
         juce::String addressPattern;
         while (*ptr != '\0' && ptr < data + size)
             addressPattern += *ptr++;
+        // Il ciclo si ferma sul byte 0 che chiude la stringa: va saltato anche
+        // lui, poi si arriva al multiplo di 4. Senza questo ogni tipo di
+        // valore veniva letto un byte troppo presto e nessuna risposta di Live
+        // era mai riconosciuta.
+        ptr++;
         ptr += (4 - ((addressPattern.length() + 1) % 4)) % 4;
         if (ptr >= data + size) return;
 

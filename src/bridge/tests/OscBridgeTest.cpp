@@ -963,6 +963,12 @@ for line in sys.stdin:
             expectWithinAbsoluteError (AbletonDawHandler::liveVolumeFromGain (-1.0f), 0.0f, 1.0e-6f);
             const float meno6 = AbletonDawHandler::liveVolumeFromGain (juce::Decibels::decibelsToGain (-6.0f));
             expect (meno6 > 0.0f && meno6 < 0.85f, "-6 dB fra 0 e 0.85");
+            // Punti misurati su Live 11: il valore del fader e i dB che Live mostra.
+            expectWithinAbsoluteError (AbletonDawHandler::liveVolumeFromDb (-3.0f), 0.775f, 1.0e-4f);
+            expectWithinAbsoluteError (AbletonDawHandler::liveVolumeFromDb (-6.0f), 0.70f, 1.0e-4f);
+            expectWithinAbsoluteError (AbletonDawHandler::liveVolumeFromDb (-24.2f), 0.30f, 1.0e-3f);
+            expectWithinAbsoluteError (AbletonDawHandler::dbFromLiveVolume (0.75f), -4.0f, 1.0e-3f);
+            expectWithinAbsoluteError (AbletonDawHandler::dbFromLiveVolume (0.2f), -34.4f, 1.0e-3f);
         }
 
         beginTest ("Pan Live: -1..1 conservato, fuori scala limitato");

@@ -1,13 +1,10 @@
 #include "MixSnapshots.h"
+#include "AbletonDawHandler.h"
 #include <cmath>
 
 double MixSnapshots::dbFromLiveVolume (double v)
 {
-    if (! (v > 0.0))
-        return -100.0;
-    if (v >= 0.85)
-        return 6.0 * (juce::jmin (v, 1.0) - 0.85) / 0.15;
-    return juce::jmax (-100.0, 40.0 * std::log10 (v / 0.85));
+    return AbletonDawHandler::dbFromLiveVolume ((float) v);
 }
 
 juce::File MixSnapshots::getFile() const

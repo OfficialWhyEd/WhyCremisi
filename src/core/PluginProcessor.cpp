@@ -112,6 +112,15 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     dawOscPort = static_cast<int>(dawOscPortParam->load());
     wsPort = static_cast<int>(wsPortParam->load());
 
+    // AbletonOSC ascolta sulla 11000 e risponde sulla 11001. Con le porte
+    // di fabbrica (9000/9001) in Live il plugin non arriverebbe mai alla DAW,
+    // senza nessun errore: dentro Live si usano quelle giuste da subito.
+    if (juce::PluginHostType().isAbletonLive() && oscPort == 9000 && dawOscPort == 9001)
+    {
+        oscPort = 11001;
+        dawOscPort = 11000;
+    }
+
     // Initialize Personality Core (memory + AI personality)
     personalityCore = std::make_unique<PersonalityCore>();
     personalityCore->startSession();

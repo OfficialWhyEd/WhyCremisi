@@ -31,9 +31,15 @@ public:
     void addMidiNote (int trackId, int slotIndex, int pitch, float startBeat, float lengthBeats, int velocity);
 
     /** Guadagno lineare (1.0 = 0 dB) -> valore normalizzato 0..1 del fader di Live.
-        Ancoraggi certi: 0 -> 0, 0 dB -> 0.85, +6 dB -> 1.0. Fra i punti la curva
-        e' un'APPROSSIMAZIONE non calibrata: chi la usa deve dirlo. */
+        Curva misurata su Live 11 (22/10): lineare da 0.4 a 1.0 (0.85 = 0 dB,
+        1.0 = +6 dB, 40 dB per unita'), piu' ripida sotto 0.4, tabella fra 0.1 e 0.4. */
     static float liveVolumeFromGain (float gain);
+
+    /** dB -> valore normalizzato 0..1 del fader di Live (stessa curva). */
+    static float liveVolumeFromDb (float db);
+
+    /** Valore normalizzato del fader di Live -> dB (inverso di liveVolumeFromDb). */
+    static float dbFromLiveVolume (float v);
 
     /** Pan -1..1 (come in Live): fuori scala viene limitato. */
     static float livePanFromPan (float pan);

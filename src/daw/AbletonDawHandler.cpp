@@ -23,21 +23,51 @@
 //  Live e attivato in Preferenze - Link/Tempo/MIDI come Control Surface.
 //  Live ascolta sulla porta 11000 e risponde sulla 11001.
 
-// Volume in Live: valore normalizzato 0..1 (0.85 = 0 dB, 1.0 = +6 dB).
+// Volume in Live: valore normalizzato 0..1 (0.85 = 0 dB, 1.0 = +6 dB, curva misurata sotto).
 // Pan in Live: -1 tutto a sinistra, 0 centro, +1 tutto a destra.
 // Valori fuori scala vengono rifiutati silenziosamente, quindi si limitano qui.
+
+// Punti misurati su Live 11 (valore del fader -> dB mostrato): sopra 0.4 la curva
+// e' una retta da 40 dB per unita' (v = 0.85 + dB / 40), sotto e' piu' ripida.
+static const float kLiveCurva[][2] = { { 0.1f, -48.6f }, { 0.2f, -34.4f }, { 0.3f, -24.2f }, { 0.4f, -18.0f } };
+
+float AbletonDawHandler::dbFromLiveVolume (float v)
+{
+    if (! (v > 0.0f))
+        return -100.0f;
+    if (v >= 0.4f)
+        return 40.0f * (juce::jmin (v, 1.0f) - 0.85f);
+    if (v < 0.1f)
+        return juce::jmax (-100.0f, -48.6f + 47.0f * std::log10 (v / 0.1f));
+    for (int i = 0; i < 3; ++i)
+        if (v <= kLiveCurva[i + 1][0])
+        {
+            const float t = (v - kLiveCurva[i][0]) / (kLiveCurva[i + 1][0] - kLiveCurva[i][0]);
+            return kLiveCurva[i][1] + t * (kLiveCurva[i + 1][1] - kLiveCurva[i][1]);
+        }
+    return -18.0f;
+}
+
+float AbletonDawHandler::liveVolumeFromDb (float db)
+{
+    if (db >= -18.0f)
+        return juce::jlimit (0.4f, 1.0f, 0.85f + db / 40.0f);
+    if (db < -48.6f)
+        return db <= -100.0f ? 0.0f : 0.1f * std::pow (10.0f, (db + 48.6f) / 47.0f);
+    for (int i = 0; i < 3; ++i)
+        if (db <= kLiveCurva[i + 1][1] && db >= kLiveCurva[i][1])
+        {
+            const float t = (db - kLiveCurva[i][1]) / (kLiveCurva[i + 1][1] - kLiveCurva[i][1]);
+            return kLiveCurva[i][0] + t * (kLiveCurva[i + 1][0] - kLiveCurva[i][0]);
+        }
+    return 0.4f;
+}
 
 float AbletonDawHandler::liveVolumeFromGain (float gain)
 {
     if (! (gain > 0.0f))
         return 0.0f;
-
-    const float db = juce::Decibels::gainToDecibels (gain);
-    if (db >= 0.0f)
-        return 0.85f + 0.15f * juce::jmin (db, 6.0f) / 6.0f;
-
-    // Sotto 0 dB: v = 0.85 * 10^(db/40), cioe' 0.85 * radice del guadagno.
-    return 0.85f * std::pow (10.0f, db / 40.0f);
+    return liveVolumeFromDb (juce::Decibels::gainToDecibels (gain));
 }
 
 float AbletonDawHandler::livePanFromPan (float pan)

@@ -509,6 +509,14 @@ juce::String AiEngine::buildSystemPrompt() const
               "the user right now. For a normal answer or a chat, omit it. Never repeat a box the "
               "user already has in view.\n\n";
 
+    prompt += "HOW TO WRITE (strict): reply in the user's language, short plain sentences, 2 to 5 lines. "
+              "No code, no JSON, no markdown headings inside \"text\". No lists of limits or apologies. "
+              "Never open with 'You are right' or similar. Say what you did and what the DAW confirmed, "
+              "or what failed and why, then one next step. Never invent measurements: a number only if a tool returned it. "
+              "A widget action is only a request: do not say it was done unless a tool result confirms it. "
+              "A failure earlier in the chat says nothing about now: the user may have fixed the cause, "
+              "so for every DAW request call the tool again before answering.\n\n";
+
     prompt += buildPersonalityPrefix();
     prompt += "\n";
 

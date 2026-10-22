@@ -88,6 +88,10 @@ OscBridge::OscBridge(int oscReceivePort, int wsListenPort)
     oscHandler = std::make_unique<OscHandler>(oscPort);
     wsServer = std::make_unique<WebSocketServer>(wsPort);
 
+    // Le righe dell'ascolto OSC (avvio, pacchetti arrivati) finiscono nel file di log:
+    // senza questo la ricezione da Live era invisibile e impossibile da diagnosticare.
+    oscHandler->setLogCallback([](const juce::String& riga) { whycremisi::log ("osc", riga); });
+
     // OSC → WebSocket: set callback for incoming OSC from DAW (float values)
     oscHandler->setCallback([this](const juce::String& address, float value) {
         lastOscFromDawMs.store (juce::Time::currentTimeMillis());

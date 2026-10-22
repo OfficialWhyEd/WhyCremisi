@@ -716,7 +716,7 @@ void WebSocketServer::closeConnection(ClientInfo* client, uint16_t code, const j
 void WebSocketServer::broadcast(const nlohmann::json& message)
 {
     std::string jsonStr = message.dump();
-    juce::String text(jsonStr.data(), jsonStr.size());
+    auto text = juce::String::fromUTF8 (jsonStr.data(), (int) jsonStr.size());
 
     std::lock_guard<std::mutex> lock(clientsMutex);
     for (auto& client : clients)
@@ -731,7 +731,7 @@ void WebSocketServer::broadcast(const nlohmann::json& message)
 void WebSocketServer::sendToClient(int clientId, const nlohmann::json& message)
 {
     std::string jsonStr = message.dump();
-    juce::String text(jsonStr.data(), jsonStr.size());
+    auto text = juce::String::fromUTF8 (jsonStr.data(), (int) jsonStr.size());
 
     std::lock_guard<std::mutex> lock(clientsMutex);
     for (auto& client : clients)
