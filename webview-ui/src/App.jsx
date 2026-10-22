@@ -7,6 +7,7 @@ import { MaskLogo } from './components/MaskLogo'
 import { SessionPanel } from './components/SessionPanel'
 import { SetupScreen } from './components/SetupScreen'
 import { AccountGate } from './components/AccountGate'
+import { UpdateBanner } from './components/UpdateBanner'
 import './index.css'
 import { UserBubble, BotBubble } from './components/ChatBubble'
 
@@ -1030,6 +1031,8 @@ export default function App() {
           onSkip={() => { try { sessionStorage.setItem('whycremisi_account_skip', '1') } catch {}; setServeAccesso(false) }}
         />
       )}
+
+      <UpdateBanner />
 
       <AnimatePresence>
         {!setupComplete && (

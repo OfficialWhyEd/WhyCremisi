@@ -13,6 +13,8 @@
 #include "AiEngine.h"
 #include "AIProvider.h"
 #include "../account/WhyAccount.h"
+#include "../update/WhyUpdate.h"
+#include "../daw/ReaperSetup.h"
 #include "ToolRegistry.h"
 #include "SessionManager.h"
 #include "MidiHandler.h"
@@ -184,6 +186,9 @@ void OscBridge::stop()
     accessoStop = true;
     if (accessoThread && accessoThread->joinable())
         accessoThread->join();
+    aggStop = true;
+    if (aggThread && aggThread->joinable())
+        aggThread->join();
     if (undoThread && undoThread->joinable())
         undoThread->join();
 
@@ -2312,7 +2317,9 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                        || configKey == "ai.testConnection"
                        || configKey == "account.status" || configKey == "account.signOut"
                        || configKey == "account.signIn" || configKey == "account.signUp"
-                       || configKey == "account.google" || configKey == "account.reset";
+                       || configKey == "account.google" || configKey == "account.reset"
+                       || configKey == "update.status" || configKey == "update.check" || configKey == "update.apply"
+                       || configKey == "update.auto" || configKey == "reaper.link";
     bool isRead = !payload.contains("value") && ! isAzione;
 
     // Helper to send a config.response
@@ -2864,6 +2871,99 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         nlohmann::json rp;
         rp["key"] = configKey.toStdString();
         rp["status"] = "working";
+        sendConfigResponse (rp);
+    }
+    else if (configKey == "update.status" || configKey == "update.auto")
+    {
+        // Aggiornamenti: versione installata e flag "controlla da solo". update.auto con value true/false lo cambia.
+        auto imp = WhyUpdate::caricaImpostazioni();
+        if (configKey == "update.auto" && payload.contains ("value"))
+        {
+            imp.automatico = payload["value"].is_boolean() ? payload["value"].get<bool>() : payload["value"].get<int>() != 0;
+            WhyUpdate::salvaImpostazioni (imp);
+            imp = WhyUpdate::caricaImpostazioni();
+        }
+        nlohmann::json rp;
+        rp["key"] = configKey.toStdString();
+        rp["status"] = "ok";
+        rp["version"] = WhyUpdate::versioneCorrente().toStdString();
+        rp["auto"] = imp.automatico;
+        rp["channel"] = imp.canale.toStdString();
+        sendConfigResponse (rp);
+    }
+    else if (configKey == "update.check" || configKey == "update.apply")
+    {
+        // Controllo e scaricamento su un thread: la risposta torna come config.response.
+        const auto lingua = juce::String (payload.value ("lang", std::string ("it")));
+        aggStop = true;
+        if (aggThread && aggThread->joinable())
+            aggThread->join();
+        aggStop = false;
+        aggThread = std::make_unique<std::thread> ([this, configKey, lingua]()
+        {
+            nlohmann::json rp;
+            rp["key"] = configKey.toStdString();
+            rp["version"] = WhyUpdate::versioneCorrente().toStdString();
+            const auto c = WhyUpdate::controlla (lingua);
+            rp["status"] = c.riuscito ? "ok" : "error";
+            rp["message"] = c.errore.toStdString();
+            rp["available"] = c.riuscito && c.nuova;
+            if (c.riuscito)
+            {
+                rp["latest"] = c.rilascio.versione.toStdString();
+                rp["notes"] = c.rilascio.note.toStdString();
+            }
+            if (configKey == "update.apply" && c.riuscito && c.nuova)
+            {
+                juce::File installer;
+                juce::String err;
+                auto avanza = [this] (int p)
+                {
+                    nlohmann::json pr;
+                    pr["key"] = "update.progress";
+                    pr["status"] = "working";
+                    pr["percent"] = p;
+                    nlohmann::json m = nlohmann::json::object();
+                    m["type"] = "config.response";
+                    m["timestamp"] = juce::Time::currentTimeMillis();
+                    m["payload"] = pr;
+                    if (wsServer) wsServer->broadcast (m);
+                };
+                if (WhyUpdate::scarica (c.rilascio, installer, err, &aggStop, avanza)
+                    && WhyUpdate::installaAllaChiusura (installer, err))
+                {
+                    rp["installOnClose"] = true;
+                    rp["message"] = lingua == "en" ? "Downloaded and verified. It installs when you close the DAW."
+                                                   : "Scaricato e verificato. Si installa quando chiudi la DAW.";
+                }
+                else
+                {
+                    rp["status"] = "error";
+                    rp["message"] = err.toStdString();
+                }
+            }
+            if (aggStop) return;
+            nlohmann::json risposta = nlohmann::json::object();
+            risposta["type"] = "config.response";
+            risposta["timestamp"] = juce::Time::currentTimeMillis();
+            risposta["payload"] = rp;
+            if (wsServer)
+                wsServer->broadcast (risposta);
+        });
+        nlohmann::json rp;
+        rp["key"] = configKey.toStdString();
+        rp["status"] = "working";
+        sendConfigResponse (rp);
+    }
+    else if (configKey == "reaper.link")
+    {
+        // Azione esplicita dell'utente: scrive in reaper.ini la superficie OSC (con copia di sicurezza, a Reaper chiuso).
+        const auto es = ReaperSetup::collega();
+        nlohmann::json rp;
+        rp["key"] = "reaper.link";
+        rp["status"] = es.ok ? "ok" : "error";
+        rp["alreadyLinked"] = es.eraGia;
+        rp["message"] = es.messaggio.toStdString();
         sendConfigResponse (rp);
     }
     else if (configKey == "ai.linkCodex")

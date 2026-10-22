@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
-project(WhyCremisi-VST-Plugin VERSION 0.1.0 LANGUAGES C CXX)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" WHYCREMISI_VERSION_TEXT LIMIT_COUNT 1)
+project(WhyCremisi-VST-Plugin VERSION ${WHYCREMISI_VERSION_TEXT} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -86,6 +87,7 @@ juce_add_plugin(WhyCremisiVSTPlugin
 # Disabilita VST2 fallback
 target_compile_definitions(WhyCremisiVSTPlugin PRIVATE
     JUCE_VST3_CAN_REPLACE_VST2=0
+    WHYCREMISI_VERSION="${WHYCREMISI_VERSION_TEXT}"
 )
 
 # Windows: attiva il backend WebView2 (linkato staticamente dal pacchetto NuGet).
@@ -126,6 +128,8 @@ target_sources(WhyCremisiVSTPlugin
         src/ai/AiEngine.cpp
         src/ai/AIProvider.cpp
         src/account/WhyAccount.cpp
+        src/update/WhyUpdate.cpp
+        src/daw/ReaperSetup.cpp
         src/ai/ChainProvider.cpp
         src/ai/ToolRegistry.cpp
         src/samples/SampleLibrary.cpp
@@ -230,6 +234,7 @@ if(BUILD_UNIT_TESTS)
             src/bridge/tests/OscBridgeTest.cpp
             src/ai/tests/AiEngineTest.cpp
             src/account/tests/WhyAccountTest.cpp
+            src/update/tests/WhyUpdateTest.cpp
             src/ai/tests/ChainProviderTest.cpp
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
@@ -263,6 +268,8 @@ if(BUILD_UNIT_TESTS)
             src/ai/AiEngine.cpp
             src/ai/AIProvider.cpp
             src/account/WhyAccount.cpp
+            src/update/WhyUpdate.cpp
+            src/daw/ReaperSetup.cpp
             src/ai/ChainProvider.cpp
             src/ai/ToolRegistry.cpp
             src/samples/SampleLibrary.cpp
@@ -305,6 +312,7 @@ if(BUILD_UNIT_TESTS)
     )
 
     target_compile_definitions(WhyCremisiTests PRIVATE
+        WHYCREMISI_VERSION="${WHYCREMISI_VERSION_TEXT}"
         JUCE_UNIT_TESTS=1
         JUCE_VST3_CAN_REPLACE_VST2=0
         # Il processore vuole i simboli JucePlugin_*: senza, non compila

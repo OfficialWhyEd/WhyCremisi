@@ -1,0 +1,68 @@
+# Release beta automatica: a ogni push sul ramo indicato costruisce installer Windows e pacchetto Linux
+# e aggiorna la release "beta" con latest.json (da cui gli aggiornamenti automatici di WhyCremisi).
+# NON ancora collaudato su GitHub Actions: la prima esecuzione va guardata.
+name: beta
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/conferma-reale-comandi-daw]
+    paths: ['VERSION']
+permissions:
+  contents: write
+env:
+  JUCE_TAG: "8.0.12"
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: git clone --depth 1 --branch ${{ env.JUCE_TAG }} https://github.com/juce-framework/JUCE.git ${{ runner.temp }}/JUCE
+      - run: npm ci
+        working-directory: webview-ui
+      - run: npm run build
+        working-directory: webview-ui
+      - run: |
+          cmake -B build-t2 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-t2 --config Release --target WhyCremisiVSTPlugin_VST3
+        env: { JUCE_ROOT: "${{ runner.temp }}/JUCE" }
+      - run: choco install innosetup -y --no-progress
+      - run: powershell -File Tools\pubblica-beta.ps1 -Build build-t2
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: build-installer/out/* }
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libcurl4-openssl-dev libfreetype-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev
+      - run: git clone --depth 1 --branch ${{ env.JUCE_TAG }} https://github.com/juce-framework/JUCE.git $RUNNER_TEMP/JUCE
+      - run: cd webview-ui && npm ci && npm run build
+      - run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target WhyCremisiVSTPlugin_VST3
+        env: { JUCE_ROOT: "${{ runner.temp }}/JUCE" }
+      - run: sh Tools/installer/pacchetto-linux.sh build
+      - uses: actions/upload-artifact@v4
+        with: { name: linux, path: build-installer/out/* }
+  pubblica:
+    needs: [windows, linux]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: out }
+      - name: latest.json e release beta
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          VER=$(cat VERSION | tr -d '[:space:]')
+          BASE="https://github.com/${{ github.repository }}/releases/download/beta"
+          W="out/windows/WhyCremisi-Setup-$VER.exe"; L="out/linux/WhyCremisi-linux-$VER.tar.gz"
+          cat > latest.json <<JSON
+          {"version":"$VER","notes":"","windows":{"url":"$BASE/WhyCremisi-Setup-$VER.exe","sha256":"$(sha256sum $W | cut -d' ' -f1)","size":$(stat -c%s $W)},
+           "linux":{"url":"$BASE/WhyCremisi-linux-$VER.tar.gz","sha256":"$(sha256sum $L | cut -d' ' -f1)","size":$(stat -c%s $L)}}
+          JSON
+          gh release view beta >/dev/null 2>&1 || gh release create beta --prerelease --title "WhyCremisi beta" --notes "Canale beta"
+          gh release upload beta $W $L latest.json --clobber

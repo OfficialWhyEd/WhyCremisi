@@ -45,7 +45,7 @@ juce::String DawDetector::getOscHelp(DawType type)
     {
         case DawType::Reaper:
             return "Enable OSC in REAPER: Preferences > Control Surfaces > Add > OSC (Open Sound Control). "
-                   "Set Local Listen Port to 9000 and Pattern Config to 'ReaperOSC'.";
+                   "Set Local listen port to 8000 (WhyCremisi sends here), device IP 127.0.0.1 and device port 9000 (WhyCremisi listens here). The installer does this for you.";
         case DawType::Ableton:
             return "Install AbletonOSC by ideoforms: https://github.com/ideoforms/AbletonOSC. "
                    "It runs as a Max for Live device and handles /live/... OSC endpoints.";
