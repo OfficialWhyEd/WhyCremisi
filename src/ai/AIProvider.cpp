@@ -194,7 +194,7 @@ static nlohmann::json buildOpenAIMessages(const juce::String& systemPrompt, cons
 AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage)
 {
     Result result;
-    if (config.apiKey.isEmpty()) { result.error = "API key not configured"; return result; }
+    if (requiresApiKey() && config.apiKey.isEmpty()) { result.error = "API key not configured"; return result; }
 
     nlohmann::json body;
     body["model"] = config.model.toStdString();
@@ -210,7 +210,10 @@ AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, 
             body["tools"] = tools;
     }
 
-    juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n" + getExtraHeaders();
+    juce::String authHeader;
+    if (config.apiKey.isNotEmpty())
+        authHeader << "Authorization: Bearer " << config.apiKey << "\r\n";
+    authHeader << getExtraHeaders();
     juce::String raw = makeHttpRequest(getApiUrl(), "POST", juce::String(body.dump()), config.timeoutMs, authHeader);
     if (raw.isEmpty()) { result.error = "Empty response"; return result; }
 
@@ -258,7 +261,7 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
     if (!onChunk) return;
     beginRequest();
 
-    if (config.apiKey.isEmpty()) {
+    if (requiresApiKey() && config.apiKey.isEmpty()) {
         lastError = "Nessuna chiave configurata per " + getName() + ".";
         onChunk("", true);
         return;
@@ -278,8 +281,10 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
             body["tools"] = tools;
     }
 
-    juce::String authHeader = "Content-Type: application/json\r\nAuthorization: Bearer "
-                            + config.apiKey + "\r\n" + getExtraHeaders();
+    juce::String authHeader = "Content-Type: application/json\r\n";
+    if (config.apiKey.isNotEmpty())
+        authHeader << "Authorization: Bearer " << config.apiKey << "\r\n";
+    authHeader << getExtraHeaders();
 
     auto apertura = openStreamingPost (getApiUrl(), body.dump(), authHeader,
                                        config.timeoutMs, getName());
@@ -350,13 +355,17 @@ bool OpenAIProvider::testConnection()
 {
     // Prima rispondeva true e basta: qualunque chiave, anche inventata,
     // risultava valida e il problema saltava fuori solo al primo prompt.
-    if (config.apiKey.isEmpty()) { lastError = "Nessuna chiave inserita."; return false; }
+    if (requiresApiKey() && config.apiKey.isEmpty()) { lastError = "Nessuna chiave inserita."; return false; }
 
     auto url = getApiUrl().upToLastOccurrenceOf ("/", false, false);   // .../v1/chat
     url = url.upToLastOccurrenceOf ("/", false, false) + "/models";    // .../v1/models
 
-    juce::String raw = makeHttpRequest (url, "GET", {}, 10000,
-                                        "Authorization: Bearer " + config.apiKey + "\r\n" + getExtraHeaders());
+    juce::String auth;
+    if (config.apiKey.isNotEmpty())
+        auth << "Authorization: Bearer " << config.apiKey << "\r\n";
+    auth << getExtraHeaders();
+
+    juce::String raw = makeHttpRequest (url, "GET", {}, 10000, auth);
     if (raw.isEmpty()) { lastError = "Nessuna risposta da " + getName() + "."; return false; }
 
     auto j = parseJsonSafe (raw);
@@ -447,6 +456,66 @@ bool OpenRouterProvider::testConnection()
 
     lastError = extractError (raw);
     return false;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  llama.cpp Provider (llama-server in locale, API di OpenAI)
+// ═══════════════════════════════════════════════════════════════════
+
+// Indirizzo normalizzato: toglie lo slash finale, e accetta sia la radice
+// (http://127.0.0.1:9931) sia un indirizzo gia' completo incollato per sbaglio.
+static juce::String llamaBase (const juce::String& configurato)
+{
+    auto base = configurato.isNotEmpty() ? configurato.trim() : LlamaCppProvider::defaultBaseUrl();
+    while (base.endsWithChar ('/')) base = base.dropLastCharacters (1);
+    if (base.endsWith ("/v1/chat/completions")) base = base.dropLastCharacters (19);
+    else if (base.endsWith ("/v1/models"))      base = base.dropLastCharacters (10);
+    if (base.endsWith ("/v1"))                  base = base.dropLastCharacters (3);
+    return base;
+}
+
+juce::String LlamaCppProvider::getApiUrl() const
+{
+    return llamaBase (config.baseUrl) + "/v1/chat/completions";
+}
+
+bool LlamaCppProvider::testConnection()
+{
+    const auto base = llamaBase (config.baseUrl);
+
+    juce::String raw = makeHttpRequest (base + "/v1/models", "GET", {}, 5000, {});
+    if (raw.isEmpty())
+    {
+        lastError = "llama-server non risponde su " + base
+                  + ". Avvialo (llama-server -m modello.gguf --port "
+                  + LlamaCppProvider::defaultBaseUrl().fromLastOccurrenceOf (":", false, false)
+                  + ") e riprova.";
+        return false;
+    }
+
+    auto j = parseJsonSafe (raw);
+    if (j.contains ("data") && j["data"].is_array()) return true;
+
+    lastError = extractError (raw);
+    if (lastError.isEmpty()) lastError = "Risposta non riconosciuta da " + base + "/v1/models";
+    return false;
+}
+
+juce::StringArray LlamaCppProvider::getAvailableModels()
+{
+    // I modelli sono i file .gguf che llama-server ha caricato: l'id lo
+    // decide lui, quindi l'elenco va chiesto, non indovinato.
+    juce::StringArray models;
+
+    const auto base = llamaBase (config.baseUrl);
+    juce::String raw = makeHttpRequest (base + "/v1/models", "GET", {}, 5000, {});
+    auto j = parseJsonSafe (raw);
+    if (j.contains ("data") && j["data"].is_array())
+        for (const auto& m : j["data"])
+            if (m.contains ("id") && m["id"].is_string())
+                models.add (juce::String (m["id"].get<std::string>()));
+
+    return models;
 }
 
 // ═══════════════════════════════════════════════════════════════════

@@ -40,12 +40,19 @@ export const PROVIDERS = {
     prefix: 'gsk_', keyUrl: 'console.groq.com/keys',
     models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
   },
+  llamacpp: {
+    id: 'llamacpp', name: 'llama.cpp', icon: 'dns',
+    // Nessuna chiave e nessun download: parla con il llama-server che gira
+    // gia' sulla macchina. L'elenco vero dei modelli lo da' /v1/models.
+    models: [],
+    keyUrl: '',
+  },
 }
 
 // Chiave API: l'ordine in cui compaiono.
 export const API_KEY_PROVIDERS = ['anthropic', 'openai', 'gemini', 'groq', 'openrouter']
 // Strada gratuita: tre modi, tutti realmente collegati.
-export const FREE_KINDS = ['ollama', 'openrouter', 'gemini']
+export const FREE_KINDS = ['ollama', 'openrouter', 'gemini', 'llamacpp']
 
 export const MODEL_LABELS = {
   'claude-opus-5': 'Opus 5',

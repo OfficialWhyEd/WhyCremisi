@@ -9,7 +9,9 @@ juce::ValueTree MemoryEntry::save() const
     tree.setProperty("date", date, nullptr);
     tree.setProperty("text", text, nullptr);
     tree.setProperty("category", category, nullptr);
-    tree.setProperty("timestamp", timestamp, nullptr);
+    // Cast esplicito: su Linux int64_t e' `long`, e juce::var ha sia var(int) sia
+    // var(int64) (= long long), quindi la conversione diretta e' ambigua.
+    tree.setProperty("timestamp", (juce::int64) timestamp, nullptr);
     return tree;
 }
 
@@ -19,7 +21,9 @@ MemoryEntry MemoryEntry::load(const juce::ValueTree& tree)
     e.date = tree.getProperty("date", "");
     e.text = tree.getProperty("text", "");
     e.category = tree.getProperty("category", "general");
-    e.timestamp = tree.getProperty("timestamp", (int64_t)0);
+    // getProperty restituisce juce::var, che su Linux ha sia operator int sia
+    // operator int64: la conversione diretta a int64_t (= long) sarebbe ambigua.
+    e.timestamp = (int64_t) static_cast<juce::int64> (tree.getProperty ("timestamp", (juce::int64) 0));
     return e;
 }
 
@@ -33,7 +37,7 @@ juce::ValueTree HeartbeatState::save() const
     {
         auto c = juce::ValueTree("check");
         c.setProperty("name", name, nullptr);
-        c.setProperty("timestamp", ts, nullptr);
+        c.setProperty("timestamp", (juce::int64) ts, nullptr);
         checks.appendChild(c, nullptr);
     }
     tree.appendChild(checks, nullptr);
@@ -59,7 +63,7 @@ void HeartbeatState::load(const juce::ValueTree& tree)
         {
             auto c = checks.getChild(i);
             lastCheckTimestamps[c.getProperty("name", "").toString()] =
-                c.getProperty("timestamp", (int64_t)0);
+                (int64_t) static_cast<juce::int64> (c.getProperty ("timestamp", (juce::int64) 0));
         }
     }
     tasks.clear();

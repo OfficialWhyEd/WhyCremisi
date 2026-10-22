@@ -81,6 +81,9 @@ juce_add_plugin(WhyCremisiVSTPlugin
     # AU:   Logic Pro, GarageBand (macOS only — ignored on Windows/Linux)
     FORMATS VST3 AU Standalone
     NEEDS_WEBVIEW2 TRUE
+    # Senza questo JUCE define JUCE_WEB_BROWSER=0 e la WebBrowserComponent non esiste:
+    # su Windows/macOS il default la tiene attiva, su Linux la UI React non compilerebbe.
+    NEEDS_WEB_BROWSER TRUE
     PRODUCT_NAME "WhyCremisi"
     BUNDLE_ID "com.whycremisi.plugin"
     AU_MAIN_TYPE "kAudioUnitType_Effect"

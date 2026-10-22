@@ -57,7 +57,7 @@ WhyCremisiProcessor::WhyCremisiProcessor()
         // AI Provider
         params.push_back(std::make_unique<juce::AudioParameterChoice>(
             "aiProvider", "AI Provider",
-            juce::StringArray{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq", "ClaudeCode", "Codex"},
+            juce::StringArray{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq", "ClaudeCode", "Codex", "LlamaCpp"},
             0));
         
         // AI Model
@@ -869,11 +869,22 @@ void WhyCremisiProcessor::updateAiEngineConfig()
         case 5: config.provider = AiEngine::Provider::Groq; break;
         case 6: config.provider = AiEngine::Provider::ClaudeCode; break;
         case 7: config.provider = AiEngine::Provider::Codex; break;
+        case 8: config.provider = AiEngine::Provider::LlamaCpp; break;
         default: config.provider = AiEngine::Provider::Ollama; break;
     }
     
-    config.baseUrl = "http://localhost:11434";
-    config.model = "llama3.2";
+    // llama-server ha una porta sua (9931) e un modello che si chiama come il
+    // file .gguf caricato: i default di Ollama qui non valgono.
+    if (config.provider == AiEngine::Provider::LlamaCpp)
+    {
+        config.baseUrl = LlamaCppProvider::defaultBaseUrl();
+        config.model = "local";
+    }
+    else
+    {
+        config.baseUrl = "http://localhost:11434";
+        config.model = "llama3.2";
+    }
     config.timeoutMs = 30000;
     
     {
@@ -891,7 +902,7 @@ juce::String WhyCremisiProcessor::getAiProvider() const
 {
     if (!aiProvider) return "Ollama";
     int idx = static_cast<int>(aiProvider->load());
-    juce::StringArray providers{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq", "ClaudeCode", "Codex"};
+    juce::StringArray providers{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq", "ClaudeCode", "Codex", "LlamaCpp"};
     return providers[idx];
 }
 

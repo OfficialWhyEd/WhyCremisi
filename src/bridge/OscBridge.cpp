@@ -2387,7 +2387,8 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                 const bool haAbbon   = cfg.authToken.isNotEmpty();
                 // Per Claude l'accesso sta nel programma ufficiale, non qui.
                 const bool conClaude = cfg.provider == AiEngine::Provider::ClaudeCode;
-                const bool inLocale  = cfg.provider == AiEngine::Provider::Ollama;
+                const bool inLocale  = cfg.provider == AiEngine::Provider::Ollama
+                                    || cfg.provider == AiEngine::Provider::LlamaCpp;
                 const auto claudeLogin = conClaude ? ClaudeCodeProvider::queryLoginState()
                                                    : ClaudeCodeProvider::LoginState {};
                 const bool conCodex  = cfg.provider == AiEngine::Provider::Codex;
@@ -2454,6 +2455,15 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                     case AiEngine::Provider::Ollama:
                         if (cfg.baseUrl.isEmpty()) cfg.baseUrl = "http://localhost:11434";
                         if (cfg.model.isEmpty())   cfg.model = "llama3.2";
+                        break;
+
+                    case AiEngine::Provider::LlamaCpp:
+                        // Nessuna chiave: llama-server risponde a chiunque sia
+                        // su localhost. L'indirizzo si puo' cambiare dalla UI
+                        // (ai.llamaUrl); la 9931 e' la porta di default di
+                        // llama-server, non quella di Ollama.
+                        if (cfg.baseUrl.isEmpty() || cfg.baseUrl.contains (":11434"))
+                            cfg.baseUrl = LlamaCppProvider::defaultBaseUrl();
                         break;
 
                     case AiEngine::Provider::Anthropic:
@@ -3047,6 +3057,27 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         
         nlohmann::json rp;
         rp["key"] = "ai.ollamaUrl";
+        rp["value"] = url;
+        rp["status"] = "ok";
+        sendConfigResponse(rp);
+    }
+    else if (configKey == "ai.llamaUrl")
+    {
+        // Indirizzo del server llama.cpp. Non cambia il fornitore: quello lo
+        // sceglie gia' ai.provider. La porta di default di llama-server e' la
+        // 9931, non la 11434 di Ollama.
+        if (!payload.contains("value") || !payload["value"].is_string()) return;
+        std::string url = payload["value"].get<std::string>();
+        log("[CONFIG] llama.cpp URL set to: " + juce::String(url.data()));
+
+        if (aiEngine)
+            aiEngine->updateConfig([&url](AiEngine::Config& cfg)
+            {
+                cfg.baseUrl = juce::String(url.data());
+            });
+
+        nlohmann::json rp;
+        rp["key"] = "ai.llamaUrl";
         rp["value"] = url;
         rp["status"] = "ok";
         sendConfigResponse(rp);

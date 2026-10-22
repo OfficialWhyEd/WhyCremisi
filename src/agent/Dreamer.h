@@ -40,7 +40,15 @@ public:
     static int countUnconsolidated (const AgentWorkspace& ws, juce::int64 lastDreamMs);
 
     // Riordina. Scrive il diario nel file dato. nowMs e' passato da fuori per poterlo provare.
-    static Report dream (AgentWorkspace& ws, const juce::File& diary, juce::int64 lastDreamMs, juce::int64 nowMs, const Settings& s = {});
+    // Il default non puo' stare nella dichiarazione: Settings{} userebbe le sue
+    // inizializzazioni di membro prima che la classe sia chiusa (GCC lo vieta).
+    // Un overload con il corpo dentro la classe invece e' lecito.
+    static Report dream (AgentWorkspace& ws, const juce::File& diary, juce::int64 lastDreamMs, juce::int64 nowMs, const Settings& s);
+
+    static Report dream (AgentWorkspace& ws, const juce::File& diary, juce::int64 lastDreamMs, juce::int64 nowMs)
+    {
+        return dream (ws, diary, lastDreamMs, nowMs, Settings{});
+    }
 
     // Legge dall'ultimo diario quando e' stato l'ultimo sogno (0 se mai).
     static juce::int64 lastDreamFromDiary (const juce::File& diary);

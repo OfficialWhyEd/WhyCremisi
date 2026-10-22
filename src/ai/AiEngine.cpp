@@ -224,6 +224,7 @@ juce::String AiEngine::providerToId (Provider p)
         case Provider::Groq:       return "groq";
         case Provider::ClaudeCode: return "claudecode";
         case Provider::Codex:      return "codex";
+        case Provider::LlamaCpp:   return "llamacpp";
     }
     return "ollama";
 }
@@ -237,6 +238,9 @@ AiEngine::Provider AiEngine::providerFromId (const juce::String& id, Provider fa
     const auto s = id.trim().toLowerCase();
     if (s.isEmpty()) return fallback;
 
+    if (s.startsWith ("llamacpp")
+     || s.startsWith ("llama.cpp")
+     || s.startsWith ("llama-server")) return Provider::LlamaCpp;   // prima di "llama"
     if (s.startsWith ("ollama"))     return Provider::Ollama;
     if (s.startsWith ("gemini")
      || s.startsWith ("google"))     return Provider::Gemini;
@@ -284,6 +288,7 @@ std::unique_ptr<AIProvider> AiEngine::createProvider(Provider type, const juce::
         case Provider::Gemini:     return std::make_unique<GeminiProvider>(pcfg);
         case Provider::ClaudeCode: return std::make_unique<ClaudeCodeProvider>(pcfg);
         case Provider::Codex:      return std::make_unique<CodexProvider>(pcfg);
+        case Provider::LlamaCpp:   return std::make_unique<LlamaCppProvider>(pcfg);
     }
     return nullptr;
 }
@@ -880,6 +885,7 @@ juce::String AiEngine::getProviderName() const
         case Provider::Groq: return "Groq";
         case Provider::ClaudeCode: return "Claude (il tuo account)";
         case Provider::Codex: return "ChatGPT (il tuo account)";
+        case Provider::LlamaCpp: return "llama.cpp (locale)";
         default: return "Unknown";
     }
 }

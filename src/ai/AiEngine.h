@@ -38,7 +38,7 @@ class AiEngine
 {
 public:
     enum class Provider {
-        Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq, ClaudeCode, Codex
+        Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq, ClaudeCode, Codex, LlamaCpp
     };
 
     // ── Nome canonico di un provider ───────────────────────────

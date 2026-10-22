@@ -121,6 +121,11 @@ public:
     juce::StringArray getAvailableModels() override;
     juce::String getName() const override { return "OpenAI"; }
 
+    // Se il servizio pretende una chiave API. Solo llama.cpp, che gira in
+    // locale e non autentica nessuno, risponde false: senza questo flag il
+    // percorso OpenAI rifiuterebbe la richiesta prima di partire.
+    virtual bool requiresApiKey() const { return true; }
+
 protected:
     virtual juce::String getApiUrl() const;
     // Header aggiuntivi oltre a Authorization, per i servizi compatibili
@@ -134,11 +139,37 @@ protected:
                                   const juce::String& extraHeaders = {});
 };
 
+// ── llama.cpp (llama-server) in locale ──────────────────────────────
+//
+//  llama-server espone l'API di OpenAI (/v1/chat/completions, /v1/models),
+//  quindi si riusa tutta la logica di OpenAIProvider: cambiano solo
+//  l'indirizzo e il fatto che non serve nessuna chiave.
+//
+//  Differenza da Ollama: Ollama ha un'API sua (/api/generate, /api/tags),
+//  llama.cpp quella di OpenAI. Per questo i due non sono lo stesso
+//  fornitore e non basta cambiare la porta.
+class LlamaCppProvider : public OpenAIProvider
+{
+public:
+    LlamaCppProvider(const Config& cfg) : OpenAIProvider(cfg) {}
+    juce::String getName() const override { return "llama.cpp (locale)"; }
+    bool testConnection() override;
+    juce::StringArray getAvailableModels() override;
+
+    // llama-server parte sulla 9931, non sulla 11434 di Ollama.
+    static juce::String defaultBaseUrl() { return "http://127.0.0.1:9931"; }
+
+    bool requiresApiKey() const override { return false; }
+
+protected:
+    juce::String getApiUrl() const override;
+    juce::String getExtraHeaders() const override { return {}; }
+};
+
 class AnthropicProvider : public AIProvider
 {
 public:
-    AnthropicProvider(const Config& cfg) { configure(cfg); }
-    Result sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage) override;
+    AnthropicProvider(const Config& cfg) { configure(cfg); }    Result sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage) override;
     void sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk) override;
     void abort() override { abortRequested = true; }
     bool testConnection() override;
