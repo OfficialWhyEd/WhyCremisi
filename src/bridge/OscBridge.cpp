@@ -300,6 +300,15 @@ void OscBridge::timerCallback()
         cpu["payload"]["cpuPercent"] = lastCpuPct.load();
         cpu["payload"]["peakTimeUs"] = lastPeakTimeUs.load();
         wsServer->broadcast(cpu);
+
+        // Stato vero del collegamento: verde solo se la DAW ha risposto da poco.
+        nlohmann::json link;
+        link["type"] = "daw.link";
+        link["id"]   = nullptr;
+        link["timestamp"] = juce::Time::currentTimeMillis();
+        const auto ultimo = lastOscMs.load();
+        link["payload"]["alive"] = ultimo > 0 && (juce::Time::currentTimeMillis() - ultimo) < 6000;
+        wsServer->broadcast(link);
     }
 }
 
@@ -320,6 +329,7 @@ void OscBridge::onOscReceived(const juce::String& address, float value)
         return;
     }
 
+    lastOscMs = juce::Time::currentTimeMillis();
     log("[OSC->WS] " + address + " = " + juce::String(value, 3));
 
     // Auto-detect DAW type from first incoming OSC address
@@ -4288,10 +4298,7 @@ bool OscBridge::tryExecuteDawTool(const ToolCall& call, ToolResult& result)
             auto avvisi = nessunAvviso();
             const double attesoLive = AbletonDawHandler::liveVolumeFromGain (
                 juce::Decibels::decibelsToGain ((float) db));
-            if (liveHandler)
-                avvisi.push_back ("Live: la conversione dB -> fader di Live e' approssimata fuori da 0 dB e +6 dB; "
-                                  "confermato il valore del fader (" + std::to_string (attesoLive).substr (0, 5)
-                                  + "), non i dB esatti.");
+            // La curva dB -> fader di Live 11 e' misurata (AbletonDawHandler::liveVolumeFromDb): niente avviso.
             const Verifica v { "/live/track/get/volume", { (float) track }, track, attesoLive, 0.01 };
             invia (c, "Richiesta di volume " + juce::String (db, 1) + " dB sulla traccia "
                           + juce::String (track), std::move (avvisi), &v);

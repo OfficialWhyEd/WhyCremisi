@@ -23,7 +23,7 @@ void ToolRegistry::registerBuiltinTools()
     // Track controls
     registerTool({"daw.track.setVolume", "Set track volume", {
         {"track", "number", "Track index (0-based)", true, 0, 255},
-        {"volume", "number", "Volume in dB (-96 to 12)", true, -96.0f, 12.0f}
+        {"volume", "number", "Volume in dB, the number shown in the DAW (-96 to 12). Never the 0-1 fader value", true, -96.0f, 12.0f}
     }});
     registerTool({"daw.track.setPan", "Set track pan", {
         {"track", "number", "Track index (0-based)", true, 0, 255},

@@ -485,6 +485,7 @@ private:
 
     // CPU usage (set from processBlock via setCpuUsage, broadcast from timer)
     std::atomic<double> lastCpuPct {0.0};
+    std::atomic<juce::int64> lastOscMs {0};   // ultimo pacchetto OSC valido ricevuto dalla DAW
     std::atomic<double> lastPeakTimeUs {0.0};
 
     // Audio device info (set from prepareToPlay via broadcastPluginStats)

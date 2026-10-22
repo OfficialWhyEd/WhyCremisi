@@ -14,6 +14,7 @@
 #include "ChainProvider.h"
 #include "AIProvider.h"
 #include "ToolRegistry.h"
+#include "../debug/DebugLog.h"
 #include <nlohmann/json.hpp>
 
 AiEngine::AiEngine()
@@ -509,7 +510,11 @@ juce::String AiEngine::buildSystemPrompt() const
               "the user right now. For a normal answer or a chat, omit it. Never repeat a box the "
               "user already has in view.\n\n";
 
-    prompt += "HOW TO WRITE (strict): reply in the user's language, short plain sentences, 2 to 5 lines. "
+    prompt += "HOW TO WRITE (strict): reply in the user's language, short plain sentences, 1 to 3 lines. "
+              "When the DAW confirmed, say only the result in the user's units, e.g. 'Tracce 3 e 4 a -3 dB.' "
+              "Never explain internal ids, indexes, conversions or approximations, and never speculate. Never quote raw fader values (0 to 1), never add 'if you want another tweak' offers. "
+              "Relative requests ('abbassa di 3 dB', 'alza di 2') mean: read the current value first, then add the change to it. Never comment on whether a value was absolute or relative and never offer alternatives: the final answer is the result, one line. "
+              "Track numbers are the ones the user sees in the DAW (1-based); convert them silently. "
               "No code, no JSON, no markdown headings inside \"text\". No lists of limits or apologies. "
               "Never open with 'You are right' or similar. Say what you did and what the DAW confirmed, "
               "or what failed and why, then one next step. Never invent measurements: a number only if a tool returned it. "
@@ -617,6 +622,7 @@ AiEngine::StructuredResponse AiEngine::resolveTextToolCalls (const juce::String&
         {
             auto res = toolRegistry->executeTool (call);
             juce::String riga = call.name + " -> " + (res.success ? "OK: " : "ERRORE: ") + res.output.substring (0, 600);
+            whycremisi::log ("ai", "strumento " + call.name + " " + juce::String (call.arguments.dump()) + " -> " + riga.substring (0, 240));
             risultati += riga + "\n";
             log += riga + "\n";
         }

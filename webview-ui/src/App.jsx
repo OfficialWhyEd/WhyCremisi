@@ -123,6 +123,8 @@ export default function App() {
   // ── transport / DAW state ─────────────────────────────────────────
   const [transport, setTransport] = useState({ isPlaying: false, isRecording: false, bpm: 120.0, position: 0 })
   const [dawConnected, setDawConnected] = useState(false)
+  // Vero solo se la DAW ha risposto via OSC negli ultimi secondi (non basta il trasporto dell'host).
+  const [dawLive, setDawLive] = useState(false)
 
   // ── rack / meters ─────────────────────────────────────────────────
   const [gainDb, setGainDb] = useState(0)
@@ -556,6 +558,9 @@ export default function App() {
     const unsubCpu = whycremisi.on('plugin.cpu', (payload) => {
       setCpuUsage(payload)
     })
+    const unsubDawLink = whycremisi.on('daw.link', (payload) => {
+      setDawLive(!!payload?.alive)
+    })
 
     // Consumo di token: arriva dopo ogni risposta dell'AI, con il costo
     // della singola richiesta e il totale accumulato nella sessione.
@@ -639,7 +644,7 @@ export default function App() {
       window.removeEventListener('whycremisi-botstate', onBotState)
       stateUnsub(); unsubAI(); unsubStream(); unsubPanels(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
-      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubStereo(); unsubDsp(); unsubCpu(); unsubUsage(); unsubActionLog(); unsubActionRec(); unsubActionUndone(); unsubPersAction(); unsubPersContext()
+      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubStereo(); unsubDsp(); unsubCpu(); unsubDawLink(); unsubUsage(); unsubActionLog(); unsubActionRec(); unsubActionUndone(); unsubPersAction(); unsubPersContext()
       unsubWsStyle(); unsubWsMemory(); unsubWsBootstrap(); unsubWsRefresh()
       whycremisi.disconnect()
     }
@@ -1338,7 +1343,7 @@ export default function App() {
                     { label: 'Buffer Size', val: pluginStats.bufferSize ? `${pluginStats.bufferSize} smp` : '—', color: '#00E5FF' },
                     { label: 'Latency', val: pluginStats.latencyMs ? `${pluginStats.latencyMs.toFixed(1)}ms` : '—', color: '#00E5FF' },
                     { label: 'Position', val: `${Math.floor(transport.position/60).toString().padStart(2,'0')}:${(transport.position%60).toFixed(0).toString().padStart(2,'0')}`, color: '#4d4d4d' },
-                    { label: 'DAW Link', val: dawConnected ? 'SYNC' : 'OFFLINE', color: dawConnected ? '#00FFaa' : '#DC143C' },
+                    { label: 'DAW Link', val: dawLive ? 'SYNC' : 'NON RISPONDE', color: dawLive ? '#00FFaa' : '#DC143C' },
                     { label: 'Connection', val: connStatus === 'connected' ? 'LIVE' : 'OFFLINE', color: connStatus === 'connected' ? '#00FFaa' : '#DC143C' },
                   ].map(({ label, val, color }) => (
                     <div key={label} className="p-2 flex flex-col gap-0.5">
@@ -1364,7 +1369,7 @@ export default function App() {
               <span className="text-xs font-bold tracking-widest uppercase" style={{ color: 'var(--amber)' }}>AI Command Console</span>
             </div>
             <div className="flex items-center gap-3 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
-              {dawConnected && <span style={{ color: 'var(--green)' }}>● DAW SYNC</span>}
+              {dawLive && <span style={{ color: 'var(--green)' }}>● DAW SYNC</span>}
               {personality?.style && personality.style !== 'warm' && (
                 <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-px border"
                   style={{ color: personality.style === 'direct' ? 'var(--cremisi)' : personality.style === 'consultative' ? 'var(--amber)' : personality.style === 'analytical' ? 'var(--cyan)' : personality.style === 'creative' ? '#AA44FF' : 'var(--text-secondary)', borderColor: 'currentColor' }}
@@ -1734,7 +1739,7 @@ export default function App() {
                  <div className="mt-2.5 pt-2.5 border-t flex flex-col gap-1" style={{ borderColor: 'var(--border)' }}>
                    {[
                      { nome: 'AI', acceso: botState !== 'idle', stato: botState !== 'idle' ? 'al lavoro' : 'in attesa' },
-                     { nome: 'DAW', acceso: dawConnected, stato: dawConnected ? 'collegata' : 'non collegata' },
+                     { nome: 'DAW', acceso: dawLive, stato: dawLive ? 'collegata' : 'non risponde' },
                    ].map(({ nome, acceso, stato }) => (
                      <div key={nome} className="flex items-center justify-between" style={{ fontSize: 'var(--t-micro)' }}>
                        <span className="etichetta" style={{ color: 'var(--text-muted)' }}>{nome}</span>
