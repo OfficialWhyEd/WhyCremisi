@@ -94,7 +94,9 @@ public:
     juce::String getLastError() const { return lastError; }
     int getLastStatusCode() const { return lastStatusCode; }
     bool wasAborted() const { return lastAborted; }
-    void clearLastError() { lastError.clear(); lastStatusCode = 0; lastAborted = false; }
+    /** L'ultima risposta si e' fermata per limite di token (finish_reason=length). */
+    bool wasTruncated() const { return lastTruncated; }
+    void clearLastError() { lastError.clear(); lastStatusCode = 0; lastAborted = false; lastTruncated = false; }
 
     // ── Tool call dell'ultimo streaming ────────────────────────────
     //
@@ -113,6 +115,7 @@ protected:
     std::atomic<bool> abortRequested{false};
 
     juce::String lastError;
+    bool lastTruncated = false;
     int lastStatusCode = 0;
     bool lastAborted = false;
 

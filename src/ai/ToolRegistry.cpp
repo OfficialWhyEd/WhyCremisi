@@ -339,8 +339,8 @@ nlohmann::json ToolRegistry::paramToJsonSchema(const ToolParameter& param) const
     nlohmann::json schema;
     if (param.type == "number") {
         schema["type"] = "number";
-        schema["minimum"] = param.minVal;
-        schema["maximum"] = param.maxVal;
+        if (param.minVal > -1.0e38f) schema["minimum"] = param.minVal;
+        if (param.maxVal <  1.0e38f) schema["maximum"] = param.maxVal;
     } else if (param.type == "boolean") {
         schema["type"] = "boolean";
     } else if (param.type == "string") {
@@ -430,10 +430,100 @@ juce::String renderToolResult (const ToolResult& r)
     return testo;
 }
 
+juce::String ToolRegistry::validateArguments (const ToolDefinition& def, nlohmann::json& args)
+{
+    if (! args.is_object())
+        args = nlohmann::json::object();
+
+    juce::StringArray errori;
+
+    for (const auto& p : def.parameters)
+    {
+        const std::string key = p.name.toStdString();
+
+        if (! args.contains (key) || args[key].is_null())
+        {
+            if (p.required)
+                errori.add ("manca \"" + p.name + "\" (" + p.type + ", obbligatorio)");
+            continue;
+        }
+
+        auto& v = args[key];
+
+        if (p.type == "number")
+        {
+            if (v.is_string())
+            {
+                const auto t = juce::String (v.get<std::string>()).trim();
+                if (t.containsOnly ("0123456789.-+eE") && t.isNotEmpty())
+                    v = t.getDoubleValue();
+            }
+            if (! v.is_number())
+            {
+                errori.add ("\"" + p.name + "\" deve essere un numero");
+                continue;
+            }
+            const double x = v.get<double>();
+            if (x < (double) p.minVal || x > (double) p.maxVal)
+                errori.add ("\"" + p.name + "\" = " + juce::String (x) + " fuori dall'intervallo "
+                            + juce::String (p.minVal) + " .. " + juce::String (p.maxVal));
+        }
+        else if (p.type == "boolean")
+        {
+            if (v.is_string())
+            {
+                const auto t = juce::String (v.get<std::string>()).trim().toLowerCase();
+                if (t == "true" || t == "false") v = (t == "true");
+            }
+            if (! v.is_boolean())
+                errori.add ("\"" + p.name + "\" deve essere true o false");
+        }
+        else if (p.type == "string")
+        {
+            if (! v.is_string())
+            {
+                errori.add ("\"" + p.name + "\" deve essere un testo");
+                continue;
+            }
+            if (! p.enumValues.empty())
+            {
+                const juce::String x (v.get<std::string>());
+                bool trovato = false;
+                for (const auto& e : p.enumValues) if (e == x) { trovato = true; break; }
+                if (! trovato)
+                {
+                    juce::StringArray ammessi;
+                    for (const auto& e : p.enumValues) ammessi.add (e);
+                    errori.add ("\"" + p.name + "\" = \"" + x + "\" non ammesso, valori: " + ammessi.joinIntoString (", "));
+                }
+            }
+        }
+    }
+
+    return errori.joinIntoString ("; ");
+}
+
 ToolResult ToolRegistry::executeTool(const ToolCall& call)
 {
+    ToolCall chiamata = call;
+
+    if (auto* def = findTool (call.name))
+    {
+        const auto errore = validateArguments (*def, chiamata.arguments);
+        if (errore.isNotEmpty())
+        {
+            ToolResult r;
+            r.toolCallId = call.id;
+            r.name = call.name;
+            r.success = false;
+            r.outcome = ToolOutcome::Rejected;
+            r.output = "argomenti non validi, non eseguito: " + errore + ". Correggi e richiama.";
+            return r;
+        }
+    }
+
     if (executor)
-        return executor(call);
+        return executor(chiamata);
 
     ToolResult result;
     result.toolCallId = call.id;

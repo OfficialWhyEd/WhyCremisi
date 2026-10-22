@@ -885,7 +885,13 @@ void WhyCremisiProcessor::updateAiEngineConfig()
         config.baseUrl = "http://localhost:11434";
         config.model = "llama3.2";
     }
-    config.timeoutMs = 30000;
+    // Un modello locale puo' impiegare minuti a leggere un contesto lungo prima
+    // del primo token: 30 s lo interrompevano proprio quando la chat cresceva.
+    const bool locale = config.provider == AiEngine::Provider::LlamaCpp
+                     || config.provider == AiEngine::Provider::Ollama;
+    config.timeoutMs = locale ? 600000 : 30000;
+    if (locale && config.maxTokens < 4096)
+        config.maxTokens = 4096;   // 2048 tagliava gli argomenti JSON delle tool call
     
     {
         juce::ScopedLock lock(apiKeyLock);

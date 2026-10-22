@@ -11,8 +11,9 @@ struct ToolParameter {
     juce::String type;
     juce::String description;
     bool required = false;
-    float minVal = 0.0f;
-    float maxVal = 1.0f;
+    // Intervallo non dichiarato = nessun controllo (e nessun min/max nello schema).
+    float minVal = -3.0e38f;
+    float maxVal = 3.0e38f;
     std::vector<juce::String> enumValues;
 };
 
@@ -80,6 +81,11 @@ public:
     nlohmann::json getAnthropicTools() const;
 
     ToolResult executeTool(const ToolCall& call);
+
+    /** Controlla gli argomenti contro la definizione: obbligatori, tipo, enum,
+        intervallo. Numeri e booleani scritti come testo ("5", "true") vengono
+        convertiti in `args`. Ritorna il motivo dell'errore, vuoto se va bene. */
+    static juce::String validateArguments (const ToolDefinition& def, nlohmann::json& args);
     std::vector<ToolResult> executeTools(const std::vector<ToolCall>& calls);
 
     using ToolExecutor = std::function<ToolResult(const ToolCall&)>;

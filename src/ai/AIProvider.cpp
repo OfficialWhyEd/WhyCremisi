@@ -512,6 +512,9 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
                 }
                 if (j.contains("choices") && j["choices"].is_array() && !j["choices"].empty()) {
                     ricevutoQualcosa = true;
+                    if (j["choices"][0].contains("finish_reason") && j["choices"][0]["finish_reason"].is_string()
+                        && j["choices"][0]["finish_reason"].get<std::string>() == "length")
+                        lastTruncated = true;
                     auto delta = j["choices"][0]["delta"];
                     if (delta.contains("content") && !delta["content"].is_null()) {
                         juce::String content = juce::String(delta["content"].get<std::string>());
@@ -558,6 +561,8 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
     // Le chiamate complete esistono solo ora che lo stream e' finito: il
     // bridge le legge nel callback di fine, quindi vanno pubblicate prima.
     streamToolCalls = accumulatore.finish();
+    if (lastTruncated && ! lastAborted)
+        onChunk (juce::String::fromUTF8 ("\n\n[Risposta interrotta: limite di token raggiunto. Chiedi un passo alla volta o alza il limite nelle impostazioni.]"), false);
 
     // Il segnale di fine va dato *sempre*, anche quando si annulla: prima
     // l'annullamento saltava questa riga e il bridge restava convinto che una
@@ -1696,6 +1701,10 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
                                                          : juce::String ("Claude ha interrotto la risposta.");
                         break;
                     }
+                    if (type == "message_delta" && j.contains("delta") && j["delta"].contains("stop_reason")
+                        && j["delta"]["stop_reason"].is_string()
+                        && j["delta"]["stop_reason"].get<std::string>() == "max_tokens")
+                        lastTruncated = true;
                     if (type == "content_block_delta" && j.contains("delta") && j["delta"].contains("text")) {
                         ricevutoQualcosa = true;
                         onChunk(juce::String(j["delta"]["text"].get<std::string>()), false);
@@ -1741,6 +1750,8 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
         lastError = "Claude ha chiuso la connessione senza inviare nulla.";
 
     streamToolCalls = acc.finish();
+    if (lastTruncated && ! lastAborted)
+        onChunk (juce::String::fromUTF8 ("\n\n[Risposta interrotta: limite di token raggiunto. Chiedi un passo alla volta o alza il limite nelle impostazioni.]"), false);
 
     onChunk("", true);
     abortRequested = false;
@@ -2038,6 +2049,9 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
                 try {
                     auto candidates = j["candidates"];
                     if (!candidates.is_null() && candidates.is_array() && !candidates.empty()) {
+                        if (candidates[0].contains("finishReason") && candidates[0]["finishReason"].is_string()
+                            && candidates[0]["finishReason"].get<std::string>() == "MAX_TOKENS")
+                            lastTruncated = true;
                         auto parts = candidates[0]["content"]["parts"];
                         if (!parts.is_null() && parts.is_array()) {
                             for (const auto& p : parts) {
@@ -2074,6 +2088,8 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
                   + "\" potrebbe non essere piu' disponibile.";
 
     streamToolCalls = acc.finish();
+    if (lastTruncated && ! lastAborted)
+        onChunk (juce::String::fromUTF8 ("\n\n[Risposta interrotta: limite di token raggiunto. Chiedi un passo alla volta o alza il limite nelle impostazioni.]"), false);
 
     onChunk("", true);
     abortRequested = false;
