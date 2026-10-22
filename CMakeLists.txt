@@ -138,6 +138,7 @@ target_sources(WhyCremisiVSTPlugin
         src/dsp/Limiter.cpp
         src/dsp/StereoStage.cpp
         src/dsp/Analyzer.cpp
+        third_party/libebur128/ebur128.c
         src/dsp/DSPEngine.cpp
         src/daw/ReaperDawHandler.cpp
         src/daw/AbletonDawHandler.cpp
@@ -172,6 +173,9 @@ target_link_libraries(WhyCremisiVSTPlugin
 # Include Directories
 # ==============================================================================
 
+# libebur128 usa M_PI: su MSVC serve _USE_MATH_DEFINES (file di terzi, non toccato).
+set_source_files_properties(third_party/libebur128/ebur128.c PROPERTIES COMPILE_DEFINITIONS _USE_MATH_DEFINES)
+
 target_include_directories(WhyCremisiVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
@@ -180,6 +184,7 @@ target_include_directories(WhyCremisiVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/midi
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libebur128/queue
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bridge
     ${CMAKE_CURRENT_SOURCE_DIR}/src/daw
 )
@@ -208,6 +213,7 @@ if(BUILD_UNIT_TESTS)
             src/samples/tests/SamplesTest.cpp
             src/daw/tests/MixSnapshotsTest.cpp
             src/daw/tests/LiveDevicesTest.cpp
+            src/dsp/tests/AnalyzerLoudnessTest.cpp
             # I test istanziano il processore vero, quindi serve tutto cio'
             # da cui dipende: il plugin non e' una libreria separata.
             src/core/PluginProcessor.cpp
@@ -237,6 +243,7 @@ if(BUILD_UNIT_TESTS)
             src/dsp/Limiter.cpp
             src/dsp/StereoStage.cpp
             src/dsp/Analyzer.cpp
+            third_party/libebur128/ebur128.c
             src/dsp/DSPEngine.cpp
             src/daw/ReaperDawHandler.cpp
             src/daw/AbletonDawHandler.cpp
@@ -251,6 +258,7 @@ if(BUILD_UNIT_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/midi
         ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libebur128/queue
         ${CMAKE_CURRENT_SOURCE_DIR}/src/bridge
         ${CMAKE_CURRENT_SOURCE_DIR}/src/daw
     )

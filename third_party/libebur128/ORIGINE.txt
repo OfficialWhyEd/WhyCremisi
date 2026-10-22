@@ -1,0 +1,1 @@
+libebur128 (MIT), Jan Kokemueller. Origine: https://github.com/jiixyj/libebur128 commit 67b33ab (14/02/2021). File non modificati.

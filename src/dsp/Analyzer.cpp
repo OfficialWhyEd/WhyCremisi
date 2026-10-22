@@ -11,25 +11,9 @@ Analyzer::Analyzer() : fft(11)  // 2048-point FFT
 
 Analyzer::~Analyzer() = default;
 
-void Analyzer::initKWeightingFilters()
-{
-    // K-weighting per EBU R128 / ITU-R BS.1770
-    // Pre-filter: 2nd-order high-pass at ~38Hz (Butterworth)
-    // Shelving filter: 2nd-order shelving with +4dB at ~1.5kHz
-
-    juce::dsp::ProcessSpec spec { sampleRate, 512, 2 };
-
-    preFilter.prepare(spec);
-    *preFilter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 38.0f);
-
-    shelveFilter.prepare(spec);
-    *shelveFilter.coefficients = *juce::dsp::IIR::Coefficients<float>::makeHighShelf(sampleRate, 1500.0, 0.5, 4.0f);
-}
-
 void Analyzer::prepare(double sr, int)
 {
     sampleRate = sr;
-    initKWeightingFilters();
 
     // Hann window
     fftWindow.resize(fftSize);
@@ -64,24 +48,12 @@ void Analyzer::prepare(double sr, int)
     scopeDecimation = juce::jmax (1, static_cast<int> ((sampleRate * 0.05) / scopePointCount));
     currentData.scopePoints.assign (scopePointCount * 2, 0.0f);
 
-    // LUFS window: 400ms momentary
-    momentaryWindow = static_cast<int>(sampleRate * 0.4);
-    momentarySumSq = 0.0;
-    momentaryCount = 0;
-
-    // Short-term LUFS: 3s blocks (100ms blocks, 75% overlap)
-    shortTermBlockSize = static_cast<int>(sampleRate * 0.1);  // 100ms
-    int numBlocks = static_cast<int>(sampleRate * 3.0 / shortTermBlockSize);  // ~30 blocks for 3s
-    shortTermBlocks.assign(numBlocks, 0.0);
-    shortTermBlockCount = 0;
-    shortTermSumSq = 0.0;
-    shortTermPos = 0;
-
-    // Integrated LUFS
-    integratedSumSq = 0.0;
-    integratedWeightedSumSq = 0.0;
-    integratedBlockCount = 0.0;
-    integratedWeightedBlockCount = 0.0;
+    // LUFS secondo EBU R128 / ITU-R BS.1770-4: libebur128 (MIT) in modo
+    // HISTOGRAM, cosi' non alloca nulla per blocco sul thread audio.
+    ebur = EburState (ebur128_init (2, static_cast<unsigned long> (sampleRate),
+                                    EBUR128_MODE_M | EBUR128_MODE_S | EBUR128_MODE_I | EBUR128_MODE_HISTOGRAM));
+    loudnessReadCounter = 0;
+    ebur128Interleaved.assign (16384, 0.0f);
 
     lastTruePeak = -96.0f;
     clipCount.store(0);
@@ -507,21 +479,6 @@ void Analyzer::updateLoudness(const juce::AudioBuffer<float>& buffer)
 
     if (numSamples == 0) return;
 
-    // Pre-filter each channel through K-weighting
-    juce::AudioBuffer<float> weightedBuffer(2, numSamples);
-    for (int c = 0; c < juce::jmin(numChannels, 2); ++c)
-    {
-        auto* src = buffer.getReadPointer(c);
-        auto* dst = weightedBuffer.getWritePointer(c);
-        for (int s = 0; s < numSamples; ++s)
-        {
-            float x = src[s];
-            x = preFilter.processSample(x);
-            x = shelveFilter.processSample(x);
-            dst[s] = x;
-        }
-    }
-
     // Raw RMS
     float rmsSumSq = 0.0f;
     for (int c = 0; c < juce::jmin(numChannels, 2); ++c)
@@ -534,76 +491,38 @@ void Analyzer::updateLoudness(const juce::AudioBuffer<float>& buffer)
         ? juce::Decibels::gainToDecibels(std::sqrt(rmsSumSq / (numSamples * numChannels)))
         : -96.0f;
 
-    // LUFS: compute sum of squares of weighted signal
-    double blockSumSq = 0.0;
-    for (int c = 0; c < juce::jmin(numChannels, 2); ++c)
+    // LUFS: libebur128 vede ogni campione, il risultato non dipende dalla
+    // dimensione del buffer. Un canale solo viene duplicato (mono su 2 canali).
+    if (ebur != nullptr)
     {
-        auto* src = weightedBuffer.getReadPointer(c);
-        for (int s = 0; s < numSamples; ++s)
-            blockSumSq += static_cast<double>(src[s]) * src[s];
-    }
-
-    // Accumulate for momentary (400ms)
-    momentarySumSq += blockSumSq;
-    momentaryCount += numSamples;
-
-    if (momentaryCount >= momentaryWindow)
-    {
-        int used = juce::jmin(momentaryCount, momentaryWindow);
-        double meanSq = momentarySumSq / (used * 2);  // 2 channels
-        currentData.momentaryLoudness = (meanSq > 1e-12)
-            ? static_cast<float>(-0.691 + 10.0 * std::log10(meanSq))
-            : -96.0f;
-        momentarySumSq = 0.0;
-        momentaryCount = 0;
-    }
-
-    // Short-term: accumulate 100ms blocks in a 3s sliding window
-    shortTermSumSq += blockSumSq;
-    shortTermBlockCount += numSamples;
-
-    if (shortTermBlockCount >= shortTermBlockSize)
-    {
-        int sz = shortTermBlocks.size();
-        double oldVal = shortTermBlocks[shortTermPos];
-        shortTermBlocks[shortTermPos] = shortTermSumSq;
-        shortTermPos = (shortTermPos + 1) % sz;
-
-        double total = 0.0;
-        for (auto& v : shortTermBlocks) total += v;
-
-        double meanSq = total / (sz * shortTermBlockSize * 2);  // 2 channels
-        currentData.shortTermLoudness = (meanSq > 1e-12)
-            ? static_cast<float>(-0.691 + 10.0 * std::log10(meanSq))
-            : -96.0f;
-
-        shortTermSumSq = 0.0;
-        shortTermBlockCount = 0;
-    }
-
-    // Integrated: accumulate with gating
-    integratedSumSq += blockSumSq;
-    integratedBlockCount += numSamples;
-
-    double totalSamples = integratedBlockCount * 2;  // 2 channels
-    double meanSq = integratedSumSq / totalSamples;
-
-    if (meanSq > 1e-12)
-    {
-        // Gating: only count blocks > -70 LUFS relative to total
-        double relThreshold = std::pow(10.0, (-70.0 - 0.691) / 10.0);  // -70 LUFS absolute
-        double blockThreshold = relThreshold * totalSamples;
-
-        if (blockSumSq > blockThreshold)
+        // libebur128 vuole i campioni intercalati; il vettore e' riservato in prepare().
+        const float* l = buffer.getReadPointer (0);
+        const float* r = buffer.getReadPointer (numChannels > 1 ? 1 : 0);
+        if (static_cast<int> (ebur128Interleaved.size()) < numSamples * 2)
+            ebur128Interleaved.resize (static_cast<size_t> (numSamples) * 2);
+        for (int i = 0; i < numSamples; ++i)
         {
-            integratedWeightedSumSq += blockSumSq;
-            integratedWeightedBlockCount += numSamples;
+            ebur128Interleaved[static_cast<size_t> (i) * 2]     = l[i];
+            ebur128Interleaved[static_cast<size_t> (i) * 2 + 1] = r[i];
         }
+        ebur128_add_frames_float (ebur.get(), ebur128Interleaved.data(), static_cast<size_t> (numSamples));
 
-        double weightedMeanSq = integratedWeightedSumSq / (integratedWeightedBlockCount * 2.0 + 1e-12);
-        currentData.integratedLoudness = (weightedMeanSq > 1e-12)
-            ? static_cast<float>(-0.691 + 10.0 * std::log10(weightedMeanSq))
-            : -96.0f;
+        loudnessReadCounter += numSamples;
+        if (loudnessReadCounter >= static_cast<int> (sampleRate * 0.1))   // ogni 100 ms
+        {
+            loudnessReadCounter = 0;
+            auto leggi = [this] (int (*f) (ebur128_state*, double*), float& dove)
+            {
+                double v = 0.0;
+                if (f (ebur.get(), &v) == EBUR128_SUCCESS && std::isfinite (v))
+                    dove = static_cast<float> (v);
+                else
+                    dove = -96.0f;
+            };
+            leggi (ebur128_loudness_momentary, currentData.momentaryLoudness);
+            leggi (ebur128_loudness_shortterm, currentData.shortTermLoudness);
+            leggi (ebur128_loudness_global,    currentData.integratedLoudness);
+        }
     }
 
     // Stereo correlation (Pearson)

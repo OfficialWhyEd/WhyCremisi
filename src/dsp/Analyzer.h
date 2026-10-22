@@ -6,6 +6,8 @@
 #include <array>
 #include <deque>
 #include <atomic>
+#include <memory>
+#include "libebur128/ebur128.h"
 
 class Analyzer
 {
@@ -85,25 +87,12 @@ private:
 
     // LUFS
     double sampleRate = 48000.0;
-    double momentarySumSq = 0.0;
-    int momentaryCount = 0;
-    int momentaryWindow = 0;  // samples for 400ms
 
-    juce::dsp::IIR::Filter<float> preFilter;     // K-weighting pre-filter
-    juce::dsp::IIR::Filter<float> shelveFilter;  // K-weighting shelving
-
-    // Short-term LUFS (3s sliding window)
-    std::vector<double> shortTermBlocks;
-    int shortTermBlockSize = 0;
-    int shortTermBlockCount = 0;
-    double shortTermSumSq = 0.0;
-    int shortTermPos = 0;
-
-    // Integrated LUFS
-    double integratedSumSq = 0.0;
-    double integratedWeightedSumSq = 0.0;
-    double integratedBlockCount = 0.0;
-    double integratedWeightedBlockCount = 0.0;
+    struct EburDeleter { void operator() (ebur128_state* st) const { if (st != nullptr) ebur128_destroy (&st); } };
+    using EburState = std::unique_ptr<ebur128_state, EburDeleter>;
+    EburState ebur;
+    int loudnessReadCounter = 0;
+    std::vector<float> ebur128Interleaved;
 
     // True peak
     float lastTruePeak = 0.0f;
@@ -124,7 +113,6 @@ private:
     void updateLoudness(const juce::AudioBuffer<float>& buffer);
     void detectTruePeak(const juce::AudioBuffer<float>& buffer);
     void collectScopePoints(const juce::AudioBuffer<float>& buffer);
-    void initKWeightingFilters();
 
     /** Centroide, rolloff ed energia per banda, dallo spettro appena
         calcolato. Sono misure di forma del suono, non di livello. */
