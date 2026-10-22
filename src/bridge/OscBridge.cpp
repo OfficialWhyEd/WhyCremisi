@@ -2054,10 +2054,42 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
 
                         // Parse accumulated streaming text — no second API call
                         auto structured = aiEngine->parseStructuredResponse(accumulated);
-                        // Se il modello ha chiesto strumenti, li eseguo ora e il testo
-                        // mostrato nasce dai risultati veri della DAW.
-                        if (! structured.calls.empty())
+
+                        // Tool call native: sono dati. Il marcatore lo manda
+                        // alla UI il bridge (e' la vista), mentre il motore
+                        // esegue le chiamate strutturate e rimanda al modello
+                        // i risultati veri.
+                        const auto nativeCalls = aiEngine->getStreamToolCalls();
+                        if (! nativeCalls.empty())
+                        {
+                            for (const auto& c : nativeCalls)
+                                broadcastAiStream(capturedReqId,
+                                    "[TOOL_CALL:" + c.name + " "
+                                    + juce::String (c.arguments.dump()) + "]", false);
+
+                            structured.text = aiEngine->resolveToolCalls(capturedPrompt, structured.text, nativeCalls);
+                        }
+                        else if (! structured.calls.empty())
+                        {
+                            // Protocollo testuale (JSON con "calls").
                             structured = aiEngine->resolveTextToolCalls(capturedPrompt, structured);
+                        }
+                        else
+                        {
+                            // Rete di sicurezza: marcatori scritti come testo.
+                            auto markers = AiEngine::parseToolMarkers(accumulated);
+                            if (! markers.empty())
+                            {
+                                std::vector<AIProvider::ToolCallResult> conv;
+                                for (const auto& m : markers)
+                                {
+                                    AIProvider::ToolCallResult t;
+                                    t.id = m.id; t.name = m.name; t.arguments = m.arguments;
+                                    conv.push_back(t);
+                                }
+                                structured.text = aiEngine->resolveToolCalls(capturedPrompt, structured.text, conv);
+                            }
+                        }
                         bool success = structured.success || !accumulated.isEmpty();
 
                         // Se non e' arrivato niente, il motivo lo sa il

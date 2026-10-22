@@ -102,6 +102,26 @@ public:
         confermato, non da quello che il modello pensava di aver fatto. */
     StructuredResponse resolveTextToolCalls (const juce::String& userPrompt, StructuredResponse first);
 
+    /** Esegue le tool call arrivate native (gia' complete) e rimanda al modello
+        i risultati veri, max 3 giri. Percorso unico: da qui in poi non conta
+        piu' se la chiamata e' nata native o dal protocollo testuale. */
+    juce::String resolveToolCalls (const juce::String& userPrompt,
+                                   const juce::String& modelText,
+                                   const std::vector<AIProvider::ToolCallResult>& calls);
+
+    /** Marcatori [TOOL_CALL:nome {json}] scritti come testo dal modello.
+        Rete di sicurezza: non sono il percorso principale. */
+    static std::vector<ToolCall> parseToolMarkers (const juce::String& text);
+
+    /** Storico canonico: assistant con le tool call, poi un messaggio per
+        ogni risultato con l'id della call a cui risponde. */
+    void addAssistantToolCalls (const juce::String& text,
+                                const std::vector<ToolCall>& calls);
+    void addToolResult (const ToolResult& r);
+
+    /** Tool call complete dell'ultimo streaming (vuote se il modello non ne ha chieste). */
+    std::vector<AIProvider::ToolCallResult> getStreamToolCalls() const;
+
     /** Box che la chat sa disegnare. Unica lista: la usano il tool ui.showPanels
         e il campo "panels" del JSON dei fornitori senza strumenti nativi. */
     static const juce::StringArray& validPanelIds();

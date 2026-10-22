@@ -313,9 +313,10 @@ void AiEngine::ensureProvider()
 // ufficiale) risponde con le azioni JSON del system prompt.
 static bool nativeToolsSupported (AiEngine::Provider p)
 {
-    return p != AiEngine::Provider::Ollama
-        && p != AiEngine::Provider::Gemini
-        && p != AiEngine::Provider::ClaudeCode
+    // Restano fuori solo i due percorsi che passano da un programma esterno
+    // (Claude Code e Codex): li' il modello non riceve gli strumenti.
+    // Ollama e Gemini ora usano le tool call native.
+    return p != AiEngine::Provider::ClaudeCode
         && p != AiEngine::Provider::Codex;
 }
 
@@ -441,13 +442,37 @@ juce::String AiEngine::buildContextMessagesJson() const
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& msg : msgs) {
         nlohmann::json j;
+        auto content = msg.content.toStdString();
         switch (msg.role) {
-            case ContextManager::Message::System:    j["role"] = "system"; break;
-            case ContextManager::Message::User:      j["role"] = "user"; break;
-            case ContextManager::Message::Assistant: j["role"] = "assistant"; break;
-            case ContextManager::Message::Tool:      j["role"] = "tool"; break;
+            case ContextManager::Message::System:
+                if (content.empty()) continue;
+                j["role"] = "system"; break;
+            case ContextManager::Message::User:
+                if (content.empty()) continue;
+                j["role"] = "user"; break;
+            case ContextManager::Message::Assistant:
+                j["role"] = "assistant";
+                j["content"] = content;
+                if (msg.toolCallsJson.isNotEmpty()) {
+                    auto calls = nlohmann::json::parse (msg.toolCallsJson.toStdString(), nullptr, false);
+                    if (! calls.is_discarded() && calls.is_array() && ! calls.empty())
+                        j["tool_calls"] = calls;
+                }
+                arr.push_back(j);
+                continue;
+            case ContextManager::Message::Tool:
+                // Storico canonico: un risultato e' un messaggio "tool" con
+                // l'id della chiamata a cui risponde. Prima era testo utente
+                // con un prefisso: invalido per ogni server OpenAI-compatibile.
+                if (content.empty()) continue;
+                j["role"] = "tool";
+                j["content"] = content;
+                j["tool_call_id"] = msg.toolCallId.toStdString();
+                if (msg.toolName.isNotEmpty()) j["name"] = msg.toolName.toStdString();
+                arr.push_back(j);
+                continue;
         }
-        j["content"] = msg.content.toStdString();
+        j["content"] = content;
         arr.push_back(j);
     }
     return juce::String(arr.dump());
@@ -606,31 +631,201 @@ void AiEngine::setAgentWorkspaceContext(const juce::String& context) { agentWork
 
 // ── Strumenti chiesti nel testo (Claude, ChatGPT, Gemini, Ollama) ──
 
-AiEngine::StructuredResponse AiEngine::resolveTextToolCalls (const juce::String& userPrompt, StructuredResponse r)
+// ── Marcatori testuali ─────────────────────────────────────────
+//
+//  Rete di sicurezza per i modelli che scrivono [TOOL_CALL:nome {json}]
+//  invece di usare le tool call native. Il percorso principale e' quello
+//  strutturato: qui si accetta il testo solo per non lasciare il modello
+//  a meta' strada.
+std::vector<ToolCall> AiEngine::parseToolMarkers (const juce::String& text)
 {
-    if (r.calls.empty() || ! toolRegistry) return r;
+    std::vector<ToolCall> out;
+    const juce::String apertura ("[TOOL_CALL:");
+    int pos = 0;
+
+    while ((pos = text.indexOf (pos, apertura)) >= 0)
+    {
+        int i = pos + apertura.length();
+        int fineNome = i;
+        while (fineNome < text.length() && text[fineNome] != ' ' && text[fineNome] != ']')
+            ++fineNome;
+
+        const juce::String nome = text.substring (i, fineNome).trim();
+
+        int j = fineNome;
+        while (j < text.length() && text[j] == ' ')
+            ++j;
+
+        juce::String argomenti;
+        if (j < text.length() && text[j] == '{')
+        {
+            // Parentesi graffe bilanciate, ignorando quelle dentro le stringhe.
+            int livello = 0;
+            bool inStringa = false, escape = false;
+            int k = j;
+            for (; k < text.length(); ++k)
+            {
+                const auto c = text[k];
+                if (escape) { escape = false; continue; }
+                if (c == '\\') { escape = true; continue; }
+                if (c == '"')  { inStringa = ! inStringa; continue; }
+                if (inStringa) continue;
+                if (c == '{') ++livello;
+                else if (c == '}')
+                {
+                    --livello;
+                    if (livello == 0) { ++k; break; }
+                }
+            }
+            argomenti = text.substring (j, k);
+            pos = k;
+        }
+        else
+        {
+            int k = j;
+            while (k < text.length() && text[k] != ']')
+                ++k;
+            argomenti = text.substring (j, k).trim();
+            pos = k + 1;
+        }
+
+        if (nome.isEmpty()) continue;
+
+        ToolCall call;
+        call.name = nome;
+        auto parsed = nlohmann::json::parse (argomenti.toStdString(), nullptr, false);
+        call.arguments = (! parsed.is_discarded() && parsed.is_object())
+                       ? parsed
+                       : nlohmann::json{{"__raw_arguments", argomenti.toStdString()}};
+        out.push_back (call);
+    }
+
+    return out;
+}
+
+void AiEngine::addAssistantToolCalls (const juce::String& text, const std::vector<ToolCall>& calls)
+{
+    if (! contextManager) return;
+
+    ContextManager::Message msg;
+    msg.role = ContextManager::Message::Assistant;
+    msg.content = text;
+    msg.estimatedTokens = ContextManager::estimateTokens (text);
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& c : calls)
+    {
+        nlohmann::json tc;
+        tc["id"] = c.id.toStdString();
+        tc["type"] = "function";
+        tc["function"]["name"] = c.name.toStdString();
+        tc["function"]["arguments"] = c.arguments.dump();
+        arr.push_back (tc);
+    }
+    if (! arr.empty())
+        msg.toolCallsJson = juce::String (arr.dump());
+
+    contextManager->addMessage (msg);
+    contextManager->trimToBudget();
+    saveSessionState();
+}
+
+void AiEngine::addToolResult (const ToolResult& r)
+{
+    if (! contextManager) return;
+
+    ContextManager::Message msg;
+    msg.role = ContextManager::Message::Tool;
+    msg.content = (r.success ? juce::String() : juce::String ("ERRORE: ")) + r.output;
+    msg.toolCallId = r.toolCallId;
+    msg.toolName = r.name;
+    msg.estimatedTokens = ContextManager::estimateTokens (msg.content);
+
+    contextManager->addMessage (msg);
+    contextManager->trimToBudget();
+    saveSessionState();
+}
+
+// ── Esecuzione delle tool call (percorso unico) ─────────────────
+//
+//  Sia che arrivino native sia che arrivino dal protocollo testuale, da qui
+//  in poi il trattamento e' identico: si eseguono, si scrive lo storico
+//  canonico (assistant con tool_calls + messaggi tool con id) e si rimanda
+//  al modello i risultati veri, per un massimo di 3 giri.
+static std::atomic<int> sequenzaToolCall { 0 };
+
+static juce::String nuovoIdToolCall (size_t indice)
+{
+    return "why-" + juce::String (++sequenzaToolCall)
+                 + "-" + juce::String ((int) indice);
+}
+
+juce::String AiEngine::resolveToolCalls (const juce::String& userPrompt,
+                                         const juce::String& modelText,
+                                         const std::vector<AIProvider::ToolCallResult>& calls)
+{
+    if (calls.empty() || ! toolRegistry) return modelText;
 
     std::shared_ptr<AIProvider> provider;
     juce::String systemPrompt;
     {
         std::lock_guard<std::mutex> lock (engineMutex);
-        if (! currentProvider) return r;
+        if (! currentProvider) return modelText;
         systemPrompt = buildSystemPrompt();
         provider = currentProvider;
     }
 
-    juce::String log;   // cosa è stato fatto davvero, in ordine
-    for (int giro = 0; giro < 3 && ! r.calls.empty(); ++giro)
+    std::vector<ToolCall> daEseguire;
+    for (size_t i = 0; i < calls.size(); ++i)
+    {
+        ToolCall tc;
+        tc.id = calls[i].id.isNotEmpty() ? calls[i].id : nuovoIdToolCall (i);
+        tc.name = calls[i].name;
+        tc.arguments = calls[i].arguments;
+        daEseguire.push_back (tc);
+    }
+
+    juce::String testo = modelText;
+    juce::String log;
+
+    for (int giro = 0; giro < 3 && ! daEseguire.empty(); ++giro)
     {
         juce::String risultati;
-        for (const auto& call : r.calls)
+        std::vector<ToolResult> esiti;
+
+        for (const auto& call : daEseguire)
         {
+            // Argomenti non interpretabili: non si esegue alla cieca.
+            if (call.arguments.is_object() && call.arguments.contains ("__raw_arguments"))
+            {
+                ToolResult r;
+                r.toolCallId = call.id;
+                r.name = call.name;
+                r.success = false;
+                r.output = "argomenti non validi: "
+                         + juce::String (call.arguments["__raw_arguments"].get<std::string>());
+                esiti.push_back (r);
+                risultati += call.name + " -> ERRORE: " + r.output + "\n";
+                log += call.name + " -> ERRORE: " + r.output + "\n";
+                whycremisi::log ("ai", "strumento " + call.name + " argomenti non validi");
+                continue;
+            }
+
             auto res = toolRegistry->executeTool (call);
-            juce::String riga = call.name + " -> " + (res.success ? "OK: " : "ERRORE: ") + res.output.substring (0, 600);
-            whycremisi::log ("ai", "strumento " + call.name + " " + juce::String (call.arguments.dump()) + " -> " + riga.substring (0, 240));
+            res.toolCallId = call.id;
+            esiti.push_back (res);
+
+            const juce::String riga = call.name + " -> " + (res.success ? "OK: " : "ERRORE: ")
+                                    + res.output.substring (0, 600);
+            whycremisi::log ("ai", "strumento " + call.name + " "
+                                  + juce::String (call.arguments.dump()) + " -> " + riga.substring (0, 240));
             risultati += riga + "\n";
             log += riga + "\n";
         }
+
+        addAssistantToolCalls (testo, daEseguire);
+        for (const auto& r : esiti)
+            addToolResult (r);
 
         const juce::String seguito =
             "Richiesta dell'utente: " + userPrompt + "\n\nHai chiesto questi strumenti. Risultati REALI:\n" + risultati
@@ -639,22 +834,64 @@ AiEngine::StructuredResponse AiEngine::resolveTextToolCalls (const juce::String&
 
         auto next = provider->sendPrompt (systemPrompt, seguito);
         { std::lock_guard<std::mutex> lock (engineMutex); accumulateUsage (next.usage); }
+
         if (! next.success)
+            return "Ho eseguito gli strumenti ma non riesco a leggere il risultato ("
+                 + next.error + ").\n" + log;
+
+        daEseguire.clear();
+        if (! next.toolCalls.empty())
         {
-            r.text = "Ho eseguito gli strumenti ma non riesco a leggere il risultato (" + next.error + ").\n" + log;
-            r.calls.clear();
-            r.success = true;
-            return r;
+            for (size_t i = 0; i < next.toolCalls.size(); ++i)
+            {
+                ToolCall tc;
+                tc.id = next.toolCalls[i].id.isNotEmpty() ? next.toolCalls[i].id : nuovoIdToolCall (i);
+                tc.name = next.toolCalls[i].name;
+                tc.arguments = next.toolCalls[i].arguments;
+                daEseguire.push_back (tc);
+            }
         }
+
         auto parsed = parseStructuredResponse (next.text);
-        r.text = parsed.text;
-        r.panels = parsed.panels;
-        r.calls = parsed.calls;
-        r.success = true;
+        testo = parsed.text.isNotEmpty() ? parsed.text : next.text;
+
+        if (daEseguire.empty() && ! parsed.calls.empty())
+            daEseguire = parsed.calls;
+        if (daEseguire.empty())
+        {
+            auto marker = parseToolMarkers (next.text);
+            if (! marker.empty()) daEseguire = marker;
+        }
     }
-    r.rawToolResponse = log;
-    r.calls.clear();
-    return r;
+
+    return testo;
+}
+
+AiEngine::StructuredResponse AiEngine::resolveTextToolCalls (const juce::String& userPrompt, StructuredResponse first)
+{
+    if (! toolRegistry) return first;
+
+    std::vector<AIProvider::ToolCallResult> calls;
+    for (const auto& c : first.calls)
+    {
+        AIProvider::ToolCallResult t;
+        t.id = c.id; t.name = c.name; t.arguments = c.arguments;
+        calls.push_back (t);
+    }
+    if (calls.empty())
+        for (const auto& c : parseToolMarkers (first.text))
+        {
+            AIProvider::ToolCallResult t;
+            t.id = c.id; t.name = c.name; t.arguments = c.arguments;
+            calls.push_back (t);
+        }
+
+    if (calls.empty()) return first;
+
+    first.text = resolveToolCalls (userPrompt, first.text, calls);
+    first.calls.clear();
+    first.success = true;
+    return first;
 }
 
 // ── Structured Prompt (sync) ───────────────────────────────
@@ -688,8 +925,10 @@ AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& 
     while (!result.toolCalls.empty() && toolRegistry && toolRound < MAX_TOOL_ROUNDS) {
         toolRound++;
 
-        // Add assistant's response with tool calls to conversation context
-        addConversationMessage("assistant", result.text);
+        // Se il modello ha risposto solo con i tool_calls, il testo e' vuoto:
+        // un assistant vuoto non aggiunge nulla.
+        if (result.text.isNotEmpty())
+            addConversationMessage("assistant", result.text);
 
         // Execute tool calls
         std::vector<ToolCall> calls;
@@ -847,6 +1086,17 @@ juce::String AiEngine::getProviderLastError() const
         provider = currentProvider;
     }
     return provider ? provider->getLastError() : juce::String();
+}
+
+std::vector<AIProvider::ToolCallResult> AiEngine::getStreamToolCalls() const
+{
+    std::shared_ptr<AIProvider> provider;
+    {
+        std::lock_guard<std::mutex> lock(engineMutex);
+        provider = currentProvider;
+    }
+    return provider ? provider->getStreamToolCalls()
+                    : std::vector<AIProvider::ToolCallResult>{};
 }
 
 // ── Sync passthrough ───────────────────────────────────────

@@ -5,10 +5,6 @@ import { TESTI, guessLang, saveLang } from './onboarding/setupTesti'
 
 const modelsByProvider = {
   ollama:    ['llama3.2', 'llama3.1', 'mistral', 'mixtral', 'codellama', 'qwen2.5'],
-  // llama.cpp: l'elenco vero lo dà llama-server (/v1/models), sono i .gguf
-  // che ha caricato. Qui resta vuoto: si riempie da solo, oppure lo si
-  // scrive a mano nel campo accanto.
-  llamacpp:  [],
   gemini:    ['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite-preview', 'gemini-2.0-flash', 'gemini-1.5-pro'],
   openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
@@ -107,7 +103,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const chiaveLink = isChatGpt ? 'ai.linkCodex' : 'ai.linkClaude'
   // Il fornitore che il plugin deve usare davvero.
   const effectiveProvider = usingSubscription ? (isChatGpt ? 'codex' : 'claudecode') : provider
-  const modelList = ((provider === 'gemini' || provider === 'llamacpp') && modelliVivi) || modelsByProvider[effectiveProvider] || []
+  const modelList = (provider === 'gemini' && modelliVivi) || modelsByProvider[effectiveProvider] || []
   // Il campo credenziale non serve quando si usa Ollama in locale né quando
   // si entra con l'abbonamento Claude.
   // OpenRouter: l'accesso con un clic ha già salvato la chiave nel plugin.
@@ -132,7 +128,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   useEffect(() => {
     const lista = modelsByProvider[effectiveProvider]
     if (lista && lista.length && !lista.includes(model)
-        && !((provider === 'gemini' || provider === 'llamacpp') && modelliVivi)) setModel(lista[0])
+        && !(provider === 'gemini' && modelliVivi)) setModel(lista[0])
   }, [effectiveProvider])
 
   // Su Gemini l'elenco dei modelli lo dà Google, non una lista scritta qui:
@@ -169,26 +165,6 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     }, 300)
     return () => { clearTimeout(attesa); unsub() }
   }, [provider, apiKey])
-
-  // llama.cpp: nessuna chiave da digitare. Si manda al plugin l'indirizzo del
-  // server e si chiede l'elenco dei modelli che ha caricato: sono i file
-  // .gguf dell'utente, non nomi inventati qui.
-  useEffect(() => {
-    if (provider !== 'llamacpp' || !whycremisi.isConnected()) return
-    whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: 'llamacpp' } })
-    whycremisi.send({ type: 'config.set', payload: { key: 'ai.llamaUrl', value: llamaUrl } })
-    const unsub = whycremisi.on('config.response', (payload) => {
-      if (payload?.key !== 'ai.getModels') return
-      if (Array.isArray(payload.models) && payload.models.length) {
-        setModelliVivi(payload.models)
-        if (!payload.models.includes(model)) setModel(payload.models[0])
-      }
-    })
-    const attesa = setTimeout(() => {
-      whycremisi.send({ type: 'config.set', payload: { key: 'ai.getModels' } })
-    }, 300)
-    return () => { clearTimeout(attesa); unsub() }
-  }, [provider, llamaUrl])
 
   // Quando si sceglie Claude, chiediamo al plugin se sulla macchina c'è già
   // un abbonamento utilizzabile: se sì non serve chiedere nulla all'utente.
@@ -239,7 +215,6 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     { id: 'gemini',    icon: 'cloud_queue',  desc: t.descGemini },
     { id: 'openrouter', icon: 'hub',         desc: t.descOpenrouter },
     { id: 'ollama',    icon: 'memory',       desc: t.descOllama },
-    { id: 'llamacpp',  icon: 'dns',          desc: t.descLlama },
   ]
 
   const handleTestConnection = async () => {
@@ -564,8 +539,21 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                 </div>
               )}
 
+              {provider === 'llamacpp' ? (
+                <div className="mb-4">
+                  <Etichetta n="2">{t.stepServer}</Etichetta>
+                  <input
+                    value={llamaUrl}
+                    onChange={(e) => setLlamaUrl(e.target.value)}
+                    placeholder="http://127.0.0.1:9931"
+                    title={t.llamaUrlHint}
+                    className="w-full px-2 py-1.5 text-[11px] font-mono bg-[#0d0d0d] text-white border border-[#1a1a1a] focus:border-[#DC143C] focus:outline-none transition-colors"
+                  />
+                  <p className="text-[10px] text-[#8a8a8a] leading-snug mt-1">{t.llamaHint}</p>
+                </div>
+              ) : (
               <div className="mb-4">
-                <Etichetta n={provider === 'ollama' || provider === 'llamacpp' ? '2' : '3'}>{t.step3}</Etichetta>
+                <Etichetta n={provider === 'ollama' ? '2' : '3'}>{t.step3}</Etichetta>
                 {/* Su OpenRouter i nomi sono lunghi e disuguali: in griglia
                     restano incolonnati invece di spezzarsi a caso. */}
                 <div className={provider === 'openrouter' ? 'grid grid-cols-2 gap-1.5' : 'flex flex-wrap gap-1.5'}>
@@ -595,36 +583,27 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                     )
                   })}
 
-                  {/* Modello scritto a mano: quando llama-server non è ancora
-                      avviato l'elenco arriva vuoto, e chi sa già quale .gguf
-                      ha caricato non deve aspettare. */}
-                  {provider === 'llamacpp' && (
-                    <input
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      placeholder="nome modello"
-                      title={t.llamaModelHint}
-                      className="w-28 px-2 py-1.5 text-[11px] font-semibold bg-[#0d0d0d] text-white border border-[#1a1a1a] focus:border-[#DC143C] focus:outline-none transition-colors"
-                    />
+                  {/* llama.cpp sta qui, accanto ai modelli di Ollama: per chi
+                      usa un modello locale è la stessa scelta vista da
+                      un'altra angolazione, non un altro mondo. Stesso stile. */}
+                  {provider === 'ollama' && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setProvider('llamacpp')}
+                      title={t.llamaHint}
+                      className="px-2.5 py-1.5 text-[11px] font-semibold border transition-all flex items-center justify-between gap-1.5 min-w-0 bg-[#0d0d0d] text-[#999] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white"
+                    >
+                      <span className="truncate">llama.cpp</span>
+                    </motion.button>
                   )}
                 </div>
 
-                {provider === 'llamacpp' && (
-                  <div className="mt-1.5">
-                    <input
-                      value={llamaUrl}
-                      onChange={(e) => setLlamaUrl(e.target.value)}
-                      placeholder="http://127.0.0.1:8080"
-                      title={t.llamaUrlHint}
-                      className="w-full px-2 py-1.5 text-[11px] font-mono bg-[#0d0d0d] text-white border border-[#1a1a1a] focus:border-[#DC143C] focus:outline-none transition-colors"
-                    />
-                    <p className="text-[10px] text-[#8a8a8a] leading-snug mt-1">{t.llamaHint}</p>
-                  </div>
-                )}
                 {notaModello(model) && (
                   <p className="text-[10px] text-[#8a8a8a] leading-snug mt-1">{notaModello(model)}</p>
                 )}
               </div>
+              )}
 
               {(isClaude || usingSubscription) && (
                 <div className="mb-4">

@@ -156,7 +156,155 @@ static StreamOpenResult openStreamingPost (const juce::String& urlStr,
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  OpenAI Provider (also base for OpenRouter, Groq)
+//  Accumulatori delle tool call in streaming
+// ═══════════════════════════════════════════════════════════════════
+
+static nlohmann::json parseArgumentsOrRaw (const juce::String& grezzi)
+{
+    if (grezzi.trim().isEmpty()) return nlohmann::json::object();
+    auto parsed = parseJsonSafe (grezzi);
+    if (! parsed.is_null()) return parsed;
+    // JSON incompleto o invalido: non si indovina e non si butta via.
+    // Chi esegue legge qui e riporta l'errore, invece di mandare al modello
+    // argomenti vuoti facendogli credere che sia andata bene.
+    return nlohmann::json{{"__raw_arguments", grezzi.toStdString()}};
+}
+
+void ToolCallAccumulator::clear()
+{
+    calls.clear();
+    argumentiGrezzi.clear();
+    ordine.clear();
+}
+
+void ToolCallAccumulator::addChunk (int index, const juce::String& id, const juce::String& name,
+                                    const juce::String& argumentsFragment)
+{
+    if (calls.count (index) == 0)
+    {
+        ordine.push_back (index);
+        calls[index] = AIProvider::ToolCallResult{};
+    }
+
+    auto& c = calls[index];
+    if (id.isNotEmpty())   c.id = id;
+    // llama.cpp puo' mandare il nome che cresce (prima un prefisso, poi il
+    // nome intero): vale l'ultimo, non la concatenazione.
+    if (name.isNotEmpty()) c.name = name;
+    if (argumentsFragment.isNotEmpty()) argumentiGrezzi[index] += argumentsFragment;
+}
+
+std::vector<AIProvider::ToolCallResult> ToolCallAccumulator::finish() const
+{
+    std::vector<AIProvider::ToolCallResult> out;
+    for (int idx : ordine)
+    {
+        auto it = calls.find (idx);
+        if (it == calls.end()) continue;
+
+        auto c = it->second;
+        const juce::String grezzi = argumentiGrezzi.count (idx) ? argumentiGrezzi.at (idx) : juce::String();
+        c.arguments = parseArgumentsOrRaw (grezzi);
+        out.push_back (std::move (c));
+    }
+    return out;
+}
+
+void AnthropicToolAccumulator::clear()
+{
+    calls.clear();
+    buffer.clear();
+    ordine.clear();
+}
+
+void AnthropicToolAccumulator::startBlock (int index, const juce::String& id, const juce::String& name)
+{
+    if (calls.count (index) == 0) ordine.push_back (index);
+    auto& c = calls[index];
+    c.id = id;
+    c.name = name;
+}
+
+void AnthropicToolAccumulator::addJsonFragment (int index, const juce::String& fragment)
+{
+    if (calls.count (index) == 0) return;   // non e' un blocco tool_use
+    buffer[index] += fragment;
+}
+
+void AnthropicToolAccumulator::stopBlock (int index)
+{
+    // Gli argomenti si interpretano solo qui: durante lo stream il JSON e'
+    // per definizione incompleto.
+    (void) index;
+}
+
+std::vector<AIProvider::ToolCallResult> AnthropicToolAccumulator::finish() const
+{
+    std::vector<AIProvider::ToolCallResult> out;
+    for (int idx : ordine)
+    {
+        auto it = calls.find (idx);
+        if (it == calls.end()) continue;
+
+        auto c = it->second;
+        const juce::String grezzi = buffer.count (idx) ? buffer.at (idx) : juce::String();
+        c.arguments = parseArgumentsOrRaw (grezzi);
+        out.push_back (std::move (c));
+    }
+    return out;
+}
+
+void GeminiToolAccumulator::clear()
+{
+    calls.clear();
+    buffer.clear();
+}
+
+void GeminiToolAccumulator::addCall (const juce::String& name, const nlohmann::json& args)
+{
+    AIProvider::ToolCallResult c;
+    c.name = name;
+
+    if (args.is_string())
+    {
+        // Argomenti a pezzi: si accumulano e si interpretano alla fine.
+        buffer[name] += juce::String (args.get<std::string>());
+        c.arguments = nlohmann::json::object();
+    }
+    else if (args.is_object())
+    {
+        buffer.erase (name);
+        c.arguments = args;
+    }
+    else
+    {
+        c.arguments = nlohmann::json::object();
+    }
+
+    calls.push_back (std::move (c));
+}
+
+void GeminiToolAccumulator::addArgumentsFragment (const juce::String& name, const juce::String& fragment)
+{
+    buffer[name] += fragment;
+}
+
+std::vector<AIProvider::ToolCallResult> GeminiToolAccumulator::finish() const
+{
+    std::vector<AIProvider::ToolCallResult> out;
+    for (const auto& c : calls)
+    {
+        auto copia = c;
+        auto it = buffer.find (c.name);
+        if (it != buffer.end() && it->second.isNotEmpty())
+            copia.arguments = parseArgumentsOrRaw (it->second);
+        out.push_back (std::move (copia));
+    }
+    return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  OpenAI Provider (also base for OpenRouter, Groq, llama.cpp)
 // ═══════════════════════════════════════════════════════════════════
 
 juce::String OpenAIProvider::getApiUrl() const
@@ -171,6 +319,34 @@ juce::String OpenAIProvider::makeHttpRequest(const juce::String& url, const juce
     return makeHttp(url, method, jsonBody, timeoutMs, extraHeaders);
 }
 
+// Un messaggio senza "content" fa fallire il server prima ancora del
+// modello: la chat template di llama.cpp risponde 400 con "All non-assistant
+// messages must contain 'content'", e lo stesso vale per gli altri servizi
+// OpenAI-compatibili. Qui si mette in forma quello che parte dal plugin.
+static nlohmann::json sanitizeOpenAIMessages (nlohmann::json msgs)
+{
+    nlohmann::json out = nlohmann::json::array();
+    for (auto& m : msgs)
+    {
+        if (! m.is_object()) continue;
+
+        const auto role = m.value ("role", std::string ("user"));
+        if (! m.contains ("content") || m["content"].is_null())
+            m["content"] = "";
+
+        const bool vuoto = m["content"].is_string()
+                        && m["content"].get<std::string>().empty();
+        const bool assistant = (role == "assistant");
+
+        // Un assistant vuoto e' legittimo (puo' portare solo tool_calls);
+        // un utente/system/tool vuoto no: non c'e' niente da leggere.
+        if (vuoto && ! assistant && ! m.contains ("tool_calls")) continue;
+
+        out.push_back (m);
+    }
+    return out;
+}
+
 static nlohmann::json buildOpenAIMessages(const juce::String& systemPrompt, const juce::String& userMessage, const juce::String& contextMessages)
 {
     if (contextMessages.isNotEmpty()) {
@@ -181,14 +357,14 @@ static nlohmann::json buildOpenAIMessages(const juce::String& systemPrompt, cons
                 j.insert(j.begin(), {{"role", "system"}, {"content", systemPrompt.toStdString()}});
             }
             j.push_back({{"role", "user"}, {"content", userMessage.toStdString()}});
-            return j;
+            return sanitizeOpenAIMessages (j);
         }
     }
     nlohmann::json messages = nlohmann::json::array();
     if (systemPrompt.isNotEmpty())
         messages.push_back({{"role", "system"}, {"content", systemPrompt.toStdString()}});
     messages.push_back({{"role", "user"}, {"content", userMessage.toStdString()}});
-    return messages;
+    return sanitizeOpenAIMessages (messages);
 }
 
 AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage)
@@ -197,7 +373,11 @@ AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, 
     if (requiresApiKey() && config.apiKey.isEmpty()) { result.error = "API key not configured"; return result; }
 
     nlohmann::json body;
-    body["model"] = config.model.toStdString();
+    // Senza modello il server usa quello che ha già caricato: e' il caso di
+    // llama.cpp, dove il nome del modello e' un dettaglio del server, non
+    // una scelta da fare nel plugin.
+    if (config.model.isNotEmpty())
+        body["model"] = config.model.toStdString();
     body["messages"] = buildOpenAIMessages(systemPrompt, userMessage, config.contextMessages);
     body["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["max_tokens"] = config.maxTokens;
@@ -260,6 +440,8 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
 {
     if (!onChunk) return;
     beginRequest();
+    clearStreamToolCalls();
+    ToolCallAccumulator accumulatore;
 
     if (requiresApiKey() && config.apiKey.isEmpty()) {
         lastError = "Nessuna chiave configurata per " + getName() + ".";
@@ -268,7 +450,8 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
     }
 
     nlohmann::json body;
-    body["model"] = config.model.toStdString();
+    if (config.model.isNotEmpty())
+        body["model"] = config.model.toStdString();
     body["messages"] = buildOpenAIMessages(systemPrompt, userMessage, config.contextMessages);
     body["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["max_tokens"] = config.maxTokens;
@@ -317,16 +500,28 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
                         juce::String content = juce::String(delta["content"].get<std::string>());
                         onChunk(content, false);
                     }
-                    // Streaming tool calls come as delta with tool_calls array
-                    if (delta.contains("tool_calls") && delta["tool_calls"].is_array() && !delta["tool_calls"].empty()) {
+                    // Tool call native: sono dati, non testo. Si accumulano
+                    // per index (gli argomenti arrivano a frammenti) e si
+                    // consegnano a fine stream. Il marcatore che si vede in
+                    // chat lo costruisce il bridge, non il provider.
+                    if (delta.contains("tool_calls") && delta["tool_calls"].is_array()) {
                         for (auto& tc : delta["tool_calls"]) {
-                            if (tc.contains("function") && tc["function"].contains("name") && !tc["function"]["name"].is_null()) {
-                                juce::String toolName = juce::String(tc["function"]["name"].get<std::string>());
-                                juce::String toolArgs;
-                                if (tc["function"].contains("arguments") && !tc["function"]["arguments"].is_null())
-                                    toolArgs = juce::String(tc["function"]["arguments"].get<std::string>());
-                                onChunk("[TOOL_CALL:" + toolName + " " + toolArgs + "]", false);
+                            const int idx = (tc.contains("index") && tc["index"].is_number_integer())
+                                          ? tc["index"].get<int>() : 0;
+                            juce::String id;
+                            if (tc.contains("id") && tc["id"].is_string())
+                                id = juce::String(tc["id"].get<std::string>());
+                            juce::String nome, argomenti;
+                            if (tc.contains("function") && tc["function"].is_object()) {
+                                if (tc["function"].contains("name") && tc["function"]["name"].is_string())
+                                    nome = juce::String(tc["function"]["name"].get<std::string>());
+                                if (tc["function"].contains("arguments")) {
+                                    const auto& a = tc["function"]["arguments"];
+                                    if (a.is_string())      argomenti = juce::String(a.get<std::string>());
+                                    else if (!a.is_null())  argomenti = juce::String(a.dump());
+                                }
                             }
+                            accumulatore.addChunk(idx, id, nome, argomenti);
                         }
                     }
                 }
@@ -342,6 +537,10 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
         lastError = "Richiesta annullata.";
     else if (!ricevutoQualcosa && lastError.isEmpty())
         lastError = getName() + " ha chiuso la connessione senza inviare nulla.";
+
+    // Le chiamate complete esistono solo ora che lo stream e' finito: il
+    // bridge le legge nel callback di fine, quindi vanno pubblicate prima.
+    streamToolCalls = accumulatore.finish();
 
     // Il segnale di fine va dato *sempre*, anche quando si annulla: prima
     // l'annullamento saltava questa riga e il bridge restava convinto che una
@@ -1227,6 +1426,103 @@ juce::String AnthropicProvider::buildHeaders() const
     return headers;
 }
 
+// Lo storico interno e' in forma neutra (quella di OpenAI). Claude vuole
+// un'altra forma: assistant con tool_calls diventa blocchi tool_use, e i
+// risultati diventano blocchi tool_result DENTRO un messaggio utente.
+// Copiare il JSON com'era produceva messaggi invalidi.
+nlohmann::json anthropicMessagesFromNeutral (const juce::String& contextJson)
+{
+    nlohmann::json out = nlohmann::json::array();
+    auto prior = parseJsonSafe (contextJson);
+    if (! prior.is_array()) return out;
+
+    auto appendToolResult = [&out] (nlohmann::json block)
+    {
+        if (! out.empty() && out.back().value ("role", std::string()) == "user"
+            && out.back()["content"].is_array())
+        {
+            out.back()["content"].push_back (block);
+            return;
+        }
+        out.push_back ({ { "role", "user" }, { "content", nlohmann::json::array ({ block }) } });
+    };
+
+    for (auto& m : prior)
+    {
+        if (! m.is_object()) continue;
+        const juce::String role = juce::String (m.value ("role", std::string ("user")));
+
+        if (role == "system") continue;
+
+        if (role == "tool")
+        {
+            const juce::String id   = juce::String (m.value ("tool_call_id", std::string()));
+            const juce::String text = juce::String (m.value ("content", std::string()));
+            if (text.isEmpty()) continue;
+
+            nlohmann::json block;
+            block["type"] = "tool_result";
+            block["tool_use_id"] = id.toStdString();
+            block["content"] = text.toStdString();
+            if (text.startsWith ("ERRORE")) block["is_error"] = true;
+            appendToolResult (block);
+            continue;
+        }
+
+        if (role == "assistant" && m.contains ("tool_calls") && m["tool_calls"].is_array())
+        {
+            nlohmann::json blocks = nlohmann::json::array();
+            if (m.contains ("content") && m["content"].is_string()
+                && ! m["content"].get<std::string>().empty())
+            {
+                nlohmann::json t;
+                t["type"] = "text";
+                t["text"] = m["content"];
+                blocks.push_back (t);
+            }
+
+            for (auto& tc : m["tool_calls"])
+            {
+                if (! tc.is_object() || ! tc.contains ("function")) continue;
+                const auto& f = tc["function"];
+
+                nlohmann::json input = nlohmann::json::object();
+                if (f.contains ("arguments"))
+                {
+                    if (f["arguments"].is_object()) input = f["arguments"];
+                    else if (f["arguments"].is_string())
+                    {
+                        auto p = parseJsonSafe (juce::String (f["arguments"].get<std::string>()));
+                        if (p.is_object()) input = p;
+                    }
+                }
+
+                nlohmann::json b;
+                b["type"] = "tool_use";
+                b["id"] = (tc.contains ("id") && tc["id"].is_string())
+                         ? tc["id"] : nlohmann::json (std::string());
+                b["name"] = f.value ("name", std::string());
+                b["input"] = input;
+                blocks.push_back (b);
+            }
+
+            nlohmann::json msg;
+            msg["role"] = "assistant";
+            msg["content"] = blocks;
+            out.push_back (msg);
+            continue;
+        }
+
+        if (m.contains ("content") && m["content"].is_string()
+            && m["content"].get<std::string>().empty())
+            continue;
+
+        out.push_back (m);
+    }
+
+    return out;
+}
+
 nlohmann::json AnthropicProvider::buildRequestBody (const juce::String& systemPrompt,
                                                     const juce::String& userMessage) const
 {
@@ -1240,14 +1536,7 @@ nlohmann::json AnthropicProvider::buildRequestBody (const juce::String& systemPr
     // La conversazione precedente, se c'e', va prima del messaggio corrente:
     // e' quello che rende la cache del prompt riutilizzabile fra un turno e
     // l'altro invece di ripagare l'intero preambolo ogni volta.
-    nlohmann::json messages = nlohmann::json::array();
-    if (config.contextMessages.isNotEmpty())
-    {
-        auto prior = parseJsonSafe(config.contextMessages);
-        if (prior.is_array())
-            for (auto& m : prior)
-                messages.push_back(m);
-    }
+    nlohmann::json messages = anthropicMessagesFromNeutral (config.contextMessages);
     messages.push_back({{"role", "user"}, {"content", userMessage.toStdString()}});
     body["messages"] = messages;
 
@@ -1338,6 +1627,8 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
 {
     if (!onChunk) return;
     beginRequest();
+    clearStreamToolCalls();
+    AnthropicToolAccumulator acc;
 
     if (config.apiKey.isEmpty() && config.authToken.isEmpty()) {
         lastError = "Nessun accesso configurato per Claude: collega l'abbonamento o inserisci una chiave.";
@@ -1381,13 +1672,30 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
                         ricevutoQualcosa = true;
                         onChunk(juce::String(j["delta"]["text"].get<std::string>()), false);
                     }
-                    if (type == "content_block_start" && j.contains("content_block") && j["content_block"].contains("type")) {
-                        juce::String cbType = juce::String(j["content_block"]["type"].get<std::string>());
-                        if (cbType == "tool_use") {
-                            juce::String toolName = juce::String(j["content_block"]["name"].get<std::string>());
-                            juce::String toolInput = j["content_block"].contains("input") ? juce::String(j["content_block"]["input"].dump()) : "";
-                            onChunk("[TOOL_CALL:" + toolName + " " + toolInput + "]", false);
-                        }
+                    if (type == "content_block_start" && j.contains("content_block")
+                        && j["content_block"].contains("type") && j["content_block"]["type"].is_string()
+                        && j["content_block"]["type"].get<std::string>() == "tool_use") {
+                        const int idx = (j.contains("index") && j["index"].is_number_integer()) ? j["index"].get<int>() : 0;
+                        const auto& cb = j["content_block"];
+                        const juce::String id = (cb.contains("id") && cb["id"].is_string())
+                                              ? juce::String(cb["id"].get<std::string>()) : juce::String();
+                        const juce::String nome = (cb.contains("name") && cb["name"].is_string())
+                                                ? juce::String(cb["name"].get<std::string>()) : juce::String();
+                        // L'input qui e' sempre {}: gli argomenti veri arrivano dopo.
+                        acc.startBlock(idx, id, nome);
+                    }
+                    // Gli argomenti di un tool_use arrivano a frammenti, in
+                    // eventi input_json_delta, e si interpretano solo alla fine.
+                    if (type == "content_block_delta" && j.contains("delta")
+                        && j["delta"].contains("type") && j["delta"]["type"].is_string()
+                        && j["delta"]["type"].get<std::string>() == "input_json_delta") {
+                        const int idx = (j.contains("index") && j["index"].is_number_integer()) ? j["index"].get<int>() : 0;
+                        if (j["delta"].contains("partial_json") && j["delta"]["partial_json"].is_string())
+                            acc.addJsonFragment(idx, juce::String(j["delta"]["partial_json"].get<std::string>()));
+                    }
+                    if (type == "content_block_stop") {
+                        const int idx = (j.contains("index") && j["index"].is_number_integer()) ? j["index"].get<int>() : 0;
+                        acc.stopBlock(idx);
                     }
                     if (type == "message_stop") break;
                 }
@@ -1403,6 +1711,8 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
         lastError = "Richiesta annullata.";
     else if (!ricevutoQualcosa && lastError.isEmpty())
         lastError = "Claude ha chiuso la connessione senza inviare nulla.";
+
+    streamToolCalls = acc.finish();
 
     onChunk("", true);
     abortRequested = false;
@@ -1450,120 +1760,46 @@ juce::StringArray AnthropicProvider::getAvailableModels()
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Ollama Provider
+//  Ollama Provider (endpoint compatibile OpenAI)
 // ═══════════════════════════════════════════════════════════════════
+//
+//  Ollama espone /v1/chat/completions con lo stesso formato di OpenAI:
+//  passando di li' le tool call sono native e il codice e' uno solo per
+//  Ollama e llama.cpp. La vecchia API /api/generate non conosceva gli
+//  strumenti, quindi il modello li improvvisava come testo.
 
-AIProvider::Result OllamaProvider::sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage)
+juce::String OllamaProvider::getApiUrl() const
 {
-    Result result;
-    juce::String fullPrompt = systemPrompt.isNotEmpty()
-        ? systemPrompt + "\n\n" + userMessage
-        : userMessage;
-
-    nlohmann::json body;
-    body["model"] = config.model.toStdString();
-    body["prompt"] = fullPrompt.toStdString();
-    body["stream"] = false;
-    body["options"]["temperature"] = config.temperature;
-    if (config.maxTokens > 0) body["options"]["num_predict"] = config.maxTokens;
-
-    juce::String raw = makeHttp(config.baseUrl + "/api/generate", "POST",
-                                 juce::String(body.dump()), config.timeoutMs);
-    if (raw.isEmpty()) { result.error = "Empty response"; return result; }
-
-    auto j = parseJsonSafe(raw);
-    if (j.contains("response")) {
-        result.text = juce::String(j["response"].get<std::string>());
-        result.success = true;
-    } else if (j.contains("error")) {
-        result.error = juce::String(j["error"].get<std::string>());
-    }
-    return result;
-}
-
-void OllamaProvider::sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk)
-{
-    if (!onChunk) return;
-    beginRequest();
-
-    juce::String fullPrompt = systemPrompt.isNotEmpty()
-        ? systemPrompt + "\n\n" + userMessage
-        : userMessage;
-
-    nlohmann::json body;
-    body["model"] = config.model.toStdString();
-    body["prompt"] = fullPrompt.toStdString();
-    body["stream"] = true;
-    body["options"]["temperature"] = config.temperature;
-    if (config.maxTokens > 0) body["options"]["num_predict"] = config.maxTokens;
-
-    auto apertura = openStreamingPost (config.baseUrl + "/api/generate", body.dump(),
-                                       "Content-Type: application/json\r\n",
-                                       config.timeoutMs, "Ollama");
-    if (apertura.stream == nullptr) {
-        lastError = apertura.error;
-        lastStatusCode = apertura.statusCode;
-        onChunk("", true);
-        return;
-    }
-    auto stream = std::move (apertura.stream);
-
-    bool ricevutoQualcosa = false;
-    juce::String line;
-    char ch;
-    while (!stream->isExhausted() && !abortRequested.load()) {
-        if (stream->read(&ch, 1) == 0) break;
-        if (ch == '\n') {
-            auto j = parseJsonSafe(line);
-            if (j.contains("error")) {
-                lastError = "Ollama: " + extractError (line);
-                break;
-            }
-            if (j.contains("response")) {
-                ricevutoQualcosa = true;
-                onChunk(juce::String(j["response"].get<std::string>()), false);
-            }
-            if (j.contains("done") && j["done"].is_boolean() && j["done"].get<bool>())
-                break;
-            line.clear();
-        } else {
-            line += ch;
-        }
-    }
-
-    lastAborted = abortRequested.load();
-    if (lastAborted)
-        lastError = "Richiesta annullata.";
-    else if (!ricevutoQualcosa && lastError.isEmpty())
-        lastError = "Ollama non ha prodotto testo: il modello \"" + config.model
-                  + "\" potrebbe non essere scaricato (ollama pull " + config.model + ").";
-
-    onChunk("", true);
-    abortRequested = false;
+    auto base = config.baseUrl.isNotEmpty() ? config.baseUrl.trim()
+                                            : juce::String ("http://localhost:11434");
+    while (base.endsWithChar ('/')) base = base.dropLastCharacters (1);
+    if (base.endsWith ("/v1/chat/completions")) return base;
+    if (base.endsWith ("/v1"))                  return base + "/chat/completions";
+    return base + "/v1/chat/completions";
 }
 
 bool OllamaProvider::testConnection()
 {
-    juce::String raw = makeHttp(config.baseUrl + "/api/tags", "GET", "", 5000);
-    if (raw.contains("models")) return true;
+    const auto base = getApiUrl().upToLastOccurrenceOf ("/chat/completions", false, false);
+    juce::String raw = makeHttpRequest (base + "/models", "GET", {}, 5000, {});
+    if (raw.contains ("data") || raw.contains ("models")) return true;
 
     lastError = "Ollama non risponde su " + config.baseUrl
-              + ". Avvialo, oppure scegli un altro fornitore.";
+              + ". Avvialo (ollama serve) e riprova.";
     return false;
 }
 
 juce::StringArray OllamaProvider::getAvailableModels()
 {
     juce::StringArray models;
-    juce::String raw = makeHttp(config.baseUrl + "/api/tags", "GET", "", 5000);
-    auto j = parseJsonSafe(raw);
-    if (j.contains("models") && j["models"].is_array()) {
-        for (const auto& m : j["models"]) {
-            if (m.contains("name"))
-                models.add(juce::String(m["name"].get<std::string>()));
-        }
-    }
-    if (models.isEmpty()) models = {"llama3.2", "llama3.1", "mistral", "codellama", "phi3", "gemma2"};
+    const auto base = getApiUrl().upToLastOccurrenceOf ("/chat/completions", false, false);
+    auto j = parseJsonSafe (makeHttpRequest (base + "/models", "GET", {}, 5000, {}));
+    if (j.contains ("data") && j["data"].is_array())
+        for (const auto& m : j["data"])
+            if (m.contains ("id") && m["id"].is_string())
+                models.add (juce::String (m["id"].get<std::string>()));
+
+    if (models.isEmpty()) models = {"llama3.2", "llama3.1", "mistral", "phi3", "gemma2"};
     return models;
 }
 
@@ -1571,11 +1807,99 @@ juce::StringArray OllamaProvider::getAvailableModels()
 //  Gemini Provider
 // ═══════════════════════════════════════════════════════════════════
 
+// Gemini non parla il formato OpenAI: i tool diventano functionDeclarations
+// e lo storico diventa functionCall / functionResponse dentro i parts.
 juce::String GeminiProvider::makeHttpRequest(const juce::String& url, const juce::String& method,
                                                const juce::String& jsonBody, int timeoutMs,
                                                const juce::String& extraHeaders)
 {
     return makeHttp(url, method, jsonBody, timeoutMs, extraHeaders);
+}
+
+static nlohmann::json geminiToolsFromOpenAI (const juce::String& toolsJson)
+{
+    auto arr = parseJsonSafe (toolsJson);
+    if (! arr.is_array() || arr.empty()) return nlohmann::json();
+
+    nlohmann::json decls = nlohmann::json::array();
+    for (auto& t : arr)
+    {
+        if (! t.is_object() || ! t.contains ("function")) continue;
+        const auto& f = t["function"];
+        if (! f.is_object() || ! f.contains ("name")) continue;
+
+        nlohmann::json d;
+        d["name"] = f["name"];
+        if (f.contains ("description")) d["description"] = f["description"];
+        if (f.contains ("parameters"))  d["parameters"]  = f["parameters"];
+        decls.push_back (d);
+    }
+
+    if (decls.empty()) return nlohmann::json();
+    return nlohmann::json::array ({ { { "functionDeclarations", decls } } });
+}
+
+nlohmann::json geminiContentsFromNeutral (const juce::String& contextJson, const juce::String& userMessage)
+{
+    nlohmann::json contents = nlohmann::json::array();
+
+    auto prior = parseJsonSafe (contextJson);
+    if (prior.is_array())
+    {
+        for (auto& m : prior)
+        {
+            if (! m.is_object()) continue;
+            const juce::String role = juce::String (m.value ("role", std::string ("user")));
+
+            if (role == "system") continue;   // sta in system_instruction
+
+            if (role == "assistant")
+            {
+                nlohmann::json parts = nlohmann::json::array();
+                if (m.contains ("content") && m["content"].is_string()
+                    && ! m["content"].get<std::string>().empty())
+                    parts.push_back ({ { "text", m["content"] } });
+
+                if (m.contains ("tool_calls") && m["tool_calls"].is_array())
+                    for (auto& tc : m["tool_calls"])
+                    {
+                        if (! tc.is_object() || ! tc.contains ("function")) continue;
+                        auto args = nlohmann::json::object();
+                        const auto& f = tc["function"];
+                        if (f.contains ("arguments"))
+                        {
+                            if (f["arguments"].is_object()) args = f["arguments"];
+                            else if (f["arguments"].is_string())
+                            {
+                                auto p = parseJsonSafe (juce::String (f["arguments"].get<std::string>()));
+                                if (p.is_object()) args = p;
+                            }
+                        }
+                        parts.push_back ({ { "functionCall", { { "name", f.value ("name", std::string()) }, { "args", args } } } });
+                    }
+
+                if (! parts.empty())
+                    contents.push_back ({ { "role", "model" }, { "parts", parts } });
+            }
+            else if (role == "tool")
+            {
+                // functionResponse.response deve essere un oggetto.
+                nlohmann::json response = nlohmann::json::object();
+                response["result"] = m.value ("content", std::string());
+                contents.push_back ({ { "role", "user" },
+                                      { "parts", nlohmann::json::array ({ { { "functionResponse",
+                                          { { "name", m.value ("name", std::string()) }, { "response", response } } } } }) } });
+            }
+            else
+            {
+                contents.push_back ({ { "role", "user" },
+                                      { "parts", nlohmann::json::array ({ { { "text", m.value ("content", std::string()) } } }) } });
+            }
+        }
+    }
+
+    contents.push_back ({ { "role", "user" }, { "parts", nlohmann::json::array ({ { { "text", userMessage.toStdString() } } }) } });
+    return contents;
 }
 
 AIProvider::Result GeminiProvider::sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage)
@@ -1589,19 +1913,42 @@ AIProvider::Result GeminiProvider::sendPrompt(const juce::String& systemPrompt, 
     nlohmann::json body;
     if (systemPrompt.isNotEmpty())
         body["system_instruction"]["parts"] = nlohmann::json::array({{{"text", systemPrompt.toStdString()}}});
-    body["contents"] = nlohmann::json::array({{{"parts", nlohmann::json::array({{{"text", userMessage.toStdString()}}})}}});
+    body["contents"] = geminiContentsFromNeutral (config.contextMessages, userMessage);
     body["generationConfig"]["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["generationConfig"]["maxOutputTokens"] = config.maxTokens;
     if (searchEnabled)
         body["tools"] = nlohmann::json::array({{{"googleSearch", nlohmann::json::object()}}});
+    else {
+        auto t = geminiToolsFromOpenAI (config.toolsJson);
+        if (! t.is_null()) body["tools"] = t;
+    }
 
     juce::String raw = makeHttpRequest(url, "POST", juce::String(body.dump()), config.timeoutMs);
     if (raw.isEmpty()) { result.error = "Empty response"; return result; }
 
     auto j = parseJsonSafe(raw);
     try {
-        result.text = juce::String(j.at("candidates").at(0).at("content").at("parts").at(0).at("text").get<std::string>());
+        // Un turno puo' contenere testo, functionCall, o entrambi: si leggono
+        // tutti i parts invece del solo primo.
+        juce::String testo;
+        const auto parts = j.at("candidates").at(0).at("content").at("parts");
+        for (const auto& p : parts)
+        {
+            if (p.contains("text") && p["text"].is_string())
+                testo += juce::String(p["text"].get<std::string>());
+            if (p.contains("functionCall") && p["functionCall"].is_object())
+            {
+                const auto& fc = p["functionCall"];
+                AIProvider::ToolCallResult tc;
+                if (fc.contains("name") && fc["name"].is_string())
+                    tc.name = juce::String(fc["name"].get<std::string>());
+                if (fc.contains("args")) tc.arguments = fc["args"];
+                if (tc.name.isNotEmpty()) result.toolCalls.push_back(tc);
+            }
+        }
+        result.text = testo;
         result.success = true;
+        streamToolCalls = result.toolCalls;   // stesso contratto dello streaming
     } catch (...) { result.error = extractError(raw); }
     return result;
 }
@@ -1610,6 +1957,8 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
 {
     if (!onChunk) return;
     beginRequest();
+    clearStreamToolCalls();
+    GeminiToolAccumulator acc;
 
     if (config.apiKey.isEmpty()) {
         lastError = "Nessuna chiave configurata per Gemini.";
@@ -1623,9 +1972,15 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
     nlohmann::json body;
     if (systemPrompt.isNotEmpty())
         body["system_instruction"]["parts"] = nlohmann::json::array({{{"text", systemPrompt.toStdString()}}});
-    body["contents"] = nlohmann::json::array({{{"parts", nlohmann::json::array({{{"text", userMessage.toStdString()}}})}}});
+    body["contents"] = geminiContentsFromNeutral (config.contextMessages, userMessage);
     body["generationConfig"]["temperature"] = config.temperature;
     if (config.maxTokens > 0) body["generationConfig"]["maxOutputTokens"] = config.maxTokens;
+    if (searchEnabled)
+        body["tools"] = nlohmann::json::array({{{"googleSearch", nlohmann::json::object()}}});
+    else {
+        auto t = geminiToolsFromOpenAI (config.toolsJson);
+        if (! t.is_null()) body["tools"] = t;
+    }
 
     auto apertura = openStreamingPost (url, body.dump(),
                                        "Content-Type: application/json\r\n",
@@ -1654,9 +2009,23 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
                     auto candidates = j["candidates"];
                     if (!candidates.is_null() && candidates.is_array() && !candidates.empty()) {
                         auto parts = candidates[0]["content"]["parts"];
-                        if (!parts.is_null() && parts.is_array() && !parts.empty()) {
-                            ricevutoQualcosa = true;
-                            onChunk(juce::String(parts[0]["text"].get<std::string>()), false);
+                        if (!parts.is_null() && parts.is_array()) {
+                            for (const auto& p : parts) {
+                                if (p.contains("text") && p["text"].is_string()) {
+                                    ricevutoQualcosa = true;
+                                    onChunk(juce::String(p["text"].get<std::string>()), false);
+                                }
+                                if (p.contains("functionCall") && p["functionCall"].is_object()) {
+                                    ricevutoQualcosa = true;
+                                    const auto& fc = p["functionCall"];
+                                    const juce::String nome = (fc.contains("name") && fc["name"].is_string())
+                                                            ? juce::String(fc["name"].get<std::string>()) : juce::String();
+                                    if (nome.isNotEmpty()) {
+                                        const auto args = fc.contains("args") ? fc["args"] : nlohmann::json::object();
+                                        acc.addCall(nome, args);
+                                    }
+                                }
+                            }
                         }
                     }
                 } catch (...) {}
@@ -1673,6 +2042,8 @@ void GeminiProvider::sendPromptStreaming(const juce::String& systemPrompt, const
     else if (!ricevutoQualcosa && lastError.isEmpty())
         lastError = "Gemini non ha prodotto testo: il modello \"" + config.model
                   + "\" potrebbe non essere piu' disponibile.";
+
+    streamToolCalls = acc.finish();
 
     onChunk("", true);
     abortRequested = false;

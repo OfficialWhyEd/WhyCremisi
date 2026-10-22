@@ -96,6 +96,18 @@ public:
     bool wasAborted() const { return lastAborted; }
     void clearLastError() { lastError.clear(); lastStatusCode = 0; lastAborted = false; }
 
+    // ── Tool call dell'ultimo streaming ────────────────────────────
+    //
+    //  Il testo che arriva a onChunk e' solo cio' che il modello ha
+    //  scritto. Le chiamate agli strumenti viaggiano qui, come dati:
+    //  un marcatore di testo non e' una tool call, e trattarlo come tale
+    //  e' esattamente il difetto che questa struttura elimina.
+    const std::vector<ToolCallResult>& getStreamToolCalls() const { return streamToolCalls; }
+    void clearStreamToolCalls() { streamToolCalls.clear(); }
+
+protected:
+    std::vector<ToolCallResult> streamToolCalls;
+
 protected:
     Config config;
     std::atomic<bool> abortRequested{false};
@@ -108,6 +120,61 @@ protected:
     // il flag di annullamento, che altrimenti farebbe interrompere subito la
     // richiesta successiva.
     void beginRequest() { clearLastError(); abortRequested = false; }
+};
+
+// ── Accumulatori delle tool call in streaming ──────────────────────
+//
+//  Vivono fuori dal trasporto HTTP apposta: ricevono i pezzi come
+//  arrivano e restituiscono le chiamate complete. Cosi' si possono
+//  provare con chunk finti, senza rete e senza server.
+//
+//  Regola comune a tutti: gli argomenti arrivano a frammenti e si
+//  interpretano solo alla fine. Se il JSON non e' valido non si indovina
+//  e non si perde niente: si conserva il testo grezzo sotto
+//  "__raw_arguments" e chi esegue riporta l'errore.
+struct ToolCallAccumulator
+{
+    void clear();
+    void addChunk (int index, const juce::String& id, const juce::String& name,
+                   const juce::String& argumentsFragment);
+    std::vector<AIProvider::ToolCallResult> finish() const;
+
+private:
+    std::map<int, AIProvider::ToolCallResult> calls;
+    std::map<int, juce::String> argumentiGrezzi;
+    std::vector<int> ordine;
+};
+
+// Anthropic manda un blocco "tool_use" (con id e nome) e poi una serie di
+// input_json_delta che compongono gli argomenti; la fine la dichiara
+// content_block_stop.
+struct AnthropicToolAccumulator
+{
+    void clear();
+    void startBlock (int index, const juce::String& id, const juce::String& name);
+    void addJsonFragment (int index, const juce::String& fragment);
+    void stopBlock (int index);
+    std::vector<AIProvider::ToolCallResult> finish() const;
+    bool isToolBlock (int index) const { return calls.count (index) > 0; }
+
+private:
+    std::map<int, AIProvider::ToolCallResult> calls;
+    std::map<int, juce::String> buffer;
+    std::vector<int> ordine;
+};
+
+// Gemini manda le functionCall dentro i parts, con gli argomenti che
+// possono arrivare a pezzi. Le chiamate non hanno id: lo assegna il motore.
+struct GeminiToolAccumulator
+{
+    void clear();
+    void addCall (const juce::String& name, const nlohmann::json& args);
+    void addArgumentsFragment (const juce::String& name, const juce::String& fragment);
+    std::vector<AIProvider::ToolCallResult> finish() const;
+
+private:
+    std::vector<AIProvider::ToolCallResult> calls;
+    std::map<juce::String, juce::String> buffer;
 };
 
 class OpenAIProvider : public AIProvider
@@ -313,17 +380,31 @@ private:
     juce::ChildProcess* running = nullptr;
 };
 
-class OllamaProvider : public AIProvider
+class OllamaProvider : public OpenAIProvider
 {
 public:
-    OllamaProvider(const Config& cfg) { configure(cfg); }
-    Result sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage) override;
-    void sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk) override;
-    void abort() override { abortRequested = true; }
+    OllamaProvider(const Config& cfg) : OpenAIProvider(cfg) {}
+    juce::String getName() const override { return "Ollama"; }
     bool testConnection() override;
     juce::StringArray getAvailableModels() override;
-    juce::String getName() const override { return "Ollama"; }
+
+    // Ollama in locale non chiede credenziali.
+    bool requiresApiKey() const override { return false; }
+
+protected:
+    // /v1/chat/completions: l'endpoint compatibile OpenAI. La vecchia API
+    // /api/generate non conosceva gli strumenti.
+    juce::String getApiUrl() const override;
 };
+
+// ── Storico canonico: traduzione per dialetto ──────────────────────
+//
+//  Lo storico interno e' in forma neutra (OpenAI). Queste due funzioni lo
+//  traducono nei dialetti che non lo accettano cosi' com'e'. Sono libere e
+//  pubbliche apposta: si provano con JSON finti, senza rete.
+nlohmann::json anthropicMessagesFromNeutral (const juce::String& contextJson);
+nlohmann::json geminiContentsFromNeutral (const juce::String& contextJson,
+                                          const juce::String& userMessage);
 
 class GeminiProvider : public AIProvider
 {

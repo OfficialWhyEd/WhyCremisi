@@ -71,6 +71,14 @@ public:
         Role role = User;
         juce::String content;
         int estimatedTokens = 0;
+
+        // Storico canonico: un assistant che ha chiesto strumenti porta qui
+        // le tool call (formato OpenAI, che e' il denominatore comune); un
+        // messaggio Tool porta l'id della call a cui risponde e il nome dello
+        // strumento. Ogni provider li traduce nel proprio dialetto.
+        juce::String toolCallsJson;
+        juce::String toolCallId;
+        juce::String toolName;
     };
 
     ContextManager(int maxTokens = 32000, int maxMessages = 500);

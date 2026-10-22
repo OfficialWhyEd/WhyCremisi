@@ -498,6 +498,9 @@ nlohmann::json ContextManager::toJson() const
         j["role"] = static_cast<int>(msg.role);
         j["content"] = msg.content.toStdString();
         j["estimatedTokens"] = msg.estimatedTokens;
+        if (msg.toolCallsJson.isNotEmpty()) j["toolCallsJson"] = msg.toolCallsJson.toStdString();
+        if (msg.toolCallId.isNotEmpty())    j["toolCallId"] = msg.toolCallId.toStdString();
+        if (msg.toolName.isNotEmpty())      j["toolName"] = msg.toolName.toStdString();
         arr.push_back(j);
     }
     return arr;
@@ -513,6 +516,9 @@ void ContextManager::fromJson(const nlohmann::json& j)
         msg.role = static_cast<Message::Role>(item.value("role", 1));
         msg.content = juce::String(item.value("content", ""));
         msg.estimatedTokens = item.value("estimatedTokens", 0);
+        msg.toolCallsJson = juce::String(item.value("toolCallsJson", ""));
+        msg.toolCallId = juce::String(item.value("toolCallId", ""));
+        msg.toolName = juce::String(item.value("toolName", ""));
         messages.push_back(msg);
         totalTokens += msg.estimatedTokens;
     }
