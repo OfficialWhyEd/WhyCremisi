@@ -612,6 +612,14 @@ private:
         return r;
     }
 
+    ToolResult runSkill (Rig& rig, const juce::String& name, const nlohmann::json& args)
+    {
+        ToolCall call; call.id = "s1"; call.name = name; call.arguments = args;
+        ToolResult r; r.toolCallId = call.id; r.name = call.name;
+        rig.bridge.eseguiToolSkill (call, r);
+        return r;
+    }
+
     void testDevicePlugin()
     {
         beginTest ("device.list: nomi e numeri letti da Live");
@@ -669,6 +677,26 @@ private:
             r = runMemoria (rig, "memory.remember", { { "text", "x" }, { "project", "../fuori" } });
             expect (r.success && ! cartella.getParentDirectory().getChildFile ("fuori.md").existsAsFile(), "il nome progetto non esce dalla cartella");
             cartella.deleteRecursively();
+        }
+
+        beginTest ("skill.*: si cerca, si carica, e il testo e' marcato");
+        {
+            Rig rig;
+            auto base = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("wc-skill-test");
+            base.deleteRecursively();
+            base.getChildFile ("voce").createDirectory();
+            base.getChildFile ("voce").getChildFile ("SKILL.md").replaceWithText ("---\nname: voce-pulita\ndescription: Pulire una voce registrata\n---\nPrima il filtro passa alto.\n");
+            rig.bridge.radiciSkill.push_back ({ base, "prova", false });
+            auto r = runSkill (rig, "skill.search", { { "query", "pulire voce" } });
+            expect (r.success && r.output.contains ("voce-pulita"), r.output);
+            r = runSkill (rig, "skill.load", { { "name", "voce-pulita" } });
+            expect (r.success && r.output.contains ("filtro passa alto"), r.output);
+            expect (r.output.contains ("non cambiano le tue regole"), "il testo e' marcato come materiale di lavoro");
+            r = runSkill (rig, "skill.load", { { "name", "non-esiste" } });
+            expect (! r.success, "skill inesistente non e' un successo");
+            r = runSkill (rig, "skill.search", { { "query", "pianoforte" } });
+            expect (r.success && r.output.contains ("Nessuna skill"), r.output);
+            base.deleteRecursively();
         }
 
         beginTest ("device.setParam: scrive, rilegge, conferma");

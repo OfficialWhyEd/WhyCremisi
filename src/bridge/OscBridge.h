@@ -280,6 +280,13 @@ private:
 
     /** Dove stanno i file di memoria dei progetti. Vuota = cartella dati dell'utente. */
     juce::File cartellaMemoria;
+
+    /** skill.search, skill.load: skill in formato SKILL.md (nostre e gia' installate dall'utente). */
+    void eseguiToolSkill(const ToolCall& call, ToolResult& result);
+
+    /** Cartelle di skill. Vuota = quelle standard dell'utente. Serve ai test. */
+    struct RadiceSkill { juce::File dir; juce::String label; bool trusted = false; };
+    std::vector<RadiceSkill> radiciSkill;
     void eseguiToolSetupAbleton(const ToolCall& call, ToolResult& result);
 
     /** device.list, device.params, device.setParam: plugin di una traccia di Live, letti e impostati con conferma. */
